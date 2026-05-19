@@ -4,7 +4,7 @@
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
   "version": "0.1.0",
   "publisher": "PCGLawson",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "https://github.com/The-paulster/kaiju.nc.git"
