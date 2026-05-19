@@ -55,6 +55,18 @@ G1 X[#140 + 1.] Z[#101 - 0.5] F[#130]
 
 `KAIJU Alias` makes macro-heavy programs easier to read by temporarily converting numbered macro variables into readable names.
 
+Default shortcut:
+
+```text
+Ctrl+Alt+A
+```
+
+On macOS:
+
+```text
+Cmd+Alt+A
+```
+
 It looks for macro setup comments before the first executable `G` or `M` code. Comments can be written either as a standalone alias note:
 
 ```gcode
@@ -126,6 +138,18 @@ The command opens an options picker before formatting. The default decimal-place
 ### KAIJU Orphan Killer
 
 `KAIJU Orphan Killer` opens a side panel that inspects macro variable usage in the current NC document.
+
+Default shortcut:
+
+```text
+Ctrl+Alt+O
+```
+
+On macOS:
+
+```text
+Cmd+Alt+O
+```
 
 It reports two kinds of macro issues:
 
@@ -199,9 +223,9 @@ The repository includes a showcase program at `examples/kaiju-showcase.nc`.
 Use it to try the main extension tools:
 
 - Hover over setup macros such as `#100`, `#104`, or `#500` to see macro definition lookup
-- Run `KAIJU Alias` to toggle numbered macros into readable names
+- Run `KAIJU Alias` to toggle numbered macros into readable names by right-clicking in the editor or using `Ctrl+Alt+A`
 - Run `KAIJU Reconstructor` on the marked `FIX THIS AREA` section by right-clicking in the editor or using `Ctrl+Alt+R`
-- Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom
+- Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom by right-clicking in the editor or using `Ctrl+Alt+O`
 - Look at the marked diagnostic demo lines to see missing-decimal warnings
 
 The example is for editor testing only and is not machine-ready NC code.
