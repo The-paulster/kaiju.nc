@@ -1,3 +1,6 @@
+<img src="media/kaiju-nc_banne-400.png" alt="KAIJU.NC banner" width="900">
+
+
 # KAIJU.NC
 
 KAIJU.NC is a Visual Studio Code extension for working with `.nc` files and other common CNC program formats. It provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools for Fanuc-style G-code and macro programming.
@@ -34,7 +37,7 @@ Special comment styles are also recognized:
 (ROUGHING [CHECK OFFSET])
 ```
 
-<img src="examples/highlight_example.png" alt="KAIJU.NC syntax highlighting example" width="900">
+<img src="examples/highlight_example.png" alt="KAIJU.NC syntax highlighting example" width="500">
 
 ### Macro-Assist
 
@@ -52,7 +55,7 @@ Example:
 G1 X[#140 + 1.] Z[#101 - 0.5] F[#130]
 ```
 
-<img src="examples/macro_hover_example.png" alt="KAIJU.NC macro hover example" width="400">
+<img src="examples/macro_hover_example.png" alt="KAIJU.NC macro hover example" width="200">
 
 
 ### KAIJU Alias
@@ -146,7 +149,7 @@ G1 X#100 Z#150
 The inspection ignores macro-looking text inside comments and protected angle-bracket ranges, so setup notes and display strings do not pollute the report.
 
 
-<img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="500">
+<img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
 
 
 ### KAIJU Chronometer
@@ -178,7 +181,7 @@ For CSS moves, Chronometer samples along the move so a cut that crosses into the
 
 This is an editor estimate only. It does not simulate acceleration, exact controller lookahead, dwell, tool changes, spindle ramp-up, machine limits, or canned cycle behavior.
 
-<img src="examples/chronometer_example.png" alt="KAIJU.NC chronometer example" width="400">
+<img src="examples/chronometer_example.png" alt="KAIJU.NC chronometer example" width="300">
 
 ### Code Alerts
 
