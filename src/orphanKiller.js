@@ -99,11 +99,11 @@ function inspectOrphanMacros(document) {
 		undefinedUses: [...references.keys()]
 			.filter(macro => !definitions.has(macro))
 			.sort(compareMacroNames)
-			.map(macro => ({ macro, lines: references.get(macro) })),
+			.map(macro => makeResultItem(macro, references.get(macro), macroAliases)),
 		unusedDefinitions: [...definitions.keys()]
 			.filter(macro => !references.has(macro))
 			.sort(compareMacroNames)
-			.map(macro => ({ macro, lines: definitions.get(macro) }))
+			.map(macro => makeResultItem(macro, definitions.get(macro), macroAliases))
 	};
 }
 
@@ -117,9 +117,14 @@ function buildMacroAliasMap(document) {
 
 		const numericMacro = normalizeMacro(entry.macro);
 		const aliasMacro = normalizeMacro(`#${entry.alias}`);
+		const aliasInfo = {
+			macro: numericMacro,
+			alias: aliasMacro,
+			name: entry.phrase || entry.alias
+		};
 
-		macroAliases.set(aliasMacro, numericMacro);
-		macroAliases.set(numericMacro, numericMacro);
+		macroAliases.set(aliasMacro, aliasInfo);
+		macroAliases.set(numericMacro, aliasInfo);
 	}
 
 	return macroAliases;
@@ -127,8 +132,19 @@ function buildMacroAliasMap(document) {
 
 function resolveMacroAlias(macro, macroAliases) {
 	const normalizedMacro = normalizeMacro(macro);
+	const aliasInfo = macroAliases.get(normalizedMacro);
 
-	return macroAliases.get(normalizedMacro) || normalizedMacro;
+	return aliasInfo ? aliasInfo.macro : normalizedMacro;
+}
+
+function makeResultItem(macro, lines, macroAliases) {
+	const aliasInfo = macroAliases.get(macro);
+
+	return {
+		macro,
+		name: aliasInfo ? aliasInfo.name : "",
+		lines
+	};
 }
 
 function findAssignmentRanges(line, protectedRanges) {
@@ -260,11 +276,20 @@ function renderOrphanHtml(document, result) {
 
 		.row {
 			display: grid;
-			grid-template-columns: minmax(90px, 140px) minmax(0, 1fr);
+			grid-template-columns: minmax(76px, 110px) minmax(120px, 1fr) minmax(80px, 140px);
 			gap: 12px;
 			border-bottom: 1px solid var(--vscode-panel-border);
 			padding: 7px 0;
 			align-items: baseline;
+		}
+
+		.row.header {
+			color: var(--vscode-descriptionForeground);
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+			border-bottom-color: var(--vscode-panel-border);
+			padding-top: 0;
 		}
 
 		code {
@@ -310,12 +335,20 @@ function renderRows(items) {
 		return "<p class=\"empty\">None found.</p>";
 	}
 
-	return items.map(item => {
+	const header = `<div class="row header">
+			<div>Macro</div>
+			<div>Name</div>
+			<div>Lines</div>
+		</div>`;
+	const rows = items.map(item => {
 		return `<div class="row">
 			<code>${escapeHtml(item.macro)}</code>
-			<div>Lines ${escapeHtml(item.lines.join(", "))}</div>
+			<div>${escapeHtml(item.name || "-")}</div>
+			<div>${escapeHtml(item.lines.join(", "))}</div>
 		</div>`;
 	}).join("");
+
+	return header + rows;
 }
 
 function escapeHtml(text) {
