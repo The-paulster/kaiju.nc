@@ -316,6 +316,18 @@ T0101
 T0606
 ```
 
+### `kaijuNC.orphanKiller.compactPanelWidth`
+
+Controls the target width fraction for the `KAIJU Orphan Killer` side editor group when VS Code has a simple two-column editor layout.
+
+Default:
+
+```json
+0.3
+```
+
+This is best-effort. VS Code controls editor group layout, so KAIJU.NC only applies this when it can do so without reshaping a more complex editor grid.
+
 ## Intended Use
 
 KAIJU.NC is intended for:

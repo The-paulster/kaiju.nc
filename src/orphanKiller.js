@@ -71,6 +71,38 @@ async function renderOrphanPanel(document) {
 
 	orphanPanel.title = "KAIJU Orphan Killer";
 	orphanPanel.webview.html = renderOrphanHtml(document, result);
+	await compactOrphanPanelEditorGroup(document);
+}
+
+async function compactOrphanPanelEditorGroup(document) {
+	const config = vscode.workspace.getConfiguration("kaijuNC.orphanKiller", document.uri);
+	const compactPanelWidth = clampNumber(config.get("compactPanelWidth", 0.3), 0.15, 0.5);
+
+	try {
+		const layout = await vscode.commands.executeCommand("vscode.getEditorLayout");
+
+		if (!isSimpleSideBySideLayout(layout)) {
+			return;
+		}
+
+		await vscode.commands.executeCommand("vscode.setEditorLayout", {
+			orientation: 0,
+			groups: [
+				{ size: 1 - compactPanelWidth },
+				{ size: compactPanelWidth }
+			]
+		});
+	} catch {
+		// Editor layout commands are best-effort; the report still works without resizing.
+	}
+}
+
+function isSimpleSideBySideLayout(layout) {
+	return layout
+		&& layout.orientation === 0
+		&& Array.isArray(layout.groups)
+		&& layout.groups.length === 2
+		&& layout.groups.every(group => !Array.isArray(group.groups));
 }
 
 function inspectOrphanMacros(document) {
@@ -208,6 +240,16 @@ function addLine(map, macro, lineNumber) {
 
 function normalizeMacro(macro) {
 	return macro.toUpperCase();
+}
+
+function clampNumber(value, min, max) {
+	const number = Number(value);
+
+	if (!Number.isFinite(number)) {
+		return min;
+	}
+
+	return Math.max(min, Math.min(max, number));
 }
 
 function renderOrphanHtml(document, result) {

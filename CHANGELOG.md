@@ -6,6 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Added best-effort compact editor group sizing for the `KAIJU Orphan Killer` side panel, with a configurable target width.
 - Tightened the `KAIJU Orphan Killer` report layout so the macro/name/line columns use compact content-based sizing.
 - Added a `Name` column to `KAIJU Orphan Killer` results when a macro has an alias/comment name.
 - Fixed `KAIJU Orphan Killer` so aliases created by `KAIJU Alias` are matched back to their numeric macro definitions.
