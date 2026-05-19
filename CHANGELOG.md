@@ -6,6 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Tightened the `KAIJU Orphan Killer` report layout so the macro/name/line columns use compact content-based sizing.
 - Added a `Name` column to `KAIJU Orphan Killer` results when a macro has an alias/comment name.
 - Fixed `KAIJU Orphan Killer` so aliases created by `KAIJU Alias` are matched back to their numeric macro definitions.
 - Disabled VS Code default color decorators for `gcode` mode so macro variables like `#100` are not treated as fallback CSS colors.

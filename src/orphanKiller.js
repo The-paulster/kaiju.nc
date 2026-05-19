@@ -274,13 +274,25 @@ function renderOrphanHtml(document, result) {
 			margin-top: 4px;
 		}
 
+		.table {
+			display: inline-grid;
+			grid-template-columns: max-content minmax(12ch, 36ch) max-content;
+			max-width: 100%;
+		}
+
 		.row {
-			display: grid;
-			grid-template-columns: minmax(76px, 110px) minmax(120px, 1fr) minmax(80px, 140px);
-			gap: 12px;
+			display: contents;
+		}
+
+		.cell {
 			border-bottom: 1px solid var(--vscode-panel-border);
-			padding: 7px 0;
-			align-items: baseline;
+			padding: 7px 12px 7px 0;
+			overflow-wrap: anywhere;
+		}
+
+		.cell:last-child {
+			padding-right: 0;
+			white-space: nowrap;
 		}
 
 		.row.header {
@@ -288,7 +300,9 @@ function renderOrphanHtml(document, result) {
 			font-size: 11px;
 			text-transform: uppercase;
 			letter-spacing: 0.04em;
-			border-bottom-color: var(--vscode-panel-border);
+		}
+
+		.row.header .cell {
 			padding-top: 0;
 		}
 
@@ -335,20 +349,21 @@ function renderRows(items) {
 		return "<p class=\"empty\">None found.</p>";
 	}
 
-	const header = `<div class="row header">
-			<div>Macro</div>
-			<div>Name</div>
-			<div>Lines</div>
+	const header = `<div class="table">
+		<div class="row header">
+			<div class="cell">Macro</div>
+			<div class="cell">Name</div>
+			<div class="cell">Lines</div>
 		</div>`;
 	const rows = items.map(item => {
 		return `<div class="row">
-			<code>${escapeHtml(item.macro)}</code>
-			<div>${escapeHtml(item.name || "-")}</div>
-			<div>${escapeHtml(item.lines.join(", "))}</div>
+			<div class="cell"><code>${escapeHtml(item.macro)}</code></div>
+			<div class="cell">${escapeHtml(item.name || "-")}</div>
+			<div class="cell">${escapeHtml(item.lines.join(", "))}</div>
 		</div>`;
 	}).join("");
 
-	return header + rows;
+	return header + rows + "</div>";
 }
 
 function escapeHtml(text) {
