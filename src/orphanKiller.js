@@ -4,6 +4,7 @@ const {
 	getAngleBracketRanges,
 	isInsideRange
 } = require("./textRanges");
+const { buildAliasEntries } = require("./macroAlias");
 
 let orphanPanel;
 let orphanState;
@@ -75,6 +76,7 @@ async function renderOrphanPanel(document) {
 function inspectOrphanMacros(document) {
 	const definitions = new Map();
 	const references = new Map();
+	const macroAliases = buildMacroAliasMap(document);
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -85,11 +87,11 @@ function inspectOrphanMacros(document) {
 		const assignmentRanges = findAssignmentRanges(line, protectedRanges);
 
 		for (const assignment of assignmentRanges) {
-			addLine(definitions, assignment.macro, lineNumber);
+			addLine(definitions, resolveMacroAlias(assignment.macro, macroAliases), lineNumber);
 		}
 
 		for (const reference of findMacroReferences(line, protectedRanges, assignmentRanges)) {
-			addLine(references, reference.macro, lineNumber);
+			addLine(references, resolveMacroAlias(reference.macro, macroAliases), lineNumber);
 		}
 	}
 
@@ -103,6 +105,30 @@ function inspectOrphanMacros(document) {
 			.sort(compareMacroNames)
 			.map(macro => ({ macro, lines: definitions.get(macro) }))
 	};
+}
+
+function buildMacroAliasMap(document) {
+	const macroAliases = new Map();
+
+	for (const entry of buildAliasEntries(document)) {
+		if (!entry.alias) {
+			continue;
+		}
+
+		const numericMacro = normalizeMacro(entry.macro);
+		const aliasMacro = normalizeMacro(`#${entry.alias}`);
+
+		macroAliases.set(aliasMacro, numericMacro);
+		macroAliases.set(numericMacro, numericMacro);
+	}
+
+	return macroAliases;
+}
+
+function resolveMacroAlias(macro, macroAliases) {
+	const normalizedMacro = normalizeMacro(macro);
+
+	return macroAliases.get(normalizedMacro) || normalizedMacro;
 }
 
 function findAssignmentRanges(line, protectedRanges) {
