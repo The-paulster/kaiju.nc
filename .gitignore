@@ -1,0 +1,10 @@
+# Packaged extension builds
+*.vsix
+
+# Local/editor state
+.vscode/
+.vscode-test/
+node_modules/
+
+# Personal project notes
+KAIJU.NC_PERSONAL_REFERENCE.md

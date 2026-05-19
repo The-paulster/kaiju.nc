@@ -1,0 +1,713 @@
+{
+	"name": "GCode",
+	"patterns": [
+		{
+			"include": "#maintitlecomments"
+		},
+		{
+			"include": "#metacomments"
+		},
+		{
+			"include": "#titlecomments"
+		},
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#xbracketvalues"
+		},
+		{
+			"include": "#ybracketvalues"
+		},
+		{
+			"include": "#zbracketvalues"
+		},
+		{
+			"include": "#ubracketvalues"
+		},
+		{
+			"include": "#vbracketvalues"
+		},
+		{
+			"include": "#wbracketvalues"
+		},
+		{
+			"include": "#rbracketvalues"
+		},
+		{
+			"include": "#fbracketvalues"
+		},
+		{
+			"include": "#abracketvalues"
+		},
+		{
+			"include": "#bbracketvalues"
+		},
+		{
+			"include": "#cbracketvalues"
+		},
+		{
+			"include": "#ibracketvalues"
+		},
+		{
+			"include": "#jbracketvalues"
+		},
+		{
+			"include": "#sbracketvalues"
+		},
+		{
+			"include": "#tbracketvalues"
+		},
+		{
+			"include": "#kbracketvalues"
+		},
+		{
+			"include": "#variables"
+		},
+		{
+			"include": "#mcodes"
+		},
+		{
+			"include": "#blocknumbers"
+		},
+		{
+			"include": "#rapidgcodes"
+		},
+		{
+			"include": "#cuttinggcodes"
+		},
+		{
+			"include": "#gcodes"
+		},
+		{
+			"include": "#mathoperators"
+		},
+		{
+			"include": "#logickeywords"
+		},
+		{
+			"include": "#xwords"
+		},
+		{
+			"include": "#ywords"
+		},
+		{
+			"include": "#zwords"
+		},
+		{
+			"include": "#uwords"
+		},
+		{
+			"include": "#vwords"
+		},
+		{
+			"include": "#wwords"
+		},
+		{
+			"include": "#rwords"
+		},
+		{
+			"include": "#fwords"
+		},
+		{
+			"include": "#lcodes"
+		},
+		{
+			"include": "#pcodes"
+		},
+		{
+			"include": "#qcodes"
+		},
+				{
+			"include": "#tcodes"
+		},
+		{
+			"include": "#scodes"
+		},
+		{
+			"include": "#awords"
+		},
+		{
+			"include": "#bwords"
+		},
+		{
+			"include": "#cwords"
+		},
+		{
+			"include": "#iwords"
+		},
+		{
+			"include": "#jwords"
+		},
+		{
+			"include": "#kwords"
+		},
+		{
+			"include": "#programnumbers"
+		}
+		
+	],
+	"repository": {
+		"metacomments": {
+			"patterns": [
+				{
+					"name": "comment.meta.gcode",
+					"match": "\\(/[^\\)]*\\)"
+				}
+			]
+		},
+		"titlecomments": {
+			"patterns": [
+				{
+					"name": "comment.title.gcode",
+					"match": "\\(-[^\\)]*\\)"
+				}
+			]
+		},
+		"comments": {
+			"name": "comment.line.gcode",
+			"begin": "\\(",
+			"end": "\\)",
+			"patterns": [
+				{
+					"name": "comment.double.gcode",
+					"begin": "\\[",
+					"end": "\\]"
+				}
+			]
+		},
+		"variables": {
+			"patterns": [
+				{
+					"name": "variable.parameter.gcode",
+					"match": "#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)"
+				}
+			]
+		},
+		"mcodes": {
+			"patterns": [
+				{
+					"name": "keyword.control.mcode.gcode",
+					"match": "\\b[Mm]\\d+\\b"
+				}
+			]
+		},
+		"blocknumbers": {
+			"patterns": [
+				{
+					"name": "entity.block.number.gcode",
+					"match": "\\b[Nn]\\d+\\b"
+				}
+			]
+		},
+		"rapidgcodes": {
+			"patterns": [
+				{
+					"name": "keyword.motion.rapid.gcode",
+					"match": "\\b[Gg]0+\\b"
+				}
+			]
+		},
+		"cuttinggcodes": {
+			"patterns": [
+				{
+					"name": "keyword.motion.cut.gcode",
+					"match": "\\b[Gg][123]\\b"
+				}
+			]
+		},
+		"gcodes": {
+			"patterns": [
+				{
+					"name": "keyword.control.gcode",
+					"match": "\\b[Gg]\\d+\\b"
+				}
+			]
+		},
+		"mathoperators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.math.symbol.gcode",
+					"match": "[+\\-*/=]"
+				},
+				{
+					"name": "keyword.operator.math.word.gcode",
+					"match": "\\b(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD|SIN|COS|TAN|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)\\b"
+				}
+			]
+		},
+		"mathwordoperators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.math.word.gcode",
+					"match": "\\b(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD|SIN|COS|TAN|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)\\b"
+				}
+			]
+		},
+		"xwords": {
+			"patterns": [
+				{
+					"name": "support.axis.x.gcode",
+					"match": "\\b[Xx](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"ywords": {
+			"patterns": [
+				{
+					"name": "support.axis.y.gcode",
+					"match": "\\b[Yy](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"zwords": {
+			"patterns": [
+				{
+					"name": "support.axis.z.gcode",
+					"match": "\\b[Zz](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"uwords": {
+			"patterns": [
+				{
+					"name": "support.axis.u.gcode",
+					"match": "\\b[Uu](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"vwords": {
+			"patterns": [
+				{
+					"name": "support.axis.v.gcode",
+					"match": "\\b[Vv](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"wwords": {
+			"patterns": [
+				{
+					"name": "support.axis.w.gcode",
+					"match": "\\b[Ww](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"rwords": {
+			"patterns": [
+				{
+					"name": "support.radius.r.gcode",
+					"match": "\\b[Rr](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"fwords": {
+			"patterns": [
+				{
+					"name": "support.feed.f.gcode",
+					"match": "\\b[Ff](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"awords": {
+			"patterns": [
+				{
+					"name": "support.axis.a.gcode",
+					"match": "\\b[Aa](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"bwords": {
+			"patterns": [
+				{
+					"name": "support.axis.b.gcode",
+					"match": "\\b[Bb](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"cwords": {
+			"patterns": [
+				{
+					"name": "support.axis.c.gcode",
+					"match": "\\b[Cc](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"iwords": {
+			"patterns": [
+				{
+					"name": "support.arc.i.gcode",
+					"match": "\\b[Ii](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"jwords": {
+			"patterns": [
+				{
+					"name": "support.arc.j.gcode",
+					"match": "\\b[Jj](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"kwords": {
+			"patterns": [
+				{
+					"name": "support.arc.k.gcode",
+					"match": "\\b[Kk](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"lcodes": {
+			"patterns": [
+				{
+					"name": "support.code.l.gcode",
+					"match": "\\b[Ll](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"pcodes": {
+			"patterns": [
+				{
+					"name": "support.code.p.gcode",
+					"match": "\\b[Pp](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"qcodes": {
+			"patterns": [
+				{
+					"name": "support.code.q.gcode",
+					"match": "\\b[Qq](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"tcodes": {
+			"patterns": [
+				{
+					"name": "support.code.t.gcode",
+					"match": "\\b[Tt](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"scodes": {
+			"patterns": [
+				{
+					"name": "support.code.s.gcode",
+					"match": "\\b[Ss](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"programnumbers": {
+			"patterns": [
+				{
+					"name": "entity.name.program.gcode",
+					"match": "\\b[Oo]\\d+\\b"
+				}
+			]
+		},
+		"logickeywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.logic.gcode",
+					"match": "\\b(?:IF|THEN|WHILE|DO|END|ELSE|GOTO)\\b"
+				}
+			]
+		},
+		"xbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.x.gcode",
+					"begin": "\\b[Xx]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"ybracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.y.gcode",
+					"begin": "\\b[Yy]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"zbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.z.gcode",
+					"begin": "\\b[Zz]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"tbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.code.t.gcode",
+					"begin": "\\b[Tt]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"sbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.code.s.gcode",
+					"begin": "\\b[Ss]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"ubracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.u.gcode",
+					"begin": "\\b[Uu]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"vbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.v.gcode",
+					"begin": "\\b[Vv]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"wbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.w.gcode",
+					"begin": "\\b[Ww]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"rbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.radius.r.gcode",
+					"begin": "\\b[Rr]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"fbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.feed.f.gcode",
+					"begin": "\\b[Ff]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"abracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.a.gcode",
+					"begin": "\\b[Aa]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"bbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.b.gcode",
+					"begin": "\\b[Bb]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"cbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.axis.c.gcode",
+					"begin": "\\b[Cc]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"ibracketvalues": {
+			"patterns": [
+				{
+					"name": "support.arc.i.gcode",
+					"begin": "\\b[Ii]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"jbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.arc.j.gcode",
+					"begin": "\\b[Jj]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"kbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.arc.k.gcode",
+					"begin": "\\b[Kk]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"bracketnest": {
+			"patterns": [
+				{
+					"begin": "\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"maintitlecomments": {
+			"patterns": [
+				{
+					"name": "comment.maintitle.gcode",
+					"match": "<[^>]*>"
+				}
+			]
+		}
+	},
+	"scopeName": "source.gcode"
+}

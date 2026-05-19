@@ -1,0 +1,269 @@
+{
+	"name": "GCode Royal Dark",
+	"type": "dark",
+	"colors": {
+		"editor.background": "#111318",
+		"editor.foreground": "#e8e8e8",
+		"editorLineNumber.foreground": "#4B5563",
+		"editorLineNumber.activeForeground": "#AAB2C0",
+		"editorCursor.foreground": "#F8F8F2",
+		"editor.selectionBackground": "#2D3A4A",
+		"editor.inactiveSelectionBackground": "#263241",
+		"editorIndentGuide.background1": "#252B34",
+		"editorIndentGuide.activeBackground1": "#3B4252"
+	},
+	"tokenColors": [
+		{
+			"name": "Normal comments",
+			"scope": "comment.line.gcode",
+			"settings": {
+				"foreground": "#67825e"
+			}
+		},
+		{
+			"name": "Title comments",
+			"scope": "comment.title.gcode",
+			"settings": {
+				"foreground": "#f2ad0c",
+				"fontStyle": "bold"
+			}
+		},
+		{
+			"name": "Meta comments",
+			"scope": "comment.meta.gcode",
+			"settings": {
+				"foreground": "#95b8bf"
+			}
+		},
+
+		{
+			"name": "Macro variables",
+			"scope": "variable.parameter.gcode",
+			"settings": {
+				"foreground": "#ffffff"
+			}
+		},
+
+		{
+			"name": "Program number",
+			"scope": "entity.name.program.gcode",
+			"settings": {
+				"foreground": "#FFD866",
+				"fontStyle": "bold"
+			}
+		},
+		{
+			"name": "Block number",
+			"scope": "entity.block.number.gcode",
+			"settings": {
+				"foreground": "#c4c4c4"
+			}
+		},
+
+		{
+			"name": "Rapid motion G0",
+			"scope": "keyword.motion.rapid.gcode",
+			"settings": {
+				"foreground": "#ff8800"
+			}
+		},
+		{
+			"name": "Cutting motion G1/G2/G3",
+			"scope": "keyword.motion.cut.gcode",
+			"settings": {
+				"foreground": "#ffd500"
+			}
+		},
+		{
+			"name": "Other G-codes",
+			"scope": "keyword.control.gcode",
+			"settings": {
+				"foreground": "#29c718"
+			}
+		},
+		{
+			"name": "M-codes",
+			"scope": "keyword.control.mcode.gcode",
+			"settings": {
+				"foreground": "#9CDCFE"
+			}
+		},
+
+		{
+			"name": "X axis",
+			"scope": "support.axis.x.gcode",
+			"settings": {
+				"foreground": "#D65D5D"
+			}
+		},
+		{
+			"name": "U axis / X incremental",
+			"scope": "support.axis.u.gcode",
+			"settings": {
+				"foreground": "#FF8A8A"
+			}
+		},
+
+		{
+			"name": "Y axis",
+			"scope": "support.axis.y.gcode",
+			"settings": {
+				"foreground": "#6A9955"
+			}
+		},
+		{
+			"name": "V axis / Y incremental",
+			"scope": "support.axis.v.gcode",
+			"settings": {
+				"foreground": "#9CDC7C"
+			}
+		},
+
+		{
+			"name": "Z axis",
+			"scope": "support.axis.z.gcode",
+			"settings": {
+				"foreground": "#4A90E2"
+			}
+		},
+		{
+			"name": "W axis / Z incremental",
+			"scope": "support.axis.w.gcode",
+			"settings": {
+				"foreground": "#8CC8FF"
+			}
+		},
+
+		{
+			"name": "Radius R",
+			"scope": "support.radius.r.gcode",
+			"settings": {
+				"foreground": "#D19A66"
+			}
+		},
+		{
+			"name": "Feed F",
+			"scope": "support.feed.f.gcode",
+			"settings": {
+				"foreground": "#ffd84d"
+			}
+		},
+
+		{
+			"name": "L code",
+			"scope": "support.code.l.gcode",
+			"settings": {
+				"foreground": "#B5CEA8"
+			}
+		},
+		{
+			"name": "P code",
+			"scope": "support.code.p.gcode",
+			"settings": {
+				"foreground": "#D7BA7D"
+			}
+		},
+		{
+			"name": "Q code",
+			"scope": "support.code.q.gcode",
+			"settings": {
+				"foreground": "#CE9178"
+			}
+		},
+        {
+			"name": "S code",
+			"scope": "support.code.s.gcode",
+			"settings": {
+				"foreground": "#ff0037"
+			}
+		},
+        {
+			"name": "T code",
+			"scope": "support.code.t.gcode",
+			"settings": {
+				"foreground": "#88ff00",
+                "fontStyle": "bold"
+			}
+		},
+
+		{
+			"name": "Math symbol operators",
+			"scope": "keyword.operator.math.symbol.gcode",
+			"settings": {
+				"foreground": "#ABB2BF"
+			}
+		},
+		{
+			"name": "Math word operators",
+			"scope": "keyword.operator.math.word.gcode",
+			"settings": {
+				"foreground": "#eb17e4"
+			}
+		},
+		{
+			"name": "Logic Word Operators",
+			"scope": "keyword.control.logic.gcode",
+			"settings": {
+				"foreground": "#eb17e4" 
+			}
+		},
+        {
+            "name": "Double comment",
+            "scope": "comment.double.gcode",
+            "settings": {
+                "foreground": "#94709c"
+            }
+        },
+        {
+            "name": "A rotary axis",
+            "scope": "support.axis.a.gcode",
+            "settings": {
+                "foreground": "#8E6BB8"
+            }
+        },
+        {
+            "name": "B rotary axis",
+            "scope": "support.axis.b.gcode",
+            "settings": {
+                "foreground": "#A878D6"
+            }
+        },
+        {
+            "name": "C rotary axis",
+            "scope": "support.axis.c.gcode",
+            "settings": {
+                "foreground": "#C678DD"
+            }
+        },
+
+        {
+            "name": "I arc / X arc component",
+            "scope": "support.arc.i.gcode",
+            "settings": {
+                "foreground": "#B94F5A"
+            }
+        },
+        {
+            "name": "J arc / Y arc component",
+            "scope": "support.arc.j.gcode",
+            "settings": {
+                "foreground": "#5F8F4E"
+            }
+        },
+        {
+            "name": "K arc / Z arc component",
+            "scope": "support.arc.k.gcode",
+            "settings": {
+                "foreground": "#4B82C2"
+            }
+        },
+		{
+			"name": "Main title comment",
+			"scope": "comment.maintitle.gcode",
+			"settings": {
+				"foreground": "#D0FF00",
+				"fontStyle": "bold"
+			}
+		}
+	]
+}
