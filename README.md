@@ -1,4 +1,4 @@
-<img src="media/kaiju-nc_banne-400.png" alt="KAIJU.NC banner" width="900">
+<img src="media/kaiju-nc_banner-400.png" alt="KAIJU.NC banner" width="900">
 
 
 # KAIJU.NC
