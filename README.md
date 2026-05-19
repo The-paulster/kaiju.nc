@@ -2,11 +2,11 @@
 
 KAIJU.NC is a Visual Studio Code extension for working with `.nc` files and other common CNC program formats. It provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools for Fanuc-style G-code and macro programming.
 
-The extension is designed around practical shop-floor readability, especially for macro-heavy lathe, mill, and mill-turn programs.
+The extension is designed around improving readability, and assisting with problem identification, especially for macro-heavy programs.
 
 ## Features
 
-### Syntax Highlighting
+### Highlighting
 
 KAIJU.NC highlights common CNC program elements, including:
 
@@ -18,8 +18,7 @@ KAIJU.NC highlights common CNC program elements, including:
 - Macro variables, such as `#100`, `#500`, and named-style macro references
 - Macro logic keywords, including `IF`, `THEN`, `WHILE`, `DO`, `END`, and `GOTO`
 - Math and comparison operators, including `EQ`, `NE`, `GT`, `GE`, `LT`, `LE`, `SIN`, `COS`, `SQRT`, `ABS`, `ROUND`, `FIX`, and `FUP`
-
-### Comment Highlighting
+- Gutter markers that show which tool is active in each section of the program
 
 Fanuc-style parenthesis comments are highlighted:
 
@@ -30,14 +29,16 @@ Fanuc-style parenthesis comments are highlighted:
 Special comment styles are also recognized:
 
 ```gcode
-(- OPERATION 1)
+(- SECTION COMMENT)
 (/ META COMMENT)
 (ROUGHING [CHECK OFFSET])
 ```
 
-### Macro-Aware Editing
+<img src="examples/highlight_example.png" alt="KAIJU.NC syntax highlighting example" width="900">
 
-KAIJU.NC includes lightweight macro editing helpers:
+### Macro-Assist
+
+KAIJU.NC includes lightweight macro editing tools:
 
 - Hover lookup for macro variables
 - Macro alias support for making common variables easier to read
@@ -51,20 +52,17 @@ Example:
 G1 X[#140 + 1.] Z[#101 - 0.5] F[#130]
 ```
 
+<img src="examples/macro_hover_example.png" alt="KAIJU.NC macro hover example" width="400">
+
+
 ### KAIJU Alias
 
 `KAIJU Alias` makes macro-heavy programs easier to read by temporarily converting numbered macro variables into readable names.
 
-Default shortcut:
+Activate from the right-click context menu, or by using the shortcut:
 
 ```text
 Ctrl+Alt+A
-```
-
-On macOS:
-
-```text
-Cmd+Alt+A
 ```
 
 It looks for macro setup comments before the first executable `G` or `M` code. Comments can be written either as a standalone alias note:
@@ -81,17 +79,11 @@ Or as an inline assignment comment:
 #141 = 0.30 (ROUGHING FEED)
 ```
 
-When you run `KAIJU Alias`, the rest of the document is toggled from numeric macro variables:
+When you run `KAIJU Alias`, the rest of the document is toggled between numbered macro variables and readable aliases:
 
-```gcode
-G1 X[#140 + 1.] F#141
-```
-
-Into readable aliases:
-
-```gcode
-G1 X[#finish_allowance_dia + 1.] F#roughing_feed
-```
+| Before | After |
+| --- | --- |
+| `G1 X[#140 + 1.] F#141` | `G1 X[#finish_allowance_dia + 1.] F#roughing_feed` |
 
 Run `KAIJU Alias` again to toggle those aliases back to the original numeric macros.
 
@@ -113,25 +105,12 @@ Default shortcut:
 Ctrl+Alt+R
 ```
 
-On macOS:
-
-```text
-Cmd+Alt+R
-```
-
 Examples of the kinds of cleanup it performs:
 
-```gcode
-g1x1.z-2.5f.2
-T606
-```
-
-Can become:
-
-```gcode
-G01 X1.000 Z-2.500 F0.200
-T0606
-```
+| Before | After |
+| --- | --- |
+| `g1x1.z-2.5f.2` | `G01 X1.000 Z-2.500 F0.200` |
+| `T606` | `T0606` |
 
 The command opens an options picker before formatting. The default decimal-place count and semicolon behavior can be controlled from VS Code Settings.
 
@@ -143,12 +122,6 @@ Default shortcut:
 
 ```text
 Ctrl+Alt+O
-```
-
-On macOS:
-
-```text
-Cmd+Alt+O
 ```
 
 It reports two kinds of macro issues:
@@ -171,6 +144,10 @@ G1 X#100 Z#150
 - `#101` as a defined but unused macro
 
 The inspection ignores macro-looking text inside comments and protected angle-bracket ranges, so setup notes and display strings do not pollute the report.
+
+
+<img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="500">
+
 
 ### KAIJU Chronometer
 
@@ -201,51 +178,28 @@ For CSS moves, Chronometer samples along the move so a cut that crosses into the
 
 This is an editor estimate only. It does not simulate acceleration, exact controller lookahead, dwell, tool changes, spindle ramp-up, machine limits, or canned cycle behavior.
 
-### Diagnostics
+<img src="examples/chronometer_example.png" alt="KAIJU.NC chronometer example" width="400">
+
+### Code Alerts
 
 KAIJU.NC provides lightweight warnings for patterns that can make NC programs harder to read or easier to misinterpret.
 
-One example is missing decimal point detection on motion-related numeric values:
+It can flag missing macro-expression brackets:
 
 ```gcode
-G1 X100 Z-20 F5
+G1 X[#100 + #101
 ```
 
-The extension can warn on values like the above when your shop standard expects explicit decimals:
+And missing decimal points on motion-related numeric values:
 
-```gcode
-G1 X100. Z-20. F5.
-```
-
-### Basic Diagnostic Tools
-
-The extension also includes basic utility commands for inspecting and cleaning macro-heavy code:
-
-- `KAIJU Reconstructor`
-- `KAIJU Alias`
-- `KAIJU Orphan Killer`
-
-It also includes `KAIJU Chronometer` as a hover-based timing estimate for explicit `G1`, `G2`, and `G3` moves.
+| Before | After |
+| --- | --- |
+| `G1 X100 Z-20 F5` | `G1 X100. Z-20. F5.` |
 
 ## Supported File Types
 
-KAIJU.NC registers support for common NC and G-code file extensions:
-
-- `.nc`
-- `.cnc`
-- `.tap`
-- `.gcode`
-- `.gco`
-- `.gc`
-- `.ngc`
-- `.ncc`
-- `.eia`
-- `.iso`
-- `.min`
-- `.mpf`
-- `.spf`
-- `.dnc`
-- `.sub`
+KAIJU.NC registers support for the following file extensions:
+`.nc`,`.cnc`, `.tap`, `.gcode`, `.gco`, `.gc`, `.ngc`, `.ncc`, `.eia`, `.iso`, `.min`, `.mpf`, `.spf`, `.dnc`, `.sub`
 
 ## Example File
 
@@ -257,165 +211,7 @@ Use it to try the main extension tools:
 - Run `KAIJU Alias` to toggle numbered macros into readable names by right-clicking in the editor or using `Ctrl+Alt+A`
 - Run `KAIJU Reconstructor` on the marked `FIX THIS AREA` section by right-clicking in the editor or using `Ctrl+Alt+R`
 - Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom by right-clicking in the editor or using `Ctrl+Alt+O`
-- Look at the marked diagnostic demo lines to see missing-decimal warnings
-
-The example is for editor testing only and is not machine-ready NC code.
-
-## Settings
-
-### Color Decorators
-
-KAIJU.NC disables VS Code color decorators and default color decorators for the `gcode` language mode by default. This prevents macro variables like `#100` from being treated like color values and opening the color picker.
-
-The extension also associates its supported file extensions with `gcode` mode by default so this applies across `.nc`, `.tap`, `.mpf`, `.spf`, and the other supported NC/G-code file types.
-
-### `kaijuNC.format.decimalPlaces`
-
-Controls the default number of decimal places used by `KAIJU Reconstructor`.
-
-Default:
-
-```json
-3
-```
-
-Example with the default setting:
-
-```gcode
-G1 X1 Z-2.5 F0.2
-```
-
-Can be formatted as:
-
-```gcode
-G01 X1.000 Z-2.500 F0.200
-```
-
-`KAIJU Reconstructor` also shows decimal-place choices when it runs. This setting controls which choice is selected by default.
-
-### `kaijuNC.format.addMissingDecimal`
-
-Controls whether `KAIJU Reconstructor` adds decimal points to configured address values when they are missing.
-
-Default:
-
-```json
-true
-```
-
-### `kaijuNC.format.decimalAddressLetters`
-
-Controls which address letters receive decimal formatting.
-
-Default:
-
-```json
-"XYZUVWABCIJKRF"
-```
-
-### `kaijuNC.format.autoSemicolon`
-
-Controls whether `KAIJU Reconstructor` adds semicolons after code and before comments.
-
-Default:
-
-```json
-false
-```
-
-### `kaijuNC.format.normalizeToolCodes`
-
-Controls whether tool codes are normalized to four digits.
-
-Default:
-
-```json
-true
-```
-
-Example:
-
-```gcode
-T1
-T606
-```
-
-Can be formatted as:
-
-```gcode
-T0101
-T0606
-```
-
-### `kaijuNC.orphanKiller.compactPanelWidth`
-
-Controls the target width fraction for the `KAIJU Orphan Killer` side editor group when VS Code has a simple two-column editor layout.
-
-Default:
-
-```json
-0.3
-```
-
-This is best-effort. VS Code controls editor group layout, so KAIJU.NC only applies this when it can do so without reshaping a more complex editor grid.
-
-### `kaijuNC.chronometer.enabled`
-
-Controls whether `KAIJU Chronometer` hover estimates are enabled.
-
-Default:
-
-```json
-true
-```
-
-### `kaijuNC.chronometer.xAxisMode`
-
-Controls how `KAIJU Chronometer` interprets X-axis values.
-
-Default:
-
-```json
-"diameter"
-```
-
-In `diameter` mode, X values are treated as diameters for CSS RPM calculation, and physical X travel is calculated from half the X-coordinate change. Use `radius` mode if your programs use radius X values.
-
-### `kaijuNC.chronometer.cssSurfaceSpeedUnit`
-
-Controls the unit used for `G96` constant surface speed calculations.
-
-Default:
-
-```json
-"mPerMin"
-```
-
-Options:
-
-- `mPerMin`
-- `sfm`
-
-### `kaijuNC.chronometer.samples`
-
-Controls how many samples Chronometer uses when estimating path time and CSS/RPM-limit changes along a move.
-
-Default:
-
-```json
-96
-```
-
-## Intended Use
-
-KAIJU.NC is intended for:
-
-- Fanuc-style CNC programs
-- Macro-heavy G-code
-- Lathe, mill, and mill-turn program editing
-- Improving readability of hand-written or heavily edited NC programs
-
-It is not intended to be a CNC simulator, backplotter, collision checker, or machine safety verifier.
+- Look at the marked alert demo lines to see missing-bracket and missing-decimal warnings
 
 ## Important Safety Note
 

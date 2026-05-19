@@ -212,7 +212,7 @@
 			"patterns": [
 				{
 					"name": "keyword.motion.cut.gcode",
-					"match": "\\b[Gg][123]\\b"
+					"match": "\\b[Gg]0*[123]\\b"
 				}
 			]
 		},
@@ -220,7 +220,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.gcode",
-					"match": "\\b[Gg]\\d+\\b"
+					"match": "\\b[Gg](?!0+\\b|0*[123]\\b)\\d+\\b"
 				}
 			]
 		},

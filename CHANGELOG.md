@@ -6,6 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Fixed zero-padded cutting moves like `G01`, `G02`, and `G03` so they keep the yellow motion-code highlight.
 - Added `KAIJU Chronometer` hover estimates for `G1`, `G2`, and `G3` moves.
 - Added best-effort compact editor group sizing for the `KAIJU Orphan Killer` side panel, with a configurable target width.
 - Tightened the `KAIJU Orphan Killer` report layout so the macro/name/line columns use compact content-based sizing.
@@ -15,6 +16,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Associated supported NC/G-code file extensions with `gcode` mode by default so color decorators stay disabled across those file types.
 - Fixed tool-range decorations when tool calls use aliases created by `KAIJU Alias`.
 
-## [0.1] - 2026-05-19
+## [0.1.0] - 2026-05-19
 
 - Initial release of KAIJU.NC.
