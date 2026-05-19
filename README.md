@@ -180,6 +180,20 @@ KAIJU.NC registers support for common NC and G-code file extensions:
 - `.dnc`
 - `.sub`
 
+## Example File
+
+The repository includes a showcase program at `examples/kaiju-showcase.nc`.
+
+Use it to try the main extension tools:
+
+- Hover over setup macros such as `#100`, `#104`, or `#500` to see macro definition lookup
+- Run `KAIJU Alias` to toggle numbered macros into readable names
+- Run `KAIJU Reconstructor` on the intentionally rough formatting lines
+- Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom
+- Look at the marked diagnostic demo lines to see missing-decimal warnings
+
+The example is for editor testing only and is not machine-ready NC code.
+
 ## Settings
 
 ### `kaijuNC.format.decimalPlaces`
