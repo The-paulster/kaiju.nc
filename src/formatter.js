@@ -550,7 +550,7 @@ function splitLineByProtectedRanges(line, ranges) {
 		return [{ text: line, protected: false }];
 	}
 
-	const sortedRanges = [...ranges].sort((a, b) => a.start - b.start);
+	const sortedRanges = mergeProtectedRanges(ranges);
 	const segments = [];
 	let cursor = 0;
 
@@ -578,6 +578,28 @@ function splitLineByProtectedRanges(line, ranges) {
 	}
 
 	return segments;
+}
+
+function mergeProtectedRanges(ranges) {
+	const sortedRanges = [...ranges]
+		.sort((a, b) => a.start - b.start || b.end - a.end);
+	const mergedRanges = [];
+
+	for (const range of sortedRanges) {
+		const previousRange = mergedRanges[mergedRanges.length - 1];
+
+		if (previousRange && range.start <= previousRange.end + 1) {
+			previousRange.end = Math.max(previousRange.end, range.end);
+			continue;
+		}
+
+		mergedRanges.push({
+			start: range.start,
+			end: range.end
+		});
+	}
+
+	return mergedRanges;
 }
 
 function clampNumber(value, min, max) {
