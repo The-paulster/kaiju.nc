@@ -8,6 +8,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - No unreleased changes yet.
 
-## [1.0.0] - 2026-05-19
+## [0.1.0] - 2026-05-19
 
 - Initial release of KAIJU.NC.
