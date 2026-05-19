@@ -326,6 +326,33 @@
     "configuration": {
       "title": "KAIJU.NC",
       "properties": {
+        "kaijuNC.format.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable KAIJU.NC document formatting for G-code files."
+        },
+        "kaijuNC.format.decimalPlaces": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Default number of decimal places used by KAIJU Format."
+        },
+        "kaijuNC.format.addMissingDecimal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add a decimal point to configured address values when one is missing."
+        },
+        "kaijuNC.format.decimalAddressLetters": {
+          "type": "string",
+          "default": "XYZUVWABCIJKRF",
+          "description": "Address letters whose numeric values should be formatted with decimal places."
+        },
+        "kaijuNC.format.autoSemicolon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Add semicolons after code and before comments during formatting."
+        },
         "kaijuNC.format.normalizeToolCodes": {
           "type": "boolean",
           "default": true,

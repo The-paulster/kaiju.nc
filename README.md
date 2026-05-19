@@ -51,6 +51,40 @@ Example:
 G1 X[#140 + 1.] Z[#101 - 0.5] F[#130]
 ```
 
+### KAIJU Alias
+
+`KAIJU Alias` makes macro-heavy programs easier to read by temporarily converting numbered macro variables into readable names.
+
+It looks for macro setup comments before the first executable `G` or `M` code. Comments can be written either as a standalone alias note:
+
+```gcode
+(#140 = FINISH ALLOWANCE DIA)
+(#141 = ROUGHING FEED)
+```
+
+Or as an inline assignment comment:
+
+```gcode
+#140 = 0.20 (FINISH ALLOWANCE DIA)
+#141 = 0.30 (ROUGHING FEED)
+```
+
+When you run `KAIJU Alias`, the rest of the document is toggled from numeric macro variables:
+
+```gcode
+G1 X[#140 + 1.] F#141
+```
+
+Into readable aliases:
+
+```gcode
+G1 X[#finish_allowance_dia + 1.] F#roughing_feed
+```
+
+Run `KAIJU Alias` again to toggle those aliases back to the original numeric macros.
+
+Alias names are generated from the comment text by lowercasing it and replacing spaces or punctuation with underscores. The original setup lines are protected so the source comments remain usable as the alias map.
+
 ### Formatting
 
 The extension includes a document formatter for NC programs. It can normalize spacing, clean up common code layout issues, and optionally normalize tool codes.
@@ -106,6 +140,60 @@ KAIJU.NC registers support for common NC and G-code file extensions:
 - `.sub`
 
 ## Settings
+
+### `kaijuNC.format.decimalPlaces`
+
+Controls the default number of decimal places used by `KAIJU Format`.
+
+Default:
+
+```json
+3
+```
+
+Example with the default setting:
+
+```gcode
+G1 X1 Z-2.5 F0.2
+```
+
+Can be formatted as:
+
+```gcode
+G01 X1.000 Z-2.500 F0.200
+```
+
+The format command also shows decimal-place choices when it runs. This setting controls which choice is selected by default.
+
+### `kaijuNC.format.addMissingDecimal`
+
+Controls whether KAIJU Format adds decimal points to configured address values when they are missing.
+
+Default:
+
+```json
+true
+```
+
+### `kaijuNC.format.decimalAddressLetters`
+
+Controls which address letters receive decimal formatting.
+
+Default:
+
+```json
+"XYZUVWABCIJKRF"
+```
+
+### `kaijuNC.format.autoSemicolon`
+
+Controls whether KAIJU Format adds semicolons after code and before comments.
+
+Default:
+
+```json
+false
+```
 
 ### `kaijuNC.format.normalizeToolCodes`
 
