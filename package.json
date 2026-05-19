@@ -321,6 +321,23 @@
       },
       "[gcode]": {
         "editor.colorDecorators": false
+      },
+      "files.associations": {
+        "*.nc": "gcode",
+        "*.cnc": "gcode",
+        "*.tap": "gcode",
+        "*.gcode": "gcode",
+        "*.gco": "gcode",
+        "*.gc": "gcode",
+        "*.ngc": "gcode",
+        "*.ncc": "gcode",
+        "*.eia": "gcode",
+        "*.iso": "gcode",
+        "*.min": "gcode",
+        "*.mpf": "gcode",
+        "*.spf": "gcode",
+        "*.dnc": "gcode",
+        "*.sub": "gcode"
       }
     },
     "configuration": {

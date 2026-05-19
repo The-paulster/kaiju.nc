@@ -6,6 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Associated supported NC/G-code file extensions with `gcode` mode by default so color decorators stay disabled across those file types.
 - Fixed tool-range decorations when tool calls use aliases created by `KAIJU Alias`.
 
 ## [0.1.0] - 2026-05-19
