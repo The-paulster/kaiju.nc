@@ -6,6 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Added `KAIJU Chronometer` hover estimates for `G1`, `G2`, and `G3` moves.
 - Added best-effort compact editor group sizing for the `KAIJU Orphan Killer` side panel, with a configurable target width.
 - Tightened the `KAIJU Orphan Killer` report layout so the macro/name/line columns use compact content-based sizing.
 - Added a `Name` column to `KAIJU Orphan Killer` results when a macro has an alias/comment name.

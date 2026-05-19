@@ -172,6 +172,35 @@ G1 X#100 Z#150
 
 The inspection ignores macro-looking text inside comments and protected angle-bracket ranges, so setup notes and display strings do not pollute the report.
 
+### KAIJU Chronometer
+
+`KAIJU Chronometer` estimates cutting time when you hover over an explicit `G1`, `G2`, or `G3` move.
+
+The hover shows:
+
+- Start coordinates
+- End coordinates
+- Travel distance
+- Estimated time
+- Feed and spindle state used for the estimate
+- RPM range when constant surface speed is active
+
+Chronometer walks the document up to the hovered line and uses the previous known position, modal feed, spindle mode, RPM, CSS surface speed, and RPM limit.
+
+It supports:
+
+- Fixed RPM using `G97 S...`
+- Constant surface speed using `G96 S...`
+- RPM limits from `G50 S...` or `D...`
+- Feed-per-rev timing using `F * RPM`
+- Feed-per-minute timing when `G94` is active
+- Feed-per-rev timing when `G95` is active
+- X-as-diameter lathe mode by default
+
+For CSS moves, Chronometer samples along the move so a cut that crosses into the RPM limiter is estimated with the clamp taken into account.
+
+This is an editor estimate only. It does not simulate acceleration, exact controller lookahead, dwell, tool changes, spindle ramp-up, machine limits, or canned cycle behavior.
+
 ### Diagnostics
 
 KAIJU.NC provides lightweight warnings for patterns that can make NC programs harder to read or easier to misinterpret.
@@ -195,6 +224,8 @@ The extension also includes basic utility commands for inspecting and cleaning m
 - `KAIJU Reconstructor`
 - `KAIJU Alias`
 - `KAIJU Orphan Killer`
+
+It also includes `KAIJU Chronometer` as a hover-based timing estimate for explicit `G1`, `G2`, and `G3` moves.
 
 ## Supported File Types
 
@@ -327,6 +358,53 @@ Default:
 ```
 
 This is best-effort. VS Code controls editor group layout, so KAIJU.NC only applies this when it can do so without reshaping a more complex editor grid.
+
+### `kaijuNC.chronometer.enabled`
+
+Controls whether `KAIJU Chronometer` hover estimates are enabled.
+
+Default:
+
+```json
+true
+```
+
+### `kaijuNC.chronometer.xAxisMode`
+
+Controls how `KAIJU Chronometer` interprets X-axis values.
+
+Default:
+
+```json
+"diameter"
+```
+
+In `diameter` mode, X values are treated as diameters for CSS RPM calculation, and physical X travel is calculated from half the X-coordinate change. Use `radius` mode if your programs use radius X values.
+
+### `kaijuNC.chronometer.cssSurfaceSpeedUnit`
+
+Controls the unit used for `G96` constant surface speed calculations.
+
+Default:
+
+```json
+"mPerMin"
+```
+
+Options:
+
+- `mPerMin`
+- `sfm`
+
+### `kaijuNC.chronometer.samples`
+
+Controls how many samples Chronometer uses when estimating path time and CSS/RPM-limit changes along a move.
+
+Default:
+
+```json
+96
+```
 
 ## Intended Use
 

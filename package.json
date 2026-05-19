@@ -382,6 +382,36 @@
           "minimum": 0.15,
           "maximum": 0.5,
           "description": "Target width fraction for the KAIJU Orphan Killer side editor group when VS Code has a simple two-column layout."
+        },
+        "kaijuNC.chronometer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable KAIJU Chronometer hover estimates on G1, G2, and G3 moves."
+        },
+        "kaijuNC.chronometer.xAxisMode": {
+          "type": "string",
+          "enum": [
+            "diameter",
+            "radius"
+          ],
+          "default": "diameter",
+          "description": "How KAIJU Chronometer interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
+        },
+        "kaijuNC.chronometer.cssSurfaceSpeedUnit": {
+          "type": "string",
+          "enum": [
+            "mPerMin",
+            "sfm"
+          ],
+          "default": "mPerMin",
+          "description": "Unit used for G96 constant surface speed calculations."
+        },
+        "kaijuNC.chronometer.samples": {
+          "type": "integer",
+          "default": 96,
+          "minimum": 12,
+          "maximum": 500,
+          "description": "Number of samples used for KAIJU Chronometer path and CSS/RPM-limit estimates."
         }
       }
     },
