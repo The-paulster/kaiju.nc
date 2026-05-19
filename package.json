@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PCGLawson",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/The-paulster/kaiju.nc.git"

@@ -6,7 +6,7 @@ KAIJU.NC is a Visual Studio Code extension for working with `.nc` files and othe
 
 The extension is designed to improve readability and assist with problem identification, especially for macro-heavy programs.
 
-# Highlighting
+## Highlighting
 
 KAIJU.NC highlights common CNC program elements, including:
 
@@ -30,7 +30,7 @@ Special comment styles are also recognized:
 
 <img src="examples/highlight_example.png" alt="KAIJU.NC syntax highlighting example" width="500">
 
-# Macro-Assist
+## Macro-Assist
 
 KAIJU.NC includes lightweight macro editing tools:
 
@@ -41,14 +41,14 @@ KAIJU.NC includes lightweight macro editing tools:
 Example:
 
 ```gcode
-#140 = 0.20 (FINISH ALLOWANCE DIA)
+#finish_allowance_dia = 0.20
 
-G1 X[#140 + 1.] Z[#101 - 0.5] F[#130]
+G1 X[#finish_allowance_dia + 1.] Z[#finish_z - 0.5] F#roughing_feed
 ```
 
 <img src="examples/macro_hover_example.png" alt="KAIJU.NC macro hover example" width="200">
 
-# KAIJU Alias
+## KAIJU Alias
 
 `KAIJU Alias` makes macro-heavy programs easier to read by temporarily converting numbered macro variables into readable names.
 
@@ -78,7 +78,7 @@ Run `KAIJU Alias` again to toggle those aliases back to the original numeric mac
 
 Alias names are generated from the comment text by lowercasing it and replacing spaces or punctuation with underscores. The original setup lines are protected so the source comments remain usable as the alias map.
 
-# KAIJU Reconstructor
+## KAIJU Reconstructor
 
 `KAIJU Reconstructor` is the document formatting command for NC programs. It normalizes spacing, cleans up common code layout issues, formats configured decimal values, and can optionally normalize tool codes.
 
@@ -94,7 +94,7 @@ Examples of the kinds of cleanup it performs:
 
 The command opens an options picker before formatting. The default decimal-place count and semicolon behavior can be controlled from VS Code Settings.
 
-# KAIJU Orphan Killer
+## KAIJU Orphan Killer
 
 `KAIJU Orphan Killer` opens a side panel that inspects macro variable usage in the current NC document.
 
@@ -108,8 +108,8 @@ It reports two kinds of macro issues:
 Example:
 
 ```gcode
-[#100] = 1.0
-[#101] = 2.0
+#100 = 1.0
+#101 = 2.0
 
 G1 X#100 Z#150
 ```
@@ -123,7 +123,7 @@ The inspection ignores macro-looking text inside comments and protected angle-br
 
 <img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
 
-# KAIJU Chronometer
+## KAIJU Chronometer
 
 `KAIJU Chronometer` estimates cutting time when you hover over an explicit `G1`, `G2`, or `G3` move.
 
@@ -154,14 +154,14 @@ This is an editor estimate only. It does not simulate acceleration, exact contro
 
 <img src="examples/chronometer_example.png" alt="KAIJU.NC chronometer example" width="300">
 
-# Code Alerts
+## Code Alerts
 
 KAIJU.NC provides lightweight warnings for patterns that can make NC programs harder to read or easier to misinterpret.
 
 It can flag missing macro-expression brackets:
 
 ```gcode
-G1 X[[#100] + [#101]
+G1 X[#part_od + #finish_allowance
 ```
 
 And missing decimal points on motion-related numeric values:
@@ -170,12 +170,12 @@ And missing decimal points on motion-related numeric values:
 | --- | --- |
 | `G1 X100 Z-20 F5` | `G1 X100. Z-20. F5.` |
 
-# Supported File Types
+## Supported File Types
 
 KAIJU.NC registers support for the following file extensions:
 `.nc`, `.cnc`, `.tap`, `.gcode`, `.gco`, `.gc`, `.ngc`, `.ncc`, `.eia`, `.iso`, `.min`, `.mpf`, `.spf`, `.dnc`, `.sub`
 
-# Example File
+## Example File
 
 The repository includes a showcase program at `examples/kaiju-showcase.nc`.
 
@@ -187,12 +187,12 @@ Use it to try the main extension tools:
 - Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom by right-clicking in the editor or using `Ctrl+Alt+O`
 - Look at the marked alert demo lines to see missing-bracket and missing-decimal warnings
 
-# Important Safety Note
+## Important Safety Note
 
 This extension provides editor assistance only. It does not simulate toolpaths, verify machine state, check collisions, validate setup safety, or guarantee that a CNC program is safe to run.
 
 Always verify CNC programs using proper simulation, machine checks, dry runs, and your shop's approved procedures before running code on a machine.
 
-# License
+## License
 
 MIT
