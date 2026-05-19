@@ -32,18 +32,13 @@ function provideMacroHover(document, position) {
 		const md = new vscode.MarkdownString([
 			`**${hoveredMacro}**`,
 			"",
-			"`No definition found above or in document.`",
-			"",
-			makeInspectLink(hoveredMacro, document)
+			"`No definition found above or in document.`"
 		].join("\n"));
-
-		md.isTrusted = true;
 
 		return new vscode.Hover(md);
 	}
 
 	const md = new vscode.MarkdownString();
-	md.isTrusted = true;
 
 	md.appendMarkdown(`**${hoveredMacro}**\n\n`);
 
@@ -62,7 +57,6 @@ function provideMacroHover(document, position) {
 	md.appendMarkdown(`**Defined:** ${definition.definedLabel}\n\n`);
 
 	md.appendCodeblock(definition.lineText.trim(), "gcode");
-	md.appendMarkdown(`\n\n${makeInspectLink(hoveredMacro, document)}`);
 
 	return new vscode.Hover(md);
 }
@@ -171,15 +165,6 @@ function escapeMarkdown(text) {
 		.replace(/`/g, "\\`")
 		.replace(/\[/g, "\\[")
 		.replace(/\]/g, "\\]");
-}
-
-function makeInspectLink(macro, document) {
-	const args = encodeURIComponent(JSON.stringify([
-		macro,
-		document.uri.toString()
-	]));
-
-	return `[Inspect variable](command:kaijuNC.inspectMacro?${args})`;
 }
 
 module.exports = {
