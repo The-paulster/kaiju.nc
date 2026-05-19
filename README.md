@@ -95,6 +95,18 @@ Available command:
 KAIJU Reconstructor
 ```
 
+Default shortcut:
+
+```text
+Ctrl+Alt+R
+```
+
+On macOS:
+
+```text
+Cmd+Alt+R
+```
+
 Examples of the kinds of cleanup it performs:
 
 ```gcode
@@ -188,7 +200,7 @@ Use it to try the main extension tools:
 
 - Hover over setup macros such as `#100`, `#104`, or `#500` to see macro definition lookup
 - Run `KAIJU Alias` to toggle numbered macros into readable names
-- Run `KAIJU Reconstructor` on the intentionally rough formatting lines
+- Run `KAIJU Reconstructor` on the marked `FIX THIS AREA` section by right-clicking in the editor or using `Ctrl+Alt+R`
 - Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom
 - Look at the marked diagnostic demo lines to see missing-decimal warnings
 

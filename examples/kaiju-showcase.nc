@@ -65,8 +65,17 @@ G01 Z#101
 G00 X[#100 + #107] Z#106
 M05
 
-(- RECONSTRUCTOR DEMO - TRY KAIJU RECONSTRUCTOR ON THIS LINE)
-g1x49.5z-20f.18 (spacing, casing, and decimal formatting demo)
+(--- FIX THIS AREA WITH KAIJU RECONSTRUCTOR ---)
+(/ RIGHT CLICK IN THIS FILE AND CHOOSE KAIJU RECONSTRUCTOR)
+(/ OR USE CTRL+ALT+R ON WINDOWS/LINUX, CMD+ALT+R ON MAC)
+(/ EXPECTED CLEANUPS:)
+(/ 0 -> 0.000)
+(/ g1 -> G01)
+(/ x0 -> X0.000)
+(/ z-20 -> Z-20.000)
+(/ f.18 -> F0.180)
+(/ T606 -> T0606)
+g1x0z-20f.18 (spacing, casing, and decimal formatting demo)
 T606 (tool normalization demo)
 
 (- DIAGNOSTIC AND ORPHAN KILLER DEMO - INTENTIONAL ISSUES BELOW)

@@ -374,6 +374,14 @@
         "title": "KAIJU Orphan Killer"
       }
     ],
+    "keybindings": [
+      {
+        "command": "kaijuNC.formatDocument",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus && editorLangId == gcode"
+      }
+    ],
 
     "menus": {
       "editor/context": [
