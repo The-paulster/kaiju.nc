@@ -1,4 +1,5 @@
 const vscode = require("vscode");
+const { buildAliasEntries } = require("./macroAlias");
 
 const TOOL_COLORS = [
 	"#8f4f4f",
@@ -87,6 +88,7 @@ function getToolRanges(document) {
 	const toolCalls = [];
 	const toolColorIndexes = new Map();
 	const macroValues = new Map();
+	const aliasMacrosByNumber = buildToolAliasMap(document);
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
@@ -104,7 +106,7 @@ function getToolRanges(document) {
 			});
 		}
 
-		trackMacroAssignments(codeLine, macroValues);
+		trackMacroAssignments(codeLine, macroValues, aliasMacrosByNumber);
 	}
 
 	return toolCalls.map((toolCall, index) => {
@@ -117,6 +119,23 @@ function getToolRanges(document) {
 			endLine: nextToolCall ? nextToolCall.lineNumber - 1 : document.lineCount - 1
 		};
 	});
+}
+
+function buildToolAliasMap(document) {
+	const aliasMacrosByNumber = new Map();
+
+	for (const entry of buildAliasEntries(document)) {
+		if (!entry.alias) {
+			continue;
+		}
+
+		aliasMacrosByNumber.set(
+			entry.macro.toUpperCase(),
+			`#${entry.alias}`.toUpperCase()
+		);
+	}
+
+	return aliasMacrosByNumber;
 }
 
 function findToolCall(codeLine, macroValues) {
@@ -163,14 +182,23 @@ function normalizeToolDigits(digits) {
 	return digits.slice(0, 4);
 }
 
-function trackMacroAssignments(codeLine, macroValues) {
+function trackMacroAssignments(codeLine, macroValues, aliasMacrosByNumber) {
 	for (const assignment of findAssignments(codeLine)) {
 		const numericValue = evaluateNumericExpression(assignment.value, macroValues);
+		const aliasMacro = aliasMacrosByNumber.get(assignment.macro);
 
 		if (Number.isFinite(numericValue)) {
 			macroValues.set(assignment.macro, numericValue);
+
+			if (aliasMacro) {
+				macroValues.set(aliasMacro, numericValue);
+			}
 		} else {
 			macroValues.delete(assignment.macro);
+
+			if (aliasMacro) {
+				macroValues.delete(aliasMacro);
+			}
 		}
 	}
 }

@@ -6,7 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+- Fixed tool-range decorations when tool calls use aliases created by `KAIJU Alias`.
 
 ## [0.1.0] - 2026-05-19
 
