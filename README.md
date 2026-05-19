@@ -85,15 +85,56 @@ Run `KAIJU Alias` again to toggle those aliases back to the original numeric mac
 
 Alias names are generated from the comment text by lowercasing it and replacing spaces or punctuation with underscores. The original setup lines are protected so the source comments remain usable as the alias map.
 
-### Formatting
+### KAIJU Reconstructor
 
-The extension includes a document formatter for NC programs. It can normalize spacing, clean up common code layout issues, and optionally normalize tool codes.
+`KAIJU Reconstructor` is the document formatting command for NC programs. It normalizes spacing, cleans up common code layout issues, formats configured decimal values, and can optionally normalize tool codes.
 
 Available command:
 
 ```text
-KAIJU Format
+KAIJU Reconstructor
 ```
+
+Examples of the kinds of cleanup it performs:
+
+```gcode
+g1x1.z-2.5f.2
+T606
+```
+
+Can become:
+
+```gcode
+G01 X1.000 Z-2.500 F0.200
+T0606
+```
+
+The command opens an options picker before formatting. The default decimal-place count and semicolon behavior can be controlled from VS Code Settings.
+
+### KAIJU Orphan Killer
+
+`KAIJU Orphan Killer` opens a side panel that inspects macro variable usage in the current NC document.
+
+It reports two kinds of macro issues:
+
+- Undefined uses: macro variables that are referenced but never assigned in the file
+- Unused definitions: macro variables that are assigned but never referenced later in the file
+
+Example:
+
+```gcode
+#100 = 1.0
+#101 = 2.0
+
+G1 X#100 Z#150
+```
+
+`KAIJU Orphan Killer` would report:
+
+- `#150` as an undefined use
+- `#101` as a defined but unused macro
+
+The inspection ignores macro-looking text inside comments and protected angle-bracket ranges, so setup notes and display strings do not pollute the report.
 
 ### Diagnostics
 
@@ -115,7 +156,7 @@ G1 X100. Z-20. F5.
 
 The extension also includes basic utility commands for inspecting and cleaning macro-heavy code:
 
-- `KAIJU Format`
+- `KAIJU Reconstructor`
 - `KAIJU Alias`
 - `KAIJU Orphan Killer`
 
@@ -143,7 +184,7 @@ KAIJU.NC registers support for common NC and G-code file extensions:
 
 ### `kaijuNC.format.decimalPlaces`
 
-Controls the default number of decimal places used by `KAIJU Format`.
+Controls the default number of decimal places used by `KAIJU Reconstructor`.
 
 Default:
 
@@ -163,11 +204,11 @@ Can be formatted as:
 G01 X1.000 Z-2.500 F0.200
 ```
 
-The format command also shows decimal-place choices when it runs. This setting controls which choice is selected by default.
+`KAIJU Reconstructor` also shows decimal-place choices when it runs. This setting controls which choice is selected by default.
 
 ### `kaijuNC.format.addMissingDecimal`
 
-Controls whether KAIJU Format adds decimal points to configured address values when they are missing.
+Controls whether `KAIJU Reconstructor` adds decimal points to configured address values when they are missing.
 
 Default:
 
@@ -187,7 +228,7 @@ Default:
 
 ### `kaijuNC.format.autoSemicolon`
 
-Controls whether KAIJU Format adds semicolons after code and before comments.
+Controls whether `KAIJU Reconstructor` adds semicolons after code and before comments.
 
 Default:
 

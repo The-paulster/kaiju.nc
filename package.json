@@ -2,7 +2,7 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "publisher": "PCGLawson",
   "license": "MIT",
   "repository": {
@@ -336,7 +336,7 @@
           "default": 3,
           "minimum": 0,
           "maximum": 9,
-          "description": "Default number of decimal places used by KAIJU Format."
+          "description": "Default number of decimal places used by KAIJU Reconstructor."
         },
         "kaijuNC.format.addMissingDecimal": {
           "type": "boolean",
@@ -363,7 +363,7 @@
     "commands": [
       {
         "command": "kaijuNC.formatDocument",
-        "title": "KAIJU Format"
+        "title": "KAIJU Reconstructor"
       },
       {
         "command": "kaijuNC.aliasMacros",
