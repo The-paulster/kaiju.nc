@@ -320,7 +320,8 @@
         ]
       },
       "[gcode]": {
-        "editor.colorDecorators": false
+        "editor.colorDecorators": false,
+        "editor.defaultColorDecorators": false
       },
       "files.associations": {
         "*.nc": "gcode",

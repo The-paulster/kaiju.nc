@@ -234,7 +234,7 @@ The example is for editor testing only and is not machine-ready NC code.
 
 ### Color Decorators
 
-KAIJU.NC disables VS Code color decorators for the `gcode` language mode by default. This prevents macro variables like `#100` from being treated like color values and opening the color picker.
+KAIJU.NC disables VS Code color decorators and default color decorators for the `gcode` language mode by default. This prevents macro variables like `#100` from being treated like color values and opening the color picker.
 
 The extension also associates its supported file extensions with `gcode` mode by default so this applies across `.nc`, `.tap`, `.mpf`, `.spf`, and the other supported NC/G-code file types.
 
