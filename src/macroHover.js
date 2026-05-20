@@ -3,6 +3,13 @@ const {
 	getCommentRanges,
 	isInsideRange
 } = require("./textRanges");
+const {
+	buildMacroAliasMap,
+	evaluateNumericExpression,
+	normalizeMacro,
+	resolveMacroAlias,
+	setMacroValue
+} = require("./macroExpressions");
 
 function registerMacroHover(context) {
 	context.subscriptions.push(
@@ -25,8 +32,10 @@ function provideMacroHover(document, position) {
 		return undefined;
 	}
 
-	const macroDefinitions = buildMacroDefinitionTable(document);
-	const definition = macroDefinitions.get(hoveredMacro);
+	const macroAliases = buildMacroAliasMap(document);
+	const macroDefinitions = buildMacroDefinitionTable(document, macroAliases);
+	const resolvedMacro = resolveMacroAlias(hoveredMacro, macroAliases);
+	const definition = macroDefinitions.get(normalizeMacro(hoveredMacro)) || macroDefinitions.get(resolvedMacro);
 
 	if (!definition) {
 		const md = new vscode.MarkdownString([
@@ -46,6 +55,10 @@ function provideMacroHover(document, position) {
 		md.appendMarkdown(`**Value:** \`${definition.value}\`\n\n`);
 	} else {
 		md.appendMarkdown("**Value:** `No value found`\n\n");
+	}
+
+	if (Number.isFinite(definition.numericValue)) {
+		md.appendMarkdown(`**Resolved:** \`${formatMacroNumber(definition.numericValue)}\`\n\n`);
 	}
 
 	if (definition.comment) {
@@ -84,8 +97,9 @@ function getMacroAtPosition(document, position) {
 	return undefined;
 }
 
-function buildMacroDefinitionTable(document) {
+function buildMacroDefinitionTable(document, macroAliases) {
 	const definitions = new Map();
+	const macroValues = new Map();
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -95,10 +109,8 @@ function buildMacroDefinitionTable(document) {
 		let match;
 		while ((match = assignmentRegex.exec(line)) !== null) {
 			const macro = match[0].match(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/)[0];
-
-			if (definitions.has(macro)) {
-				continue;
-			}
+			const normalizedMacro = normalizeMacro(macro);
+			const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
 
 			if (isInsideRange(match.index, commentRanges)) {
 				continue;
@@ -106,6 +118,7 @@ function buildMacroDefinitionTable(document) {
 
 			const valueStart = match.index + match[0].length;
 			const value = extractValueAfterEquals(line, valueStart);
+			const numericValue = evaluateNumericExpression(value, macroValues, macroAliases);
 			const comment = extractFirstComment(line);
 			const blockNumber = extractBlockNumber(line);
 
@@ -113,13 +126,24 @@ function buildMacroDefinitionTable(document) {
 				? blockNumber
 				: `Line ${lineNumber + 1}`;
 
-			definitions.set(macro, {
+			const definition = {
 				value,
+				numericValue,
 				comment,
 				definedLabel,
 				lineNumber,
 				lineText: line
-			});
+			};
+
+			if (!definitions.has(normalizedMacro)) {
+				definitions.set(normalizedMacro, definition);
+			}
+
+			if (!definitions.has(resolvedMacro)) {
+				definitions.set(resolvedMacro, definition);
+			}
+
+			setMacroValue(macroValues, normalizedMacro, numericValue, macroAliases);
 		}
 	}
 
@@ -155,6 +179,14 @@ function extractBlockNumber(line) {
 	}
 
 	return match[0].toUpperCase();
+}
+
+function formatMacroNumber(value) {
+	if (Number.isInteger(value)) {
+		return String(value);
+	}
+
+	return String(Number(value.toFixed(6)));
 }
 
 function escapeMarkdown(text) {

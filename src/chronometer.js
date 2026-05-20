@@ -4,7 +4,12 @@ const {
 	getAngleBracketRanges,
 	isInsideRange
 } = require("./textRanges");
-const { buildAliasEntries } = require("./macroAlias");
+const {
+	buildMacroAliasMap,
+	evaluateNumericExpression,
+	normalizeMacro,
+	setMacroValue
+} = require("./macroExpressions");
 
 const MOTION_CODES = new Set([1, 2, 3]);
 
@@ -95,7 +100,7 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 
 		trackMacroAssignments(codeLine, macroValues, macroAliases);
 
-		const words = parseWords(codeLine, macroValues);
+		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words);
 
 		applyModalState(words, motionCode, state);
@@ -126,37 +131,10 @@ function makeInitialState() {
 	};
 }
 
-function buildMacroAliasMap(document) {
-	const macroAliases = new Map();
-
-	for (const entry of buildAliasEntries(document)) {
-		if (!entry.alias) {
-			continue;
-		}
-
-		const numericMacro = normalizeMacro(entry.macro);
-		const aliasMacro = normalizeMacro(`#${entry.alias}`);
-
-		macroAliases.set(aliasMacro, numericMacro);
-		macroAliases.set(numericMacro, numericMacro);
-	}
-
-	return macroAliases;
-}
-
 function trackMacroAssignments(codeLine, macroValues, macroAliases) {
 	for (const assignment of findAssignments(codeLine)) {
-		const value = evaluateNumericExpression(assignment.value, macroValues);
-		const resolvedMacro = resolveMacroAlias(assignment.macro, macroAliases);
-
-		if (Number.isFinite(value)) {
-			macroValues.set(assignment.macro, value);
-			macroValues.set(resolvedMacro, value);
-			continue;
-		}
-
-		macroValues.delete(assignment.macro);
-		macroValues.delete(resolvedMacro);
+		const value = evaluateNumericExpression(assignment.value, macroValues, macroAliases);
+		setMacroValue(macroValues, assignment.macro, value, macroAliases);
 	}
 }
 
@@ -180,7 +158,7 @@ function findAssignments(codeLine) {
 	});
 }
 
-function parseWords(codeLine, macroValues) {
+function parseWords(codeLine, macroValues, macroAliases) {
 	const words = [];
 	let index = 0;
 
@@ -203,7 +181,7 @@ function parseWords(codeLine, macroValues) {
 		words.push({
 			letter: letter.toUpperCase(),
 			raw: valueToken.text,
-			value: evaluateNumericExpression(valueToken.text, macroValues),
+			value: evaluateNumericExpression(valueToken.text, macroValues, macroAliases),
 			start: index,
 			end: valueToken.end
 		});
@@ -702,50 +680,6 @@ function clonePosition(position) {
 
 function hasKnownPosition(position) {
 	return Number.isFinite(position.x) || Number.isFinite(position.y) || Number.isFinite(position.z);
-}
-
-function evaluateNumericExpression(expression, macroValues) {
-	const normalizedExpression = expression.trim();
-	const expressionBody = normalizedExpression.startsWith("[") && normalizedExpression.endsWith("]")
-		? normalizedExpression.slice(1, -1)
-		: normalizedExpression;
-	const jsExpression = expressionBody
-		.replace(/\[/g, "(")
-		.replace(/\]/g, ")")
-		.replace(/\bMOD\b/gi, "%")
-		.replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/g, macro => {
-			const value = macroValues.get(normalizeMacro(macro));
-			return Number.isFinite(value) ? String(value) : "NaN";
-		});
-
-	if (jsExpression.includes("NaN")) {
-		return NaN;
-	}
-
-	if (!/^[\d+\-*/%().\s]+$/.test(jsExpression)) {
-		return NaN;
-	}
-
-	if (/^\s*[-+]?\d+(?:\.\d*)?\s*$/.test(jsExpression) || /^\s*[-+]?\.\d+\s*$/.test(jsExpression)) {
-		return Number(jsExpression);
-	}
-
-	try {
-		const value = Function(`"use strict"; return (${jsExpression});`)();
-		return Number.isFinite(value) ? value : NaN;
-	} catch {
-		return NaN;
-	}
-}
-
-function resolveMacroAlias(macro, macroAliases) {
-	const normalizedMacro = normalizeMacro(macro);
-
-	return macroAliases.get(normalizedMacro) || normalizedMacro;
-}
-
-function normalizeMacro(macro) {
-	return String(macro).toUpperCase();
 }
 
 function maskProtectedRanges(line) {
