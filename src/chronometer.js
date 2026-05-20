@@ -333,7 +333,7 @@ function estimateMotion(words, motionCode, state, options) {
 	const path = buildPathPoints(motionCode, start, end, words, options);
 	const distance = sumPathDistance(path, options);
 	const timing = estimatePathTime(path, state, options);
-	const warnings = [];
+	const warnings = collectUnresolvedWordWarnings(words, ["X", "Y", "Z", "U", "V", "W", "F"]);
 
 	if (distance <= 0) {
 		warnings.push("Move distance is zero.");
@@ -391,14 +391,38 @@ function applyPositionUpdate(words, state) {
 	state.position = makeEndPosition(state.position, words);
 }
 
+function collectUnresolvedWordWarnings(words, letters) {
+	const warnings = [];
+
+	for (const letter of letters) {
+		const word = lastWord(words, letter);
+
+		if (word && !Number.isFinite(word.value)) {
+			warnings.push(`Could not resolve ${letter}${word.raw}.`);
+		}
+	}
+
+	return warnings;
+}
+
 function makeEndPosition(start, words) {
 	const end = clonePosition(start);
+	const axisWords = [
+		{ absolute: "X", incremental: "U", key: "x" },
+		{ absolute: "Y", incremental: "V", key: "y" },
+		{ absolute: "Z", incremental: "W", key: "z" }
+	];
 
-	for (const axis of ["X", "Y", "Z"]) {
-		const word = lastWord(words, axis);
+	for (const axis of axisWords) {
+		const absoluteWord = lastWord(words, axis.absolute);
+		const incrementalWord = lastWord(words, axis.incremental);
 
-		if (word && Number.isFinite(word.value)) {
-			end[axis.toLowerCase()] = word.value;
+		if (absoluteWord && Number.isFinite(absoluteWord.value)) {
+			end[axis.key] = absoluteWord.value;
+		}
+
+		if (incrementalWord && Number.isFinite(incrementalWord.value) && Number.isFinite(end[axis.key])) {
+			end[axis.key] += incrementalWord.value;
 		}
 	}
 
@@ -436,6 +460,7 @@ function buildArcPathPoints(motionCode, start, end, words, options) {
 	const iWord = lastWord(words, "I");
 	const jWord = lastWord(words, "J");
 	const kWord = lastWord(words, "K");
+	const rWord = lastWord(words, "R");
 	const useXzPlane = Number.isFinite(start.x)
 		&& Number.isFinite(start.z)
 		&& Number.isFinite(end.x)
@@ -456,6 +481,29 @@ function buildArcPathPoints(motionCode, start, end, words, options) {
 			kWord.value,
 			options
 		);
+	}
+
+	const useXzRadius = Number.isFinite(start.x)
+		&& Number.isFinite(start.z)
+		&& Number.isFinite(end.x)
+		&& Number.isFinite(end.z)
+		&& rWord
+		&& Number.isFinite(rWord.value);
+
+	if (useXzRadius) {
+		const path = buildRadiusArcPath(
+			motionCode,
+			start,
+			end,
+			"x",
+			"z",
+			rWord.value,
+			options
+		);
+
+		if (path) {
+			return path;
+		}
 	}
 
 	const useXyPlane = Number.isFinite(start.x)
@@ -480,6 +528,29 @@ function buildArcPathPoints(motionCode, start, end, words, options) {
 		);
 	}
 
+	const useXyRadius = Number.isFinite(start.x)
+		&& Number.isFinite(start.y)
+		&& Number.isFinite(end.x)
+		&& Number.isFinite(end.y)
+		&& rWord
+		&& Number.isFinite(rWord.value);
+
+	if (useXyRadius) {
+		const path = buildRadiusArcPath(
+			motionCode,
+			start,
+			end,
+			"x",
+			"y",
+			rWord.value,
+			options
+		);
+
+		if (path) {
+			return path;
+		}
+	}
+
 	return {
 		points: [start, end],
 		usedArcFallback: true
@@ -488,9 +559,64 @@ function buildArcPathPoints(motionCode, start, end, words, options) {
 
 function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, primaryOffset, secondaryOffset, options) {
 	const startPoint = toPhysicalPoint(start, options);
-	const endPoint = toPhysicalPoint(end, options);
 	const centerPrimary = startPoint[primaryAxis] + primaryOffset;
 	const centerSecondary = startPoint[secondaryAxis] + secondaryOffset;
+
+	return buildPlanarArcPathFromCenter(
+		motionCode,
+		start,
+		end,
+		primaryAxis,
+		secondaryAxis,
+		centerPrimary,
+		centerSecondary,
+		options
+	);
+}
+
+function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, radiusWordValue, options) {
+	const radius = Math.abs(radiusWordValue);
+
+	if (!Number.isFinite(radius) || radius <= 0) {
+		return undefined;
+	}
+
+	const startPoint = toPhysicalPoint(start, options);
+	const endPoint = toPhysicalPoint(end, options);
+	const deltaPrimary = endPoint[primaryAxis] - startPoint[primaryAxis];
+	const deltaSecondary = endPoint[secondaryAxis] - startPoint[secondaryAxis];
+	const chordLength = Math.hypot(deltaPrimary, deltaSecondary);
+
+	if (!Number.isFinite(chordLength) || chordLength <= 0 || chordLength / 2 > radius) {
+		return undefined;
+	}
+
+	const midpointPrimary = (startPoint[primaryAxis] + endPoint[primaryAxis]) / 2;
+	const midpointSecondary = (startPoint[secondaryAxis] + endPoint[secondaryAxis]) / 2;
+	const centerDistance = Math.sqrt(Math.max(0, radius * radius - (chordLength / 2) * (chordLength / 2)));
+	const normalPrimary = -deltaSecondary / chordLength;
+	const normalSecondary = deltaPrimary / chordLength;
+	const directionSign = motionCode === 3 ? 1 : -1;
+	const radiusSign = radiusWordValue < 0 ? -1 : 1;
+	const centerSign = directionSign * radiusSign;
+	const centerPrimary = midpointPrimary + normalPrimary * centerDistance * centerSign;
+	const centerSecondary = midpointSecondary + normalSecondary * centerDistance * centerSign;
+
+	return buildPlanarArcPathFromCenter(
+		motionCode,
+		start,
+		end,
+		primaryAxis,
+		secondaryAxis,
+		centerPrimary,
+		centerSecondary,
+		options
+	);
+}
+
+function buildPlanarArcPathFromCenter(motionCode, start, end, primaryAxis, secondaryAxis, centerPrimary, centerSecondary, options) {
+	const startPoint = toPhysicalPoint(start, options);
+	const endPoint = toPhysicalPoint(end, options);
 	const startAngle = Math.atan2(startPoint[secondaryAxis] - centerSecondary, startPoint[primaryAxis] - centerPrimary);
 	const endAngle = Math.atan2(endPoint[secondaryAxis] - centerSecondary, endPoint[primaryAxis] - centerPrimary);
 	const sweep = getArcSweep(motionCode, startAngle, endAngle);
@@ -701,7 +827,7 @@ function maskProtectedRanges(line) {
 function renderChronometerHover(estimate) {
 	const md = new vscode.MarkdownString();
 
-	md.appendMarkdown(`**KAIJU Chronometer - G${String(estimate.motionCode).padStart(2, "0")}**\n\n`);
+	md.appendMarkdown(`**KAIJU Chronoblade - G${String(estimate.motionCode).padStart(2, "0")}**\n\n`);
 	md.appendMarkdown(`**Start:** \`${formatPosition(estimate.start)}\`\n\n`);
 	md.appendMarkdown(`**End:** \`${formatPosition(estimate.end)}\`\n\n`);
 	md.appendMarkdown(`**Distance:** \`${formatNumber(estimate.distance)}\`\n\n`);

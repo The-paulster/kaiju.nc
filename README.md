@@ -125,9 +125,9 @@ The inspection ignores macro-looking text inside comments and protected angle-br
 
 <img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
 
-## KAIJU Chronometer
+## KAIJU Chronoblade
 
-`KAIJU Chronometer` estimates cutting time when you hover over an explicit `G1`, `G2`, or `G3` move.
+`KAIJU Chronoblade` estimates cutting time when you hover over an explicit `G1`, `G2`, or `G3` move.
 
 The hover shows:
 
@@ -138,7 +138,7 @@ The hover shows:
 - Feed and spindle state used for the estimate
 - RPM range when constant surface speed is active
 
-Chronometer walks the document up to the hovered line and uses the previous known position, modal feed, spindle mode, RPM, CSS surface speed, and RPM limit.
+Chronoblade walks the document up to the hovered line and uses the previous known position, modal feed, spindle mode, RPM, CSS surface speed, and RPM limit.
 
 It supports:
 
@@ -150,11 +150,11 @@ It supports:
 - Feed-per-rev timing when `G95` is active
 - X-as-diameter lathe mode by default
 
-For CSS moves, Chronometer samples along the move so a cut that crosses into the RPM limiter is estimated with the clamp taken into account.
+For CSS moves, Chronoblade samples along the move so a cut that crosses into the RPM limiter is estimated with the clamp taken into account.
 
 This is an editor estimate only. It does not simulate acceleration, exact controller lookahead, dwell, tool changes, spindle ramp-up, machine limits, or canned cycle behavior.
 
-<img src="examples/chronometer_example.png" alt="KAIJU.NC chronometer example" width="300">
+<img src="examples/chronometer_example.png" alt="KAIJU.NC Chronoblade example" width="300">
 
 ## Code Alerts
 

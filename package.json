@@ -418,7 +418,7 @@
         "kaijuNC.chronometer.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable KAIJU Chronometer hover estimates on G1, G2, and G3 moves."
+          "description": "Enable KAIJU Chronoblade hover estimates on G1, G2, and G3 moves."
         },
         "kaijuNC.chronometer.xAxisMode": {
           "type": "string",
@@ -427,7 +427,7 @@
             "radius"
           ],
           "default": "diameter",
-          "description": "How KAIJU Chronometer interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
+          "description": "How KAIJU Chronoblade interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
         },
         "kaijuNC.chronometer.cssSurfaceSpeedUnit": {
           "type": "string",
@@ -443,7 +443,7 @@
           "default": 96,
           "minimum": 12,
           "maximum": 500,
-          "description": "Number of samples used for KAIJU Chronometer path and CSS/RPM-limit estimates."
+          "description": "Number of samples used for KAIJU Chronoblade path and CSS/RPM-limit estimates."
         }
       }
     },
