@@ -4,10 +4,15 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [Unreleased]
 
+- Added a right-click `KAIJU Chronoblade` cycle-time report webview with whole-program and selection sends, `G0` rapid timing, tool swap timing, and per-line motion/tool rows.
+- Added `kaijuNC.chronoblade.compactPanelWidth` so the Chronoblade report width can be configured separately from Orphan Killer.
+- Added `kaijuNC.syntax.toolDecorations.enabled` so tool-range gutter markers can be toggled from the new Syntax settings category.
+- Split extension settings into Reconstructor, Alias, Orphan Killer, and Chronoblade categories in the VS Code Settings UI.
+- Split Chronoblade into shared engine, hover, and webview modules so calculation changes flow through both UI surfaces.
 
 ## [0.1.1] - 2026-05-20
 
-- Renamed `KAIJU Chronometer` to `KAIJU Chronoblade` in user-facing hovers, settings descriptions, and documentation because it sounds way cooler.
+- Finished the `KAIJU Chronoblade` naming pass in user-facing hovers, settings descriptions, and documentation because it sounds way cooler.
 - Fixed `KAIJU Chronoblade` estimates for lathe arcs that use incremental `U/V/W` axis words and `R` radius arcs instead of absolute `X/Y/Z` endpoints with `I/J/K` centers.
 - Added `KAIJU Chronoblade` warnings when a motion endpoint or feed expression cannot be resolved, so unresolved macros no longer look like silent zero-distance moves.
 - Fixed macro expression resolution so hover values and Chronoblade estimates can follow alias macros inside dependent expressions and Fanuc math functions.

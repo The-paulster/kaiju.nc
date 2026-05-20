@@ -5,7 +5,8 @@ const { registerMacroAlias } = require("./macroAlias");
 const { registerOrphanKiller } = require("./orphanKiller");
 const { registerDiagnostics } = require("./diagnostics");
 const { registerToolDecorations } = require("./toolDecorations");
-const { registerChronometer } = require("./chronometer");
+const { registerChronobladeHover } = require("./chronobladeHover");
+const { registerChronobladeWebview } = require("./chronobladeWebview");
 
 function activate(context) {
 	registerFormatter(context);
@@ -15,7 +16,8 @@ function activate(context) {
 	registerOrphanKiller(context);
 	registerDiagnostics(context);
 	registerToolDecorations(context);
-	registerChronometer(context);
+	registerChronobladeHover(context);
+	registerChronobladeWebview(context);
 }
 
 function deactivate() {}

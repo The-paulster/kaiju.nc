@@ -50,6 +50,11 @@ function registerToolDecorations(context) {
 				scheduleUpdate();
 			}
 		}),
+		vscode.workspace.onDidChangeConfiguration(event => {
+			if (event.affectsConfiguration("kaijuNC.syntax.toolDecorations.enabled")) {
+				scheduleUpdate();
+			}
+		}),
 		{
 			dispose() {
 				clearTimeout(pendingUpdate);
@@ -69,7 +74,7 @@ function updateVisibleToolDecorations(decorationTypes) {
 function updateToolDecorations(editor, decorationTypes) {
 	const groupedDecorations = decorationTypes.map(() => []);
 
-	if (editor.document.languageId === "gcode") {
+	if (editor.document.languageId === "gcode" && areToolDecorationsEnabled(editor.document)) {
 		for (const range of getToolRanges(editor.document)) {
 			for (let lineNumber = range.startLine; lineNumber <= range.endLine; lineNumber++) {
 				groupedDecorations[range.colorIndex].push({
@@ -82,6 +87,12 @@ function updateToolDecorations(editor, decorationTypes) {
 	for (let i = 0; i < decorationTypes.length; i++) {
 		editor.setDecorations(decorationTypes[i], groupedDecorations[i]);
 	}
+}
+
+function areToolDecorationsEnabled(document) {
+	const config = vscode.workspace.getConfiguration("kaijuNC.syntax", document.uri);
+
+	return config.get("toolDecorations.enabled", true);
 }
 
 function getToolRanges(document) {

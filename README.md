@@ -2,9 +2,9 @@
 
 # KAIJU.NC
 
-KAIJU.NC is a Visual Studio Code extension for working with `.nc` files and other common CNC program formats. It provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools for Fanuc-style G-code and macro programming.
+KAIJU.NC is the worlds first kaiju themed Visual Studio Code extension for working with `.nc` files and other common CNC program formats. It provides syntax highlighting, warnings, automatic formatting, and diagnostic tools for Fanuc-style G-code and macro programming.
 
-The extension is designed to improve readability and assist with problem identification, especially for macro-heavy programs.
+The extension is designed to improve readability and assist with problem identification, and optimization especially for macro-heavy programs.
 
 ## Highlighting
 
@@ -21,6 +21,8 @@ KAIJU.NC highlights common CNC program elements, including:
 - Gutter markers that show which tool is active in each section of the program
 
 Fanuc-style parenthesis comments are highlighted, such as `(ROUGHING PASS)`.
+
+Tool-range gutter markers can be turned off with `kaijuNC.syntax.toolDecorations.enabled`.
 
 Special comment styles are also recognized:
 
@@ -127,6 +129,12 @@ The inspection ignores macro-looking text inside comments and protected angle-br
 
 ## KAIJU Chronoblade
 
+`KAIJU Chronoblade` also opens a right-click cycle-time report for the current program. If text is selected, the command reports that section; otherwise it reports the whole program. The panel includes controls for `G0` rapid rate, base tool swap time, and extra turret station time for non-adjacent tool changes, plus buttons to resend either the whole program or the current selection.
+
+The report lists motion and tool-change rows with line number, instruction, start/end position, distance, feed, spindle state, RPM range, and estimated time so expensive parts of the program are easier to find.
+
+The side panel width is controlled separately from Orphan Killer with `kaijuNC.chronoblade.compactPanelWidth`. Default cycle-time assumptions are set with `kaijuNC.chronoblade.rapidRate`, `kaijuNC.chronoblade.toolChangeSeconds`, and `kaijuNC.chronoblade.extraStationSeconds`.
+
 `KAIJU Chronoblade` estimates cutting time when you hover over an explicit `G1`, `G2`, or `G3` move.
 
 The hover shows:
@@ -154,7 +162,7 @@ For CSS moves, Chronoblade samples along the move so a cut that crosses into the
 
 This is an editor estimate only. It does not simulate acceleration, exact controller lookahead, dwell, tool changes, spindle ramp-up, machine limits, or canned cycle behavior.
 
-<img src="examples/chronometer_example.png" alt="KAIJU.NC Chronoblade example" width="300">
+<img src="examples/chronoblade_example.png" alt="KAIJU.NC Chronoblade example" width="300">
 
 ## Code Alerts
 

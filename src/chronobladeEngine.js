@@ -1,8 +1,6 @@
-const vscode = require("vscode");
 const {
 	getCommentRanges,
-	getAngleBracketRanges,
-	isInsideRange
+	getAngleBracketRanges
 } = require("./textRanges");
 const {
 	buildMacroAliasMap,
@@ -11,83 +9,8 @@ const {
 	setMacroValue
 } = require("./macroExpressions");
 
-const MOTION_CODES = new Set([1, 2, 3]);
-
-function registerChronometer(context) {
-	context.subscriptions.push(
-		vscode.languages.registerHoverProvider({ language: "gcode" }, {
-			provideHover(document, position) {
-				return provideChronometerHover(document, position);
-			}
-		})
-	);
-}
-
-function provideChronometerHover(document, position) {
-	if (document.languageId !== "gcode") {
-		return undefined;
-	}
-
-	const hoveredMotion = getMotionAtPosition(document, position);
-
-	if (!hoveredMotion) {
-		return undefined;
-	}
-
-	const options = getChronometerOptions(document);
-
-	if (!options.enabled) {
-		return undefined;
-	}
-
-	const estimate = estimateMotionAtLine(document, position.line, hoveredMotion, options);
-
-	if (!estimate) {
-		return undefined;
-	}
-
-	return new vscode.Hover(renderChronometerHover(estimate));
-}
-
-function getChronometerOptions(document) {
-	const config = vscode.workspace.getConfiguration("kaijuNC.chronometer", document.uri);
-
-	return {
-		enabled: config.get("enabled", true),
-		xAxisMode: config.get("xAxisMode", "diameter"),
-		cssSurfaceSpeedUnit: config.get("cssSurfaceSpeedUnit", "mPerMin"),
-		samples: clampNumber(config.get("samples", 96), 12, 500)
-	};
-}
-
-function getMotionAtPosition(document, position) {
-	const line = document.lineAt(position.line).text;
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	if (isInsideRange(position.character, protectedRanges)) {
-		return undefined;
-	}
-
-	const motionRegex = /\bG0?([123])\b/gi;
-	let match;
-
-	while ((match = motionRegex.exec(line)) !== null) {
-		const start = match.index;
-		const end = start + match[0].length;
-
-		if (position.character >= start && position.character <= end) {
-			return {
-				code: Number(match[1]),
-				text: match[0].toUpperCase()
-			};
-		}
-	}
-
-	return undefined;
-}
+const CUTTING_MOTION_CODES = new Set([1, 2, 3]);
+const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
 
 function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options) {
 	const state = makeInitialState();
@@ -106,7 +29,7 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 		applyModalState(words, motionCode, state);
 
 		if (lineNumber === targetLineNumber) {
-			if (motionCode !== hoveredMotion.code || !MOTION_CODES.has(motionCode)) {
+			if (motionCode !== hoveredMotion.code || !CUTTING_MOTION_CODES.has(motionCode)) {
 				return undefined;
 			}
 
@@ -122,6 +45,7 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 function makeInitialState() {
 	return {
 		position: {},
+		motionCode: undefined,
 		feed: undefined,
 		feedMode: "perRev",
 		spindleMode: "fixed",
@@ -307,8 +231,8 @@ function applyModalState(words, motionCode, state) {
 		state.feed = fWord.value;
 	}
 
-	if (motionCode === 0) {
-		return;
+	if (REPORT_MOTION_CODES.has(motionCode)) {
+		state.motionCode = motionCode;
 	}
 }
 
@@ -327,31 +251,38 @@ function estimateMotion(words, motionCode, state, options) {
 	const end = makeEndPosition(start, words);
 
 	if (!hasKnownPosition(start) || !hasKnownPosition(end)) {
+		applyPositionUpdate(words, state);
 		return makeUnavailableEstimate(motionCode, start, end, "Start or end position is incomplete.");
 	}
 
 	const path = buildPathPoints(motionCode, start, end, words, options);
 	const distance = sumPathDistance(path, options);
-	const timing = estimatePathTime(path, state, options);
+	const timing = motionCode === 0
+		? estimateRapidTime(distance, options)
+		: estimatePathTime(path, state, options);
 	const warnings = collectUnresolvedWordWarnings(words, ["X", "Y", "Z", "U", "V", "W", "F"]);
 
 	if (distance <= 0) {
 		warnings.push("Move distance is zero.");
 	}
 
-	if (!Number.isFinite(state.feed) || state.feed <= 0) {
+	if (motionCode === 0 && (!Number.isFinite(options.rapidRate) || options.rapidRate <= 0)) {
+		warnings.push("Rapid rate is unknown or zero.");
+	}
+
+	if (motionCode !== 0 && (!Number.isFinite(state.feed) || state.feed <= 0)) {
 		warnings.push("Feed is unknown or zero.");
 	}
 
-	if (state.feedMode === "perRev" && state.spindleMode === "fixed" && (!Number.isFinite(state.rpm) || state.rpm <= 0)) {
+	if (motionCode !== 0 && state.feedMode === "perRev" && state.spindleMode === "fixed" && (!Number.isFinite(state.rpm) || state.rpm <= 0)) {
 		warnings.push("Fixed RPM is unknown or zero.");
 	}
 
-	if (state.feedMode === "perRev" && state.spindleMode === "css" && (!Number.isFinite(state.cssSurfaceSpeed) || state.cssSurfaceSpeed <= 0)) {
+	if (motionCode !== 0 && state.feedMode === "perRev" && state.spindleMode === "css" && (!Number.isFinite(state.cssSurfaceSpeed) || state.cssSurfaceSpeed <= 0)) {
 		warnings.push("CSS surface speed is unknown or zero.");
 	}
 
-	if (state.spindleMode === "css" && !Number.isFinite(state.rpmLimit)) {
+	if (motionCode !== 0 && state.spindleMode === "css" && !Number.isFinite(state.rpmLimit)) {
 		warnings.push("No RPM limit found; CSS estimate is unclamped.");
 	}
 
@@ -430,7 +361,7 @@ function makeEndPosition(start, words) {
 }
 
 function buildPathPoints(motionCode, start, end, words, options) {
-	if (motionCode === 1) {
+	if (motionCode === 0 || motionCode === 1) {
 		return buildLinearPathPoints(start, end, options);
 	}
 
@@ -693,6 +624,22 @@ function estimatePathTime(path, state, options) {
 	};
 }
 
+function estimateRapidTime(distance, options) {
+	if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(options.rapidRate) || options.rapidRate <= 0) {
+		return {
+			timeSeconds: NaN,
+			minRpm: NaN,
+			maxRpm: NaN
+		};
+	}
+
+	return {
+		timeSeconds: distance / options.rapidRate * 60,
+		minRpm: NaN,
+		maxRpm: NaN
+	};
+}
+
 function getEffectiveRpm(position, state, options) {
 	if (state.spindleMode === "fixed") {
 		return state.rpm;
@@ -824,38 +771,214 @@ function maskProtectedRanges(line) {
 	return characters.join("");
 }
 
-function renderChronometerHover(estimate) {
-	const md = new vscode.MarkdownString();
+function analyzeChronobladeRange(document, range, options) {
+	const state = makeInitialState();
+	const macroValues = new Map();
+	const macroAliases = buildMacroAliasMap(document);
+	const rows = [];
+	const targetRange = normalizeLineRange(range, document.lineCount);
+	let previousTool;
 
-	md.appendMarkdown(`**KAIJU Chronoblade - G${String(estimate.motionCode).padStart(2, "0")}**\n\n`);
-	md.appendMarkdown(`**Start:** \`${formatPosition(estimate.start)}\`\n\n`);
-	md.appendMarkdown(`**End:** \`${formatPosition(estimate.end)}\`\n\n`);
-	md.appendMarkdown(`**Distance:** \`${formatNumber(estimate.distance)}\`\n\n`);
-	md.appendMarkdown(`**Estimated time:** \`${formatTime(estimate.timeSeconds)}\`\n\n`);
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const line = document.lineAt(lineNumber).text;
+		const codeLine = maskProtectedRanges(line);
+		let positionWasUpdated = false;
 
-	if (Number.isFinite(estimate.feed)) {
-		md.appendMarkdown(`**Feed:** \`${formatNumber(estimate.feed)} ${estimate.feedMode === "perRev" ? "per rev" : "per min"}\`\n\n`);
+		trackMacroAssignments(codeLine, macroValues, macroAliases);
+
+		const words = parseWords(codeLine, macroValues, macroAliases);
+		const motionCode = getMotionCode(words);
+
+		applyModalState(words, motionCode, state);
+
+		if (isLineInRange(lineNumber, targetRange)) {
+			for (const toolChange of makeToolChangeRows(words, previousTool, options)) {
+				rows.push({
+					type: "tool",
+					lineNumber: lineNumber + 1,
+					instruction: toolChange.instruction,
+					start: "",
+					end: "",
+					distance: NaN,
+					timeSeconds: toolChange.timeSeconds,
+					feed: NaN,
+					feedMode: "",
+					spindle: "",
+					rpmUsed: "",
+					warnings: toolChange.warnings
+				});
+			}
+		}
+
+		const nextTool = getLastTool(words);
+
+		if (nextTool) {
+			previousTool = nextTool;
+		}
+
+		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
+
+		if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
+			const estimate = estimateMotion(words, activeMotionCode, state, options);
+			positionWasUpdated = true;
+
+			if (isLineInRange(lineNumber, targetRange)) {
+				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate));
+			}
+		}
+
+		if (!positionWasUpdated) {
+			applyPositionUpdate(words, state);
+		}
 	}
 
+	return {
+		rows,
+		range: targetRange,
+		summary: summarizeChronobladeRows(rows)
+	};
+}
+
+function normalizeLineRange(range, lineCount) {
+	if (!range) {
+		return {
+			startLine: 0,
+			endLine: Math.max(0, lineCount - 1)
+		};
+	}
+
+	return {
+		startLine: Math.max(0, Math.min(range.start.line, lineCount - 1)),
+		endLine: Math.max(0, Math.min(range.end.line, lineCount - 1))
+	};
+}
+
+function isLineInRange(lineNumber, range) {
+	return lineNumber >= range.startLine && lineNumber <= range.endLine;
+}
+
+function hasMotionAxisWords(words) {
+	return words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+}
+
+function makeToolChangeRows(words, previousTool, options) {
+	const tool = getLastTool(words);
+
+	if (!tool) {
+		return [];
+	}
+
+	return [{
+		instruction: tool.label,
+		timeSeconds: estimateToolChangeTime(previousTool, tool, options),
+		warnings: []
+	}];
+}
+
+function getLastTool(words) {
+	const toolWord = lastWord(words, "T");
+
+	if (!toolWord || !Number.isFinite(toolWord.value)) {
+		return undefined;
+	}
+
+	const value = Math.abs(Math.trunc(toolWord.value));
+	const toolDigits = String(value).padStart(4, "0").slice(-4);
+
+	return {
+		label: `T${toolDigits}`,
+		station: Number(toolDigits.slice(0, 2)),
+		offset: Number(toolDigits.slice(2, 4))
+	};
+}
+
+function estimateToolChangeTime(previousTool, tool, options) {
+	if (previousTool && previousTool.station === tool.station && previousTool.offset === tool.offset) {
+		return 0;
+	}
+
+	const baseTime = Number.isFinite(options.toolChangeSeconds) ? options.toolChangeSeconds : 0;
+
+	if (!previousTool || !Number.isFinite(previousTool.station) || !Number.isFinite(tool.station)) {
+		return baseTime;
+	}
+
+	const stationGap = Math.abs(tool.station - previousTool.station);
+	const extraStationSteps = Math.max(0, stationGap - 1);
+	const extraStationTime = Number.isFinite(options.extraStationSeconds) ? options.extraStationSeconds : 0;
+
+	return baseTime + extraStationSteps * extraStationTime;
+}
+
+function makeMotionReportRow(lineNumber, motionCode, estimate) {
+	return {
+		type: "motion",
+		lineNumber: lineNumber + 1,
+		instruction: `G${motionCode}`,
+		start: formatPosition(estimate.start),
+		end: formatPosition(estimate.end),
+		distance: estimate.distance,
+		timeSeconds: estimate.timeSeconds,
+		feed: estimate.feed,
+		feedMode: estimate.feedMode,
+		spindle: formatSpindle(estimate),
+		rpmUsed: formatRpmUsed(estimate),
+		warnings: estimate.warnings || []
+	};
+}
+
+function summarizeChronobladeRows(rows) {
+	const summary = {
+		totalTimeSeconds: 0,
+		unknownTimeRows: 0,
+		totalDistance: 0,
+		rapidTimeSeconds: 0,
+		cuttingTimeSeconds: 0,
+		toolTimeSeconds: 0
+	};
+
+	for (const row of rows) {
+		if (Number.isFinite(row.distance)) {
+			summary.totalDistance += row.distance;
+		}
+
+		if (!Number.isFinite(row.timeSeconds)) {
+			summary.unknownTimeRows++;
+			continue;
+		}
+
+		summary.totalTimeSeconds += row.timeSeconds;
+
+		if (row.type === "tool") {
+			summary.toolTimeSeconds += row.timeSeconds;
+		} else if (row.instruction === "G0") {
+			summary.rapidTimeSeconds += row.timeSeconds;
+		} else {
+			summary.cuttingTimeSeconds += row.timeSeconds;
+		}
+	}
+
+	return summary;
+}
+
+function formatSpindle(estimate) {
 	if (estimate.spindleMode === "css") {
-		md.appendMarkdown(`**Spindle:** \`G96 S${formatNumber(estimate.cssSurfaceSpeed)}${Number.isFinite(estimate.rpmLimit) ? `, limit ${formatNumber(estimate.rpmLimit)} rpm` : ""}\`\n\n`);
-	} else if (Number.isFinite(estimate.rpm)) {
-		md.appendMarkdown(`**Spindle:** \`G97 ${formatNumber(estimate.rpm)} rpm\`\n\n`);
+		return `G96 S${formatNumber(estimate.cssSurfaceSpeed)}${Number.isFinite(estimate.rpmLimit) ? ` / limit ${formatNumber(estimate.rpmLimit)}` : ""}`;
 	}
 
+	if (Number.isFinite(estimate.rpm)) {
+		return `G97 ${formatNumber(estimate.rpm)} rpm`;
+	}
+
+	return "";
+}
+
+function formatRpmUsed(estimate) {
 	if (Number.isFinite(estimate.minRpm) && Number.isFinite(estimate.maxRpm)) {
-		md.appendMarkdown(`**RPM used:** \`${formatNumber(estimate.minRpm)} - ${formatNumber(estimate.maxRpm)}\`\n\n`);
+		return `${formatNumber(estimate.minRpm)} - ${formatNumber(estimate.maxRpm)}`;
 	}
 
-	if (estimate.usedArcFallback) {
-		md.appendMarkdown("`Arc center not found; using chord distance.`\n\n");
-	}
-
-	for (const warning of estimate.warnings || []) {
-		md.appendMarkdown(`\`${warning}\`\n\n`);
-	}
-
-	return md;
+	return "";
 }
 
 function formatPosition(position) {
@@ -892,17 +1015,10 @@ function formatTime(seconds) {
 	return `${minutes} min ${remainingSeconds.toFixed(1)} s`;
 }
 
-function clampNumber(value, min, max) {
-	const number = Number(value);
-
-	if (!Number.isFinite(number)) {
-		return min;
-	}
-
-	return Math.max(min, Math.min(max, number));
-}
-
 module.exports = {
-	registerChronometer,
-	estimateMotionAtLine
+	estimateMotionAtLine,
+	analyzeChronobladeRange,
+	formatPosition,
+	formatNumber,
+	formatTime
 };
