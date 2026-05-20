@@ -2,7 +2,7 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PaulCGilesLawson",
   "license": "MIT",
@@ -19,11 +19,24 @@
     "g-code",
     "nc",
     "cnc",
+    "cnc-programming",
     "fanuc",
+    "machining",
     "macro",
+    "macro-variables",
+    "cnc-macro",
+    "syntax-highlighting",
+    "formatter",
+    "g-code-formatter",
     "lathe",
+    "turning",
     "mill",
-    "mill-turn"
+    "milling",
+    "mill-turn",
+    "tooling",
+    "kakou",
+    "加工",
+    "マシニング"
   ],
   "galleryBanner": {
     "color": "#111827",
@@ -241,6 +254,14 @@
                 }
             },
             {
+                "name": "H code",
+                "scope": "support.code.h.gcode",
+                "settings": {
+                    "foreground": "#A6E66A",
+                    "fontStyle": "bold"
+                }
+            },
+            {
                 "name": "Math symbol operators",
                 "scope": "keyword.operator.math.symbol.gcode",
                 "settings": {
@@ -377,12 +398,22 @@
           "default": true,
           "description": "Normalize T codes to four digits, such as T1 to T0101 and T606 to T0606."
         },
+        "kaijuNC.alias.caseSensitive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Match KAIJU Alias macro names case-sensitively when toggling aliases. Disabled by default so #PART_OD can still toggle back to #100."
+        },
         "kaijuNC.orphanKiller.compactPanelWidth": {
           "type": "number",
           "default": 0.3,
           "minimum": 0.15,
           "maximum": 0.5,
           "description": "Target width fraction for the KAIJU Orphan Killer side editor group when VS Code has a simple two-column layout."
+        },
+        "kaijuNC.orphanKiller.ignoredMacros": {
+          "type": "string",
+          "default": "1001-",
+          "description": "Comma-separated macro numbers or ranges ignored by KAIJU Orphan Killer, such as 100, 123, 3000-4000, or 1001- for all macros above #1000. Clear this setting to inspect every numeric macro."
         },
         "kaijuNC.chronometer.enabled": {
           "type": "boolean",

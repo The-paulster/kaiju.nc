@@ -33,7 +33,15 @@ async function runMacroAliasCommand() {
 		return;
 	}
 
-	await toggleAliases(editor, aliasedEntries);
+	await toggleAliases(editor, aliasedEntries, getAliasOptions(editor.document));
+}
+
+function getAliasOptions(document) {
+	const config = vscode.workspace.getConfiguration("kaijuNC.alias", document.uri);
+
+	return {
+		caseSensitive: config.get("caseSensitive", false)
+	};
 }
 
 function buildAliasEntries(document) {
@@ -195,8 +203,12 @@ function cleanAliasPhrase(phrase) {
 		.trim();
 }
 
-async function toggleAliases(editor, entries) {
-	const shouldConvertToNumbers = documentHasAliases(editor.document, entries);
+async function toggleAliases(editor, entries, options = {}) {
+	const aliasOptions = {
+		caseSensitive: false,
+		...options
+	};
+	const shouldConvertToNumbers = documentHasAliases(editor.document, entries, aliasOptions);
 	const replacements = entries.map(entry => {
 		const aliasMacro = `#${entry.alias}`;
 
@@ -204,7 +216,7 @@ async function toggleAliases(editor, entries) {
 			? { from: aliasMacro, to: entry.macro }
 			: { from: entry.macro, to: aliasMacro };
 	});
-	const changed = await replaceAliases(editor, replacements, entries);
+	const changed = await replaceAliases(editor, replacements, entries, aliasOptions);
 
 	if (!changed) {
 		const direction = shouldConvertToNumbers ? "aliases" : "numeric macros";
@@ -219,9 +231,9 @@ async function toggleAliases(editor, entries) {
 	);
 }
 
-function documentHasAliases(document, entries) {
+function documentHasAliases(document, entries, options) {
 	for (const entry of entries) {
-		const aliasRegex = makeMacroRegex(`#${entry.alias}`);
+		const aliasRegex = makeMacroRegex(`#${entry.alias}`, options);
 
 		for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 			if (lineNumber === entry.sourceLine) {
@@ -237,7 +249,7 @@ function documentHasAliases(document, entries) {
 	return false;
 }
 
-async function replaceAliases(editor, replacements, entries) {
+async function replaceAliases(editor, replacements, entries, options) {
 	const document = editor.document;
 	const sourceMacrosByLine = buildSourceMacrosByLine(entries);
 	const nextLines = [];
@@ -245,10 +257,10 @@ async function replaceAliases(editor, replacements, entries) {
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		let line = document.lineAt(lineNumber).text;
-		const protectedLine = protectSourceMacros(line, sourceMacrosByLine.get(lineNumber) || []);
+		const protectedLine = protectSourceMacros(line, sourceMacrosByLine.get(lineNumber) || [], options);
 
 		for (const replacement of replacements) {
-			const replaceRegex = makeMacroRegex(replacement.from);
+			const replaceRegex = makeMacroRegex(replacement.from, options);
 			const replacedLine = protectedLine.text.replace(replaceRegex, replacement.to);
 
 			if (replacedLine !== protectedLine.text) {
@@ -294,13 +306,13 @@ function buildSourceMacrosByLine(entries) {
 	return sourceMacrosByLine;
 }
 
-function protectSourceMacros(line, macros) {
+function protectSourceMacros(line, macros, options) {
 	const tokens = [];
 	let text = line;
 
 	for (const macro of macros) {
 		const token = `__KAIJU_ALIAS_SOURCE_${tokens.length}__`;
-		const protectedText = text.replace(makeMacroRegex(macro), token);
+		const protectedText = text.replace(makeMacroRegex(macro, options), token);
 
 		if (protectedText !== text) {
 			tokens.push({ token, macro });
@@ -317,8 +329,10 @@ function restoreSourceMacros(text, tokens) {
 	}, text);
 }
 
-function makeMacroRegex(macro) {
-	return new RegExp(`${escapeRegex(macro)}(?![A-Za-z0-9_])`, "g");
+function makeMacroRegex(macro, options = {}) {
+	const flags = options.caseSensitive ? "g" : "gi";
+
+	return new RegExp(`${escapeRegex(macro)}(?![A-Za-z0-9_])`, flags);
 }
 
 function countMatches(text, regex) {

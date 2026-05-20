@@ -114,7 +114,8 @@ function formatStandardLine(line, options) {
 }
 
 function formatCodeSegment(text, options) {
-	let result = text.toUpperCase();
+	const protectedAliases = protectNamedMacroAliases(text);
+	let result = protectedAliases.text.toUpperCase();
 
 	result = normalizeControlWordSpacing(result);
 	result = addSpacesBetweenAddressWords(result);
@@ -128,8 +129,26 @@ function formatCodeSegment(text, options) {
 	result = result.replace(/[ \t]+/g, " ");
 	result = normalizeControlWordSpacing(result);
 	result = normalizeOptionalBlockSkipSpacing(result);
+	result = restoreNamedMacroAliases(result, protectedAliases.tokens);
 
 	return result.trim();
+}
+
+function protectNamedMacroAliases(text) {
+	const tokens = [];
+	const protectedText = text.replace(/#(?:[A-Za-z_][A-Za-z0-9_]*)/g, macro => {
+		const token = `__KAIJU_ALIAS_${tokens.length}__`;
+		tokens.push({ token, macro });
+		return token;
+	});
+
+	return { text: protectedText, tokens };
+}
+
+function restoreNamedMacroAliases(text, tokens) {
+	return tokens.reduce((result, item) => {
+		return result.replace(item.token, item.macro);
+	}, text);
 }
 
 function normalizeControlWordSpacing(text) {

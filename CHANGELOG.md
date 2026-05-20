@@ -2,10 +2,19 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-20
+
+- Fixed missing-decimal warnings so named alias macros like `#r1_2_rh_shiage_trigon` are not mistaken for address values.
+- Added `kaijuNC.alias.caseSensitive`, defaulting to case-insensitive alias matching so uppercased aliases can still be toggled back to numeric macros.
+- Fixed `KAIJU Reconstructor` so named alias macros like `#part_od` keep their original casing while code is normalized.
+- Added `kaijuNC.orphanKiller.ignoredMacros` so Orphan Killer can ignore page-range style macro lists like `100, 123, 3000-4000`; it defaults to `1001-`.
+- Added highlighting for `H` milling height/tool-length offset codes, using a softer green companion color to `T` codes.
+
+## [0.1.0] - 2026-05-19
+
+- Initial release of KAIJU.NC.
 - Fixed zero-padded cutting moves like `G01`, `G02`, and `G03` so they keep the yellow motion-code highlight.
 - Added `KAIJU Chronometer` hover estimates for `G1`, `G2`, and `G3` moves.
 - Added best-effort compact editor group sizing for the `KAIJU Orphan Killer` side panel, with a configurable target width.
@@ -15,7 +24,3 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Disabled VS Code default color decorators for `gcode` mode so macro variables like `#100` are not treated as fallback CSS colors.
 - Associated supported NC/G-code file extensions with `gcode` mode by default so color decorators stay disabled across those file types.
 - Fixed tool-range decorations when tool calls use aliases created by `KAIJU Alias`.
-
-## [0.1.0] - 2026-05-19
-
-- Initial release of KAIJU.NC.

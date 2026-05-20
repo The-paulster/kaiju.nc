@@ -14,7 +14,7 @@ KAIJU.NC highlights common CNC program elements, including:
 - Block numbers, such as `N100`
 - G-codes and M-codes
 - Rapid and cutting motion codes
-- Axis and address words, including `X`, `Y`, `Z`, `U`, `V`, `W`, `A`, `B`, `C`, `I`, `J`, `K`, `R`, `F`, `S`, `T`, `L`, `P`, and `Q`
+- Axis and address words, including `X`, `Y`, `Z`, `U`, `V`, `W`, `A`, `B`, `C`, `I`, `J`, `K`, `R`, `F`, `S`, `T`, `H`, `L`, `P`, and `Q`
 - Macro variables, such as `#100`, `#500`, and named-style macro references
 - Macro logic keywords, including `IF`, `THEN`, `WHILE`, `DO`, `END`, and `GOTO`
 - Math and comparison operators, including `EQ`, `NE`, `GT`, `GE`, `LT`, `LE`, `SIN`, `COS`, `SQRT`, `ABS`, `ROUND`, `FIX`, and `FUP`
@@ -74,13 +74,15 @@ When you run `KAIJU Alias`, the rest of the document is toggled between numbered
 | --- | --- |
 | `G1 X[#140 + 1.] F#141` | `G1 X[#finish_allowance_dia + 1.] F#roughing_feed` |
 
-Run `KAIJU Alias` again to toggle those aliases back to the original numeric macros.
+Run `KAIJU Alias` again to toggle those aliases back to the original numeric macros. Alias matching is case-insensitive by default, so aliases such as `#PART_OD` can still be restored to their original macro numbers; set `kaijuNC.alias.caseSensitive` to `true` for exact-case matching.
 
 Alias names are generated from the comment text by lowercasing it and replacing spaces or punctuation with underscores. The original setup lines are protected so the source comments remain usable as the alias map.
 
 ## KAIJU Reconstructor
 
 `KAIJU Reconstructor` is the document formatting command for NC programs. It normalizes spacing, cleans up common code layout issues, formats configured decimal values, and can optionally normalize tool codes.
+
+Named alias macros such as `#finish_allowance` are preserved as written when formatting.
 
 - Command: `KAIJU Reconstructor`
 - Shortcut: `Ctrl+Alt+R`
@@ -119,7 +121,7 @@ G1 X#100 Z#150
 - `#150` as an undefined use
 - `#101` as a defined but unused macro
 
-The inspection ignores macro-looking text inside comments and protected angle-bracket ranges, so setup notes and display strings do not pollute the report.
+The inspection ignores macro-looking text inside comments and protected angle-bracket ranges, so setup notes and display strings do not pollute the report. It also ignores configured macro numbers and ranges from `kaijuNC.orphanKiller.ignoredMacros`, using page-range style values such as `100, 123, 3000-4000`. The default is `1001-`, which ignores macros above `#1000`; clear the setting to inspect every numeric macro.
 
 <img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
 

@@ -8,6 +8,7 @@ const { buildAliasEntries } = require("./macroAlias");
 
 let orphanPanel;
 let orphanState;
+const DEFAULT_IGNORED_MACROS = "1001-";
 
 function registerOrphanKiller(context) {
 	context.subscriptions.push(
@@ -67,16 +68,25 @@ async function refreshOrphanPanel() {
 }
 
 async function renderOrphanPanel(document) {
-	const result = inspectOrphanMacros(document);
+	const options = getOrphanKillerOptions(document);
+	const result = inspectOrphanMacros(document, options);
 
 	orphanPanel.title = "KAIJU Orphan Killer";
 	orphanPanel.webview.html = renderOrphanHtml(document, result);
-	await compactOrphanPanelEditorGroup(document);
+	await compactOrphanPanelEditorGroup(document, options);
 }
 
-async function compactOrphanPanelEditorGroup(document) {
+function getOrphanKillerOptions(document) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.orphanKiller", document.uri);
-	const compactPanelWidth = clampNumber(config.get("compactPanelWidth", 0.3), 0.15, 0.5);
+
+	return {
+		compactPanelWidth: clampNumber(config.get("compactPanelWidth", 0.3), 0.15, 0.5),
+		ignoredMacros: config.get("ignoredMacros", DEFAULT_IGNORED_MACROS)
+	};
+}
+
+async function compactOrphanPanelEditorGroup(document, options) {
+	const compactPanelWidth = options.compactPanelWidth;
 
 	try {
 		const layout = await vscode.commands.executeCommand("vscode.getEditorLayout");
@@ -105,10 +115,14 @@ function isSimpleSideBySideLayout(layout) {
 		&& layout.groups.every(group => !Array.isArray(group.groups));
 }
 
-function inspectOrphanMacros(document) {
+function inspectOrphanMacros(document, options = {}) {
 	const definitions = new Map();
 	const references = new Map();
 	const macroAliases = buildMacroAliasMap(document);
+	const ignoredMacros = options.ignoredMacros === undefined
+		? DEFAULT_IGNORED_MACROS
+		: options.ignoredMacros;
+	const ignoredMacroRanges = parseMacroIgnoreRanges(ignoredMacros);
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -119,11 +133,19 @@ function inspectOrphanMacros(document) {
 		const assignmentRanges = findAssignmentRanges(line, protectedRanges);
 
 		for (const assignment of assignmentRanges) {
-			addLine(definitions, resolveMacroAlias(assignment.macro, macroAliases), lineNumber);
+			const macro = resolveMacroAlias(assignment.macro, macroAliases);
+
+			if (!isMacroIgnored(macro, ignoredMacroRanges)) {
+				addLine(definitions, macro, lineNumber);
+			}
 		}
 
 		for (const reference of findMacroReferences(line, protectedRanges, assignmentRanges)) {
-			addLine(references, resolveMacroAlias(reference.macro, macroAliases), lineNumber);
+			const macro = resolveMacroAlias(reference.macro, macroAliases);
+
+			if (!isMacroIgnored(macro, ignoredMacroRanges)) {
+				addLine(references, macro, lineNumber);
+			}
 		}
 	}
 
@@ -177,6 +199,66 @@ function makeResultItem(macro, lines, macroAliases) {
 		name: aliasInfo ? aliasInfo.name : "",
 		lines
 	};
+}
+
+function parseMacroIgnoreRanges(value) {
+	if (typeof value !== "string") {
+		return [];
+	}
+
+	return value
+		.split(",")
+		.map(part => parseMacroIgnoreRange(part.trim()))
+		.filter(Boolean);
+}
+
+function parseMacroIgnoreRange(part) {
+	if (!part) {
+		return undefined;
+	}
+
+	const match = part.match(/^#?\s*(\d+)?\s*(?:-\s*#?\s*(\d+)?)?$/);
+
+	if (!match) {
+		return undefined;
+	}
+
+	const hasDash = part.includes("-");
+	const start = match[1] === undefined ? undefined : Number(match[1]);
+	const end = match[2] === undefined ? undefined : Number(match[2]);
+
+	if (start === undefined && end === undefined) {
+		return undefined;
+	}
+
+	if (!hasDash && start !== undefined) {
+		return { start, end: start };
+	}
+
+	const rangeStart = start === undefined ? 0 : start;
+	const rangeEnd = end === undefined ? Number.POSITIVE_INFINITY : end;
+
+	if (rangeStart > rangeEnd) {
+		return { start: rangeEnd, end: rangeStart };
+	}
+
+	return { start: rangeStart, end: rangeEnd };
+}
+
+function isMacroIgnored(macro, ignoredMacroRanges) {
+	const number = getNumericMacroNumber(macro);
+
+	if (number === undefined) {
+		return false;
+	}
+
+	return ignoredMacroRanges.some(range => number >= range.start && number <= range.end);
+}
+
+function getNumericMacroNumber(macro) {
+	const match = normalizeMacro(macro).match(/^#(\d+)$/);
+
+	return match ? Number(match[1]) : undefined;
 }
 
 function findAssignmentRanges(line, protectedRanges) {

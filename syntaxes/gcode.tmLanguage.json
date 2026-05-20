@@ -59,6 +59,9 @@
 			"include": "#tbracketvalues"
 		},
 		{
+			"include": "#hbracketvalues"
+		},
+		{
 			"include": "#kbracketvalues"
 		},
 		{
@@ -118,8 +121,11 @@
 		{
 			"include": "#qcodes"
 		},
-				{
+		{
 			"include": "#tcodes"
+		},
+		{
+			"include": "#hcodes"
 		},
 		{
 			"include": "#scodes"
@@ -388,6 +394,14 @@
 				}
 			]
 		},
+		"hcodes": {
+			"patterns": [
+				{
+					"name": "support.code.h.gcode",
+					"match": "\\b[Hh](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
 		"scodes": {
 			"patterns": [
 				{
@@ -468,6 +482,23 @@
 				{
 					"name": "support.code.t.gcode",
 					"begin": "\\b[Tt]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
+				}
+			]
+		},
+		"hbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.code.h.gcode",
+					"begin": "\\b[Hh]\\[",
 					"end": "\\]",
 					"patterns": [
 						{

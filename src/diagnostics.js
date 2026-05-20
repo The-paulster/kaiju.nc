@@ -40,7 +40,8 @@ function updateDiagnostics(document, diagnostics) {
 		const line = document.lineAt(lineNumber).text;
 		const ignoreRanges = [
 			...getCommentRanges(line),
-			...getAngleBracketRanges(line)
+			...getAngleBracketRanges(line),
+			...getNamedMacroRanges(line)
 		];
 
 		warnings.push(...makeUnclosedDelimiterWarnings(line, lineNumber));
@@ -101,6 +102,21 @@ function updateDiagnostics(document, diagnostics) {
 	}
 
 	diagnostics.set(document.uri, warnings);
+}
+
+function getNamedMacroRanges(line) {
+	const ranges = [];
+	const macroRegex = /#[A-Za-z_][A-Za-z0-9_]*/g;
+	let match;
+
+	while ((match = macroRegex.exec(line)) !== null) {
+		ranges.push({
+			start: match.index,
+			end: match.index + match[0].length - 1
+		});
+	}
+
+	return ranges;
 }
 
 function makeUnclosedDelimiterWarnings(line, lineNumber) {
@@ -200,5 +216,6 @@ function makeMissingDecimalWarning(lineNumber, start, end, text) {
 }
 
 module.exports = {
-	registerDiagnostics
+	registerDiagnostics,
+	updateDiagnostics
 };
