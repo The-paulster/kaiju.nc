@@ -6,6 +6,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.1.1] - 2026-05-20
 
+- Fixed macro expression resolution so hover values and Chronometer estimates can follow alias macros inside dependent expressions and Fanuc math functions.
+- Fixed macro hover lookup so aliases created by `KAIJU Alias`, such as `#op1_bore_plane`, resolve back to their numbered macro definitions.
 - Fixed missing-decimal warnings so named alias macros like `#r1_2_rh_shiage_trigon` are not mistaken for address values.
 - Added `kaijuNC.alias.caseSensitive`, defaulting to case-insensitive alias matching so uppercased aliases can still be toggled back to numeric macros.
 - Fixed `KAIJU Reconstructor` so named alias macros like `#part_od` keep their original casing while code is normalized.
