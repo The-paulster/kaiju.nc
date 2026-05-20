@@ -98,6 +98,8 @@ Examples of the kinds of cleanup it performs:
 
 The command opens an options picker before formatting. The default decimal-place count and semicolon behavior can be controlled from VS Code Settings.
 
+Leading whitespace is controlled by `kaijuNC.format.leadingWhitespace`. By default, Reconstructor removes stray leading spaces, preserves leading tabs and full soft-tabs, and only takes over indentation automatically for `WHILE`/`END` loop blocks. Soft-tabs are controlled by `kaijuNC.format.softTabSize`, which defaults to 4 spaces. Automatic loop indentation follows the indentation style already present in the file, falling back to spaces when no style is detected.
+
 ## KAIJU Orphan Killer
 
 `KAIJU Orphan Killer` opens a side panel that inspects macro variable usage in the current NC document.

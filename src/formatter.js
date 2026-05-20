@@ -35,19 +35,33 @@ function registerFormatter(context) {
 
 function getFormattingOptions(document, overrides = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.format", document.uri);
-
-	return {
+	const options = {
 		enabled: config.get("enabled", true),
 		decimalPlaces: clampNumber(config.get("decimalPlaces", 3), 0, 9),
 		addMissingDecimal: config.get("addMissingDecimal", true),
 		decimalAddressLetters: config.get("decimalAddressLetters", "XYZUVWABCIJKRF"),
 		autoSemicolon: config.get("autoSemicolon", false),
 		normalizeToolCodes: config.get("normalizeToolCodes", true),
+		leadingWhitespace: config.get("leadingWhitespace", "preserveTabs"),
+		softTabSize: config.get("softTabSize", 4),
 		...overrides
+	};
+
+	return {
+		...options,
+		decimalPlaces: clampNumber(options.decimalPlaces, 0, 9),
+		leadingWhitespace: normalizeLeadingWhitespaceMode(options.leadingWhitespace),
+		softTabSize: normalizeSoftTabSize(options.softTabSize)
 	};
 }
 
 function formatDocumentText(text, options) {
+	options = {
+		...options,
+		leadingWhitespace: normalizeLeadingWhitespaceMode(options && options.leadingWhitespace),
+		softTabSize: normalizeSoftTabSize(options && options.softTabSize)
+	};
+
 	let formattedText = text;
 
 	// Built-in KAIJU.NC Formatting Standard.
@@ -71,7 +85,7 @@ function formatDocumentText(text, options) {
 		formattedText = addSemicolonsBeforeComments(formattedText);
 	}
 
-	formattedText = indentLoopBlocks(formattedText);
+	formattedText = indentLoopBlocks(formattedText, options.leadingWhitespace, options.softTabSize);
 
 	return formattedText;
 }
@@ -86,11 +100,13 @@ function applyFormattingStandard(text, options) {
 }
 
 function formatStandardLine(line, options) {
+	const leadingWhitespace = getLeadingWhitespace(line);
+	const body = line.slice(leadingWhitespace.length);
 	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
+		...getCommentRanges(body),
+		...getAngleBracketRanges(body)
 	];
-	const segments = splitLineByProtectedRanges(line, protectedRanges);
+	const segments = splitLineByProtectedRanges(body, protectedRanges);
 	let result = "";
 
 	for (const segment of segments) {
@@ -110,7 +126,13 @@ function formatStandardLine(line, options) {
 		result += segment.text;
 	}
 
-	return result.trimEnd();
+	const formattedBody = result.trimEnd();
+
+	if (!formattedBody) {
+		return "";
+	}
+
+	return formatLeadingWhitespace(leadingWhitespace, options.leadingWhitespace, options.softTabSize) + formattedBody;
 }
 
 function formatCodeSegment(text, options) {
@@ -246,9 +268,12 @@ function startsAddressValue(text, index) {
 
 function spaceMacroOperators(text) {
 	let result = text;
+	const functionStart = "(?:SIN|COS|TAN|ASIN|ACOS|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)(?=\\[)";
+	const operandEnd = "(?:#\\d+|__KAIJU_ALIAS_\\d+__|\\]|(?:\\d+(?:\\.\\d*)?|\\.\\d+))";
+	const operandStart = `(?:#|__KAIJU_ALIAS_\\d+__|\\[|\\d|\\.|${functionStart})`;
 
-	result = result.replace(/([#\]\d.])([*/])(?=[#\d.\[])/g, "$1 $2 ");
-	result = result.replace(/([#\]\d.])([+-])(?=[#\d.\[])/g, "$1 $2 ");
+	result = result.replace(new RegExp(`(${operandEnd})\\s*([*/])\\s*(?=${operandStart})`, "g"), "$1 $2 ");
+	result = result.replace(new RegExp(`(${operandEnd})\\s*([+-])\\s*(?=${operandStart})`, "g"), "$1 $2 ");
 	result = result.replace(/[ \t]*=[ \t]*/g, " = ");
 
 	return result;
@@ -471,9 +496,17 @@ function addSemicolonToLine(line) {
 	return codeEnd + ";" + codePart.slice(codeEnd.length) + commentPart;
 }
 
-function indentLoopBlocks(text) {
+function indentLoopBlocks(text, leadingWhitespaceMode, softTabSize) {
+	if (leadingWhitespaceMode === "normalize") {
+		return indentLoopBlocksFromZero(text, softTabSize);
+	}
+
+	return indentLoopBlocksPreservingManualIndent(text, leadingWhitespaceMode, softTabSize);
+}
+
+function indentLoopBlocksFromZero(text, softTabSize) {
 	const newline = text.includes("\r\n") ? "\r\n" : "\n";
-	const indentUnit = detectIndentUnit(text);
+	const indentUnit = detectIndentUnit(text, softTabSize);
 	let depth = 0;
 
 	return text
@@ -502,7 +535,40 @@ function indentLoopBlocks(text) {
 		.join(newline);
 }
 
-function detectIndentUnit(text) {
+function indentLoopBlocksPreservingManualIndent(text, leadingWhitespaceMode, softTabSize) {
+	const newline = text.includes("\r\n") ? "\r\n" : "\n";
+	const indentUnit = detectIndentUnit(text, softTabSize);
+	const loopIndentStack = [];
+
+	return text
+		.split(/\r?\n/)
+		.map(line => {
+			const leadingWhitespace = getLeadingWhitespace(line);
+			const trimmedLine = line.trim();
+
+			if (!trimmedLine) {
+				return "";
+			}
+
+			const codeLine = stripLineComments(trimmedLine);
+			let nextLeadingWhitespace = formatLeadingWhitespace(leadingWhitespace, leadingWhitespaceMode, softTabSize);
+
+			if (startsWithLoopEnd(codeLine)) {
+				nextLeadingWhitespace = loopIndentStack.pop() || nextLeadingWhitespace;
+			} else if (loopIndentStack.length > 0) {
+				nextLeadingWhitespace = loopIndentStack[loopIndentStack.length - 1] + indentUnit;
+			}
+
+			if (startsLoopBlock(codeLine)) {
+				loopIndentStack.push(nextLeadingWhitespace);
+			}
+
+			return nextLeadingWhitespace + trimmedLine;
+		})
+		.join(newline);
+}
+
+function detectIndentUnit(text, softTabSize) {
 	for (const line of text.split(/\r?\n/)) {
 		const match = line.match(/^([ \t]+)/);
 
@@ -510,10 +576,70 @@ function detectIndentUnit(text) {
 			continue;
 		}
 
-		return match[1].includes("\t") ? "\t" : " ".repeat(Math.min(match[1].length, 4));
+		if (match[1].includes("\t")) {
+			return "\t";
+		}
+
+		return " ".repeat(Math.min(match[1].length, softTabSize));
 	}
 
-	return "\t";
+	return " ".repeat(softTabSize);
+}
+
+function getLeadingWhitespace(line) {
+	const match = line.match(/^[ \t]*/);
+
+	return match ? match[0] : "";
+}
+
+function formatLeadingWhitespace(leadingWhitespace, leadingWhitespaceMode, softTabSize) {
+	if (leadingWhitespaceMode === "normalize") {
+		return "";
+	}
+
+	if (leadingWhitespaceMode === "preserve") {
+		return leadingWhitespace;
+	}
+
+	return preserveIndentUnits(leadingWhitespace, softTabSize);
+}
+
+function preserveIndentUnits(leadingWhitespace, softTabSize) {
+	let result = "";
+	let pendingSpaces = 0;
+
+	for (const character of leadingWhitespace) {
+		if (character === "\t") {
+			result += " ".repeat(Math.floor(pendingSpaces / softTabSize) * softTabSize);
+			pendingSpaces = 0;
+			result += character;
+			continue;
+		}
+
+		pendingSpaces++;
+	}
+
+	result += " ".repeat(Math.floor(pendingSpaces / softTabSize) * softTabSize);
+
+	return result;
+}
+
+function normalizeLeadingWhitespaceMode(value) {
+	if (value === "normalize" || value === "preserve" || value === "preserveTabs") {
+		return value;
+	}
+
+	return "preserveTabs";
+}
+
+function normalizeSoftTabSize(value) {
+	const number = Number(value);
+
+	if (!Number.isFinite(number)) {
+		return 4;
+	}
+
+	return Math.max(1, Math.min(16, Math.round(number)));
 }
 
 function stripLineComments(line) {

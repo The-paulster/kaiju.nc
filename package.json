@@ -408,6 +408,28 @@
             "type": "boolean",
             "default": true,
             "description": "Normalize T codes to four digits, such as T1 to T0101 and T606 to T0606."
+          },
+          "kaijuNC.format.leadingWhitespace": {
+            "type": "string",
+            "default": "preserveTabs",
+            "enum": [
+              "preserveTabs",
+              "preserve",
+              "normalize"
+            ],
+            "enumDescriptions": [
+              "Remove stray leading spaces, preserve leading tabs and full soft-tabs, and auto-indent WHILE/END blocks using the detected indent style.",
+              "Preserve all leading spaces and tabs, except when auto-indenting WHILE/END blocks using the detected indent style.",
+              "Normalize leading whitespace across the document using WHILE/END block depth and the detected indent style."
+            ],
+            "description": "Controls how KAIJU Reconstructor handles leading whitespace."
+          },
+          "kaijuNC.format.softTabSize": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 16,
+            "description": "Number of leading spaces KAIJU Reconstructor treats as one intentional soft-tab indentation unit."
           }
         }
       },
