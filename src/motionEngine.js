@@ -36,7 +36,7 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 			return estimateMotion(words, motionCode, state, options);
 		}
 
-		applyPositionUpdate(words, state);
+		applyPositionUpdate(words, state, options);
 	}
 
 	return undefined;
@@ -248,10 +248,10 @@ function lastWord(words, letter) {
 
 function estimateMotion(words, motionCode, state, options) {
 	const start = clonePosition(state.position);
-	const end = makeEndPosition(start, words);
+	const end = makeEndPosition(start, words, options);
 
 	if (!hasKnownPosition(start) || !hasKnownPosition(end)) {
-		applyPositionUpdate(words, state);
+		applyPositionUpdate(words, state, options);
 		return makeUnavailableEstimate(motionCode, start, end, "Start or end position is incomplete.");
 	}
 
@@ -287,10 +287,11 @@ function estimateMotion(words, motionCode, state, options) {
 		warnings.push("No RPM limit found; CSS estimate is unclamped.");
 	}
 
-	applyPositionUpdate(words, state);
+	applyPositionUpdate(words, state, options);
 
 	return {
 		motionCode,
+		machineCoordinate: hasGCode(words, 53),
 		start,
 		end,
 		distance,
@@ -313,6 +314,7 @@ function estimateMotion(words, motionCode, state, options) {
 function makeUnavailableEstimate(motionCode, start, end, reason) {
 	return {
 		motionCode,
+		machineCoordinate: false,
 		start,
 		end,
 		distance: NaN,
@@ -321,8 +323,12 @@ function makeUnavailableEstimate(motionCode, start, end, reason) {
 	};
 }
 
-function applyPositionUpdate(words, state) {
-	state.position = makeEndPosition(state.position, words);
+function applyPositionUpdate(words, state, options) {
+	if (isCoordinateSettingLine(words)) {
+		return;
+	}
+
+	state.position = makeEndPosition(state.position, words, options);
 }
 
 function collectUnresolvedWordWarnings(words, letters) {
@@ -339,20 +345,23 @@ function collectUnresolvedWordWarnings(words, letters) {
 	return warnings;
 }
 
-function makeEndPosition(start, words) {
+function makeEndPosition(start, words, options = {}) {
 	const end = clonePosition(start);
 	const axisWords = [
 		{ absolute: "X", incremental: "U", key: "x" },
 		{ absolute: "Y", incremental: "V", key: "y" },
 		{ absolute: "Z", incremental: "W", key: "z" }
 	];
+	const g53Position = hasGCode(words, 53) ? options.g53Position : undefined;
 
 	for (const axis of axisWords) {
 		const absoluteWord = lastWord(words, axis.absolute);
 		const incrementalWord = lastWord(words, axis.incremental);
 
 		if (absoluteWord && Number.isFinite(absoluteWord.value)) {
-			end[axis.key] = absoluteWord.value;
+			end[axis.key] = g53Position && Number.isFinite(g53Position[axis.key])
+				? g53Position[axis.key]
+				: absoluteWord.value;
 		}
 
 		if (incrementalWord && Number.isFinite(incrementalWord.value) && Number.isFinite(end[axis.key])) {
@@ -361,6 +370,10 @@ function makeEndPosition(start, words) {
 	}
 
 	return end;
+}
+
+function hasGCode(words, targetCode) {
+	return words.some(word => word.letter === "G" && Number.isFinite(word.value) && Math.trunc(word.value) === targetCode);
 }
 
 function buildPathPoints(motionCode, start, end, words, options) {
@@ -929,7 +942,7 @@ function analyzeChronobladeRange(document, range, options) {
 		}
 
 		if (!positionWasUpdated) {
-			applyPositionUpdate(words, state);
+			applyPositionUpdate(words, state, options);
 		}
 	}
 
@@ -971,7 +984,7 @@ function analyzeVisionRange(document, range, options) {
 		}
 
 		if (!positionWasUpdated) {
-			applyPositionUpdate(words, state);
+			applyPositionUpdate(words, state, options);
 		}
 	}
 
@@ -1000,7 +1013,11 @@ function isLineInRange(lineNumber, range) {
 }
 
 function hasMotionAxisWords(words) {
-	return words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+	return !isCoordinateSettingLine(words) && words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+}
+
+function isCoordinateSettingLine(words) {
+	return hasGCode(words, 10);
 }
 
 function makeToolChangeRows(words, previousTool, options) {
@@ -1072,7 +1089,7 @@ function makeMotionReportRow(lineNumber, motionCode, estimate) {
 function makeVisionMotionRow(lineNumber, motionCode, estimate, options) {
 	return {
 		lineNumber: lineNumber + 1,
-		instruction: `G${motionCode}`,
+		instruction: estimate.machineCoordinate ? `G53 G${motionCode}` : `G${motionCode}`,
 		motionCode,
 		start: clonePosition(estimate.start),
 		end: clonePosition(estimate.end),

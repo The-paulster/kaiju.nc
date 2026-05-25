@@ -8,6 +8,7 @@ const { registerToolDecorations } = require("./toolDecorations");
 const { registerKaijuSenseHover } = require("./kaijuSenseHover");
 const { registerChronobladeWebview } = require("./chronobladeWebview");
 const { registerKaijuVisionWebview } = require("./kaijuVisionWebview");
+const { registerKaijuDecomposition } = require("./decomposition");
 
 function activate(context) {
 	registerFormatter(context);
@@ -20,6 +21,7 @@ function activate(context) {
 	registerKaijuSenseHover(context);
 	registerChronobladeWebview(context);
 	registerKaijuVisionWebview(context);
+	registerKaijuDecomposition(context);
 }
 
 function deactivate() {}

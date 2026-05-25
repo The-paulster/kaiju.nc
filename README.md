@@ -129,6 +129,21 @@ The inspection ignores macro-looking text inside comments and protected angle-br
 
 <img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
 
+## KAIJU Decomposition
+
+`KAIJU Decomposition` opens a temporary flattened copy of the current program for inspection.
+
+- Command: `KAIJU Decomposition`
+- Shortcut: `Ctrl+Alt+D`
+
+It walks the active file, tracks macro assignments, substitutes resolvable macro expressions into address values, removes resolved macro-only assignment and control-flow lines, and follows simple `GOTO`, `IF [...] GOTO`, and `WHILE [...] DO...` / `END...` flow. The temporary output is formatted with KAIJU Reconstructor and includes `KAIJU flow` comments where jumps, conditionals, and loops affected the flattened path.
+
+When a value is needed but cannot be found from the file, KAIJU prompts for a manual numeric input and records that assumption in the header of the temporary output. The generated file also includes warning comments when control flow or expressions cannot be resolved confidently.
+
+Macro comparisons use a small numeric tolerance so repeated decimal subtraction can still trip final-pass checks. The tolerance is controlled by `kaijuNC.decomposition.comparisonTolerance`, which defaults to `0.0000001`.
+
+This is an inspection aid for understanding macro-heavy programs. It does not expand external subprograms, verify machine state, or guarantee that the decomposed result is safe to run.
+
 ## KAIJU Sense
 
 `KAIJU Sense` shows motion details when you hover over an explicit `G0`, `G1`, `G2`, or `G3` move.
@@ -156,13 +171,13 @@ Sense settings are controlled with `kaijuNC.sense.enabled`, `kaijuNC.sense.xAxis
 - Command: `KAIJU Vision`
 - Shortcut: `Ctrl+Alt+V`
 
-The preview can project motion onto `X-Z`, `X-Y`, or `Z-Y`, and it draws sampled `G0`, `G1`, `G2`, and `G3` paths as SVG with direction arrows. The fitted view keeps the whole path in the panel, zoom controls and the mouse wheel adjust the viewBox, the path can be dragged with the mouse, paths and labels stay screen-sized while zooming, optional dashed zero lines can be shown, a compact compass shows positive and negative axis directions, a start marker shows where the preview begins, endpoint labels stack the finishing line number above the end coordinates, and the locked table below the preview keeps eight rows visible.
+The preview can project motion onto `X-Z`, `X-Y`, or `Z-Y`, and it draws sampled `G0`, `G1`, `G2`, and `G3` paths as SVG with direction arrows. `G53` machine-coordinate moves can be placed at configured preview coordinates so retracts and machine-position moves have a visible destination. The fitted view keeps the whole path in the panel, zoom controls and the mouse wheel adjust the viewBox, the path can be dragged with the mouse, paths and labels stay screen-sized while zooming, optional dashed zero lines can be shown, a compact compass shows positive and negative axis directions, a start marker shows where the preview begins, endpoint labels stack the finishing line number above the end coordinates, and the locked table below the preview keeps eight rows visible.
 
 Use `Save SVG` to export the current plane view to an `.svg` file.
 
 Vision walks the document from the top before drawing a selected section, so modal position, macro assignments, feeds, and arc context are resolved before the selection starts.
 
-Vision settings are controlled with `kaijuNC.vision.plane`, `kaijuNC.vision.xAxisMode`, `kaijuNC.vision.xyOrientation`, `kaijuNC.vision.xzOrientation`, `kaijuNC.vision.zyOrientation`, `kaijuNC.vision.cssSurfaceSpeedUnit`, `kaijuNC.vision.samples`, `kaijuNC.vision.compactPanelWidth`, `kaijuNC.vision.lineThickness`, `kaijuNC.vision.arrowSize`, `kaijuNC.vision.endpointSize`, `kaijuNC.vision.startPointSize`, `kaijuNC.vision.labelFontSize`, `kaijuNC.vision.labelOffset`, `kaijuNC.vision.compassSize`, `kaijuNC.vision.compassOffsetX`, `kaijuNC.vision.compassOffsetY`, and `kaijuNC.vision.rapidRate`. By default, the `X-Z` view uses a lathe-style orientation where `Z+` points right and `X+` points up.
+Vision settings are controlled with `kaijuNC.vision.plane`, `kaijuNC.vision.xAxisMode`, `kaijuNC.vision.xyOrientation`, `kaijuNC.vision.xzOrientation`, `kaijuNC.vision.zyOrientation`, `kaijuNC.vision.cssSurfaceSpeedUnit`, `kaijuNC.vision.samples`, `kaijuNC.vision.compactPanelWidth`, `kaijuNC.vision.lineThickness`, `kaijuNC.vision.arrowSize`, `kaijuNC.vision.endpointSize`, `kaijuNC.vision.startPointSize`, `kaijuNC.vision.labelFontSize`, `kaijuNC.vision.labelOffset`, `kaijuNC.vision.compassSize`, `kaijuNC.vision.compassOffsetX`, `kaijuNC.vision.compassOffsetY`, `kaijuNC.vision.rapidRate`, `kaijuNC.vision.g53X`, `kaijuNC.vision.g53Y`, and `kaijuNC.vision.g53Z`. By default, the `X-Z` view uses a lathe-style orientation where `Z+` points right and `X+` points up.
 
 ## KAIJU Chronoblade
 

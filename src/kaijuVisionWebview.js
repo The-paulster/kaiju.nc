@@ -163,7 +163,12 @@ function getVisionOptions(document, rawOptions = {}) {
 		labelOffset: clampNumber(config.get("labelOffset", 10), 0, 80),
 		compassSize: clampNumber(config.get("compassSize", 78), 24, 220),
 		compassOffsetX: clampNumber(config.get("compassOffsetX", 14), 0, 240),
-		compassOffsetY: clampNumber(config.get("compassOffsetY", 14), 0, 240)
+		compassOffsetY: clampNumber(config.get("compassOffsetY", 14), 0, 240),
+		g53Position: {
+			x: Number(config.get("g53X", 0)),
+			y: Number(config.get("g53Y", 0)),
+			z: Number(config.get("g53Z", 0))
+		}
 	};
 }
 
