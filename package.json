@@ -461,13 +461,210 @@
         }
       },
       {
-        "title": "KAIJU.NC: Chronoblade",
+        "title": "KAIJU.NC: Sense",
         "properties": {
-          "kaijuNC.chronoblade.enabled": {
+          "kaijuNC.sense.enabled": {
             "type": "boolean",
             "default": true,
-            "description": "Enable KAIJU Chronoblade hover estimates on G1, G2, and G3 moves."
+            "description": "Enable KAIJU Sense motion hovers on G0, G1, G2, and G3 moves."
           },
+          "kaijuNC.sense.xAxisMode": {
+            "type": "string",
+            "enum": [
+              "diameter",
+              "radius"
+            ],
+            "default": "diameter",
+            "description": "How KAIJU Sense interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
+          },
+          "kaijuNC.sense.cssSurfaceSpeedUnit": {
+            "type": "string",
+            "enum": [
+              "mPerMin",
+              "sfm"
+            ],
+            "default": "mPerMin",
+            "description": "Unit used by KAIJU Sense for G96 constant surface speed calculations."
+          },
+          "kaijuNC.sense.samples": {
+            "type": "integer",
+            "default": 96,
+            "minimum": 12,
+            "maximum": 500,
+            "description": "Number of samples used for KAIJU Sense path and CSS/RPM-limit estimates."
+          },
+          "kaijuNC.sense.rapidRate": {
+            "type": "number",
+            "default": 10000,
+            "minimum": 0,
+            "description": "Default G0 rapid rate used by KAIJU Sense hovers, in program units per minute."
+          }
+        }
+      },
+      {
+        "title": "KAIJU.NC: Vision",
+        "properties": {
+          "kaijuNC.vision.plane": {
+            "type": "string",
+            "enum": [
+              "xz",
+              "xy",
+              "zy"
+            ],
+            "default": "xz",
+            "description": "Default 2D plane used by KAIJU Vision."
+          },
+          "kaijuNC.vision.xAxisMode": {
+            "type": "string",
+            "enum": [
+              "diameter",
+              "radius"
+            ],
+            "default": "diameter",
+            "description": "How KAIJU Vision interprets X-axis values. Diameter mode uses half-X for physical X arc and distance calculations."
+          },
+          "kaijuNC.vision.xyOrientation": {
+            "type": "string",
+            "enum": [
+              "xRightYUp",
+              "xRightYDown",
+              "xLeftYUp",
+              "xLeftYDown",
+              "yRightXUp",
+              "yRightXDown",
+              "yLeftXUp",
+              "yLeftXDown"
+            ],
+            "default": "xRightYUp",
+            "description": "Controls how KAIJU Vision orients the X-Y plane."
+          },
+          "kaijuNC.vision.xzOrientation": {
+            "type": "string",
+            "enum": [
+              "zRightXUp",
+              "zRightXDown",
+              "zLeftXUp",
+              "zLeftXDown",
+              "xRightZUp",
+              "xRightZDown",
+              "xLeftZUp",
+              "xLeftZDown"
+            ],
+            "default": "zRightXUp",
+            "description": "Controls how KAIJU Vision orients the X-Z plane."
+          },
+          "kaijuNC.vision.zyOrientation": {
+            "type": "string",
+            "enum": [
+              "zRightYUp",
+              "zRightYDown",
+              "zLeftYUp",
+              "zLeftYDown",
+              "yRightZUp",
+              "yRightZDown",
+              "yLeftZUp",
+              "yLeftZDown"
+            ],
+            "default": "zRightYUp",
+            "description": "Controls how KAIJU Vision orients the Z-Y plane."
+          },
+          "kaijuNC.vision.cssSurfaceSpeedUnit": {
+            "type": "string",
+            "enum": [
+              "mPerMin",
+              "sfm"
+            ],
+            "default": "mPerMin",
+            "description": "Unit used by KAIJU Vision for G96 constant surface speed calculations."
+          },
+          "kaijuNC.vision.samples": {
+            "type": "integer",
+            "default": 96,
+            "minimum": 12,
+            "maximum": 500,
+            "description": "Number of samples used by KAIJU Vision for arc path drawing."
+          },
+          "kaijuNC.vision.compactPanelWidth": {
+            "type": "number",
+            "default": 0.55,
+            "minimum": 0.25,
+            "maximum": 0.8,
+            "description": "Target width fraction for the KAIJU Vision side editor group when VS Code has a simple two-column layout."
+          },
+          "kaijuNC.vision.lineThickness": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0.1,
+            "maximum": 5,
+            "description": "Scale factor for KAIJU Vision path line thickness."
+          },
+          "kaijuNC.vision.arrowSize": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0.1,
+            "maximum": 5,
+            "description": "Scale factor for KAIJU Vision path direction arrow size."
+          },
+          "kaijuNC.vision.endpointSize": {
+            "type": "number",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 24,
+            "description": "Endpoint marker radius in KAIJU Vision, in screen pixels."
+          },
+          "kaijuNC.vision.startPointSize": {
+            "type": "number",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 24,
+            "description": "Start-point marker radius in KAIJU Vision, in screen pixels."
+          },
+          "kaijuNC.vision.labelFontSize": {
+            "type": "number",
+            "default": 9,
+            "minimum": 5,
+            "maximum": 32,
+            "description": "Endpoint and start label font size in KAIJU Vision, in screen pixels."
+          },
+          "kaijuNC.vision.labelOffset": {
+            "type": "number",
+            "default": 10,
+            "minimum": 0,
+            "maximum": 80,
+            "description": "Distance between KAIJU Vision point markers and their labels, in screen pixels."
+          },
+          "kaijuNC.vision.compassSize": {
+            "type": "number",
+            "default": 78,
+            "minimum": 24,
+            "maximum": 220,
+            "description": "KAIJU Vision compass size in screen pixels."
+          },
+          "kaijuNC.vision.compassOffsetX": {
+            "type": "number",
+            "default": 14,
+            "minimum": 0,
+            "maximum": 240,
+            "description": "KAIJU Vision compass horizontal offset from the left edge, in screen pixels."
+          },
+          "kaijuNC.vision.compassOffsetY": {
+            "type": "number",
+            "default": 14,
+            "minimum": 0,
+            "maximum": 240,
+            "description": "KAIJU Vision compass vertical offset from the top edge, in screen pixels."
+          },
+          "kaijuNC.vision.rapidRate": {
+            "type": "number",
+            "default": 10000,
+            "minimum": 0,
+            "description": "Default G0 rapid rate used by KAIJU Vision timing context, in program units per minute."
+          }
+        }
+      },
+      {
+        "title": "KAIJU.NC: Chronoblade",
+        "properties": {
           "kaijuNC.chronoblade.xAxisMode": {
             "type": "string",
             "enum": [
@@ -537,6 +734,10 @@
       {
         "command": "kaijuNC.chronoblade",
         "title": "KAIJU Chronoblade"
+      },
+      {
+        "command": "kaijuNC.vision",
+        "title": "KAIJU Vision"
       }
     ],
     "keybindings": [
@@ -563,6 +764,12 @@
         "key": "ctrl+alt+c",
         "mac": "cmd+alt+c",
         "when": "editorTextFocus && editorLangId == gcode"
+      },
+      {
+        "command": "kaijuNC.vision",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v",
+        "when": "editorTextFocus && editorLangId == gcode"
       }
     ],
 
@@ -585,6 +792,11 @@
         },
         {
           "command": "kaijuNC.chronoblade",
+          "when": "editorLangId == gcode",
+          "group": "navigation"
+        },
+        {
+          "command": "kaijuNC.vision",
           "when": "editorLangId == gcode",
           "group": "navigation"
         }

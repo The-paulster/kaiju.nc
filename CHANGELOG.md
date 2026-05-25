@@ -4,13 +4,31 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [Unreleased]
 
+- Added `KAIJU Sense` motion hovers for `G0`, `G1`, `G2`, and `G3`, combining the old Chronoblade timing hover with path geometry details.
+- Added Sense geometry details for linear moves, including axis deltas and angle from the X axis.
+- Added Sense geometry details for arcs, including direction, plane, center, radius, sweep degrees, circle length, and endpoint deltas.
+- Added `KAIJU Vision`, a right-click 2D SVG path preview for whole programs or selected sections with `X-Z`, `X-Y`, and `Z-Y` plane views.
+- Added KAIJU Vision fit/zoom controls and a compact positive/negative axis compass.
+- Added KAIJU Vision path direction arrows and compact stacked endpoint labels with finishing line numbers.
+- Added a KAIJU Vision start-point marker and anchored endpoint labels so tags stay aligned to their points.
+- Added KAIJU Vision mouse-wheel zoom, drag panning, configurable line thickness, configurable arrow size, and a locked eight-row result table.
+- Added a KAIJU Vision toggle for dashed zero reference lines.
+- Made the KAIJU Vision viewport and SVG coordinate view square so paths keep a consistent visual scale.
+- Made KAIJU Vision paths, arrows, endpoint labels, and compass stay screen-sized while zooming, and removed the framed viewer background.
+- Added `Save SVG` export from KAIJU Vision.
+- Added `kaijuNC.vision.plane`, `kaijuNC.vision.xAxisMode`, `kaijuNC.vision.xyOrientation`, `kaijuNC.vision.xzOrientation`, `kaijuNC.vision.zyOrientation`, `kaijuNC.vision.cssSurfaceSpeedUnit`, `kaijuNC.vision.samples`, `kaijuNC.vision.compactPanelWidth`, `kaijuNC.vision.lineThickness`, `kaijuNC.vision.arrowSize`, `kaijuNC.vision.endpointSize`, `kaijuNC.vision.startPointSize`, `kaijuNC.vision.labelFontSize`, `kaijuNC.vision.labelOffset`, `kaijuNC.vision.compassSize`, `kaijuNC.vision.compassOffsetX`, `kaijuNC.vision.compassOffsetY`, and `kaijuNC.vision.rapidRate`.
+- Renamed the shared Chronoblade analysis module to `motionEngine` so Sense and Chronoblade can reuse the same motion state, geometry, and timing logic.
+- Fixed X-Z arc handedness so `G2` displays clockwise in the default lathe-style Vision orientation.
+- Fixed KAIJU Vision diameter-mode drawing so X-Z fillets use physical X travel while endpoint labels keep programmed X coordinates.
+- Fixed KAIJU Sense linear angles in diameter X mode so they use physical X travel instead of programmed diameter delta.
 - Added a right-click `KAIJU Chronoblade` cycle-time report webview with whole-program and selection sends, `G0` rapid timing, tool swap timing, and per-line motion/tool rows.
 - Added `kaijuNC.chronoblade.compactPanelWidth` so the Chronoblade report width can be configured separately from Orphan Killer.
+- Added `kaijuNC.sense.enabled`, `kaijuNC.sense.xAxisMode`, `kaijuNC.sense.cssSurfaceSpeedUnit`, `kaijuNC.sense.samples`, and `kaijuNC.sense.rapidRate` for the new KAIJU Sense hover.
 - Added `kaijuNC.syntax.toolDecorations.enabled` so tool-range gutter markers can be toggled from the new Syntax settings category.
 - Added `kaijuNC.format.leadingWhitespace` and `kaijuNC.format.softTabSize`, defaulting to preserving leading tabs and full 4-space soft-tabs while removing stray leading spaces and still auto-indenting `WHILE`/`END` blocks using the detected indent style.
 - Fixed `KAIJU Reconstructor` operator spacing for named alias macro math, such as `#foo-#bar`.
-- Split extension settings into Reconstructor, Alias, Orphan Killer, and Chronoblade categories in the VS Code Settings UI.
-- Split Chronoblade into shared engine, hover, and webview modules so calculation changes flow through both UI surfaces.
+- Split extension settings into Reconstructor, Alias, Orphan Killer, Sense, Vision, and Chronoblade categories in the VS Code Settings UI.
+- Split Chronoblade into shared motion analysis, Sense hover, and webview modules so calculation changes flow through both UI surfaces.
 
 ## [0.1.1] - 2026-05-20
 

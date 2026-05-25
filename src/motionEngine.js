@@ -9,7 +9,7 @@ const {
 	setMacroValue
 } = require("./macroExpressions");
 
-const CUTTING_MOTION_CODES = new Set([1, 2, 3]);
+const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
 const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
 
 function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options) {
@@ -29,7 +29,7 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 		applyModalState(words, motionCode, state);
 
 		if (lineNumber === targetLineNumber) {
-			if (motionCode !== hoveredMotion.code || !CUTTING_MOTION_CODES.has(motionCode)) {
+			if (motionCode !== hoveredMotion.code || !HOVER_MOTION_CODES.has(motionCode)) {
 				return undefined;
 			}
 
@@ -257,6 +257,7 @@ function estimateMotion(words, motionCode, state, options) {
 
 	const path = buildPathPoints(motionCode, start, end, words, options);
 	const distance = sumPathDistance(path, options);
+	const geometry = makeMotionGeometry(motionCode, start, end, path, options);
 	const timing = motionCode === 0
 		? estimateRapidTime(distance, options)
 		: estimatePathTime(path, state, options);
@@ -302,6 +303,8 @@ function estimateMotion(words, motionCode, state, options) {
 		rpm: state.rpm,
 		cssSurfaceSpeed: state.cssSurfaceSpeed,
 		rpmLimit: state.rpmLimit,
+		geometry,
+		pathPoints: path.points,
 		usedArcFallback: path.usedArcFallback,
 		warnings
 	};
@@ -383,6 +386,7 @@ function buildLinearPathPoints(start, end, options) {
 
 	return {
 		points,
+		kind: "linear",
 		usedArcFallback: false
 	};
 }
@@ -484,6 +488,7 @@ function buildArcPathPoints(motionCode, start, end, words, options) {
 
 	return {
 		points: [start, end],
+		kind: "arc",
 		usedArcFallback: true
 	};
 }
@@ -492,9 +497,11 @@ function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, 
 	const startPoint = toPhysicalPoint(start, options);
 	const centerPrimary = startPoint[primaryAxis] + primaryOffset;
 	const centerSecondary = startPoint[secondaryAxis] + secondaryOffset;
+	const sweepMotionCode = getPlaneSweepMotionCode(motionCode, primaryAxis, secondaryAxis);
 
 	return buildPlanarArcPathFromCenter(
 		motionCode,
+		sweepMotionCode,
 		start,
 		end,
 		primaryAxis,
@@ -527,7 +534,8 @@ function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, 
 	const centerDistance = Math.sqrt(Math.max(0, radius * radius - (chordLength / 2) * (chordLength / 2)));
 	const normalPrimary = -deltaSecondary / chordLength;
 	const normalSecondary = deltaPrimary / chordLength;
-	const directionSign = motionCode === 3 ? 1 : -1;
+	const sweepMotionCode = getPlaneSweepMotionCode(motionCode, primaryAxis, secondaryAxis);
+	const directionSign = sweepMotionCode === 3 ? 1 : -1;
 	const radiusSign = radiusWordValue < 0 ? -1 : 1;
 	const centerSign = directionSign * radiusSign;
 	const centerPrimary = midpointPrimary + normalPrimary * centerDistance * centerSign;
@@ -535,6 +543,7 @@ function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, 
 
 	return buildPlanarArcPathFromCenter(
 		motionCode,
+		sweepMotionCode,
 		start,
 		end,
 		primaryAxis,
@@ -545,18 +554,30 @@ function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, 
 	);
 }
 
-function buildPlanarArcPathFromCenter(motionCode, start, end, primaryAxis, secondaryAxis, centerPrimary, centerSecondary, options) {
+function getPlaneSweepMotionCode(motionCode, primaryAxis, secondaryAxis) {
+	if (primaryAxis === "x" && secondaryAxis === "z") {
+		return motionCode === 2 ? 3 : motionCode === 3 ? 2 : motionCode;
+	}
+
+	return motionCode;
+}
+
+function buildPlanarArcPathFromCenter(motionCode, sweepMotionCode, start, end, primaryAxis, secondaryAxis, centerPrimary, centerSecondary, options) {
 	const startPoint = toPhysicalPoint(start, options);
 	const endPoint = toPhysicalPoint(end, options);
 	const startAngle = Math.atan2(startPoint[secondaryAxis] - centerSecondary, startPoint[primaryAxis] - centerPrimary);
 	const endAngle = Math.atan2(endPoint[secondaryAxis] - centerSecondary, endPoint[primaryAxis] - centerPrimary);
-	const sweep = getArcSweep(motionCode, startAngle, endAngle);
+	const sweep = getArcSweep(sweepMotionCode, startAngle, endAngle);
 	const steps = Math.max(8, Math.ceil(options.samples * Math.min(1, sweep / (Math.PI * 2))));
+	const radius = Math.hypot(
+		startPoint[primaryAxis] - centerPrimary,
+		startPoint[secondaryAxis] - centerSecondary
+	);
 	const points = [];
 
 	for (let step = 0; step <= steps; step++) {
 		const fraction = step / steps;
-		const angle = motionCode === 2
+		const angle = sweepMotionCode === 2
 			? startAngle - sweep * fraction
 			: startAngle + sweep * fraction;
 		const physicalPoint = {
@@ -564,11 +585,6 @@ function buildPlanarArcPathFromCenter(motionCode, start, end, primaryAxis, secon
 			y: interpolateAxis(startPoint.y, endPoint.y, fraction),
 			z: interpolateAxis(startPoint.z, endPoint.z, fraction)
 		};
-		const radius = Math.hypot(
-			startPoint[primaryAxis] - centerPrimary,
-			startPoint[secondaryAxis] - centerSecondary
-		);
-
 		physicalPoint[primaryAxis] = centerPrimary + Math.cos(angle) * radius;
 		physicalPoint[secondaryAxis] = centerSecondary + Math.sin(angle) * radius;
 		points.push(fromPhysicalPoint(physicalPoint, options));
@@ -576,8 +592,93 @@ function buildPlanarArcPathFromCenter(motionCode, start, end, primaryAxis, secon
 
 	return {
 		points,
+		kind: "arc",
+		plane: `${primaryAxis.toUpperCase()}${secondaryAxis.toUpperCase()}`,
+		center: fromPhysicalPoint({
+			x: primaryAxis === "x" ? centerPrimary : startPoint.x,
+			y: primaryAxis === "y" ? centerPrimary : secondaryAxis === "y" ? centerSecondary : startPoint.y,
+			z: secondaryAxis === "z" ? centerSecondary : startPoint.z
+		}, options),
+		radius,
+		sweepRadians: sweep,
+		sweepDegrees: radiansToDegrees(sweep),
+		direction: motionCode === 2 ? "CW" : "CCW",
+		arcLength: radius * sweep,
 		usedArcFallback: false
 	};
+}
+
+function makeMotionGeometry(motionCode, start, end, path, options) {
+	const delta = getProgramDelta(start, end);
+	const physicalDelta = getPhysicalDelta(start, end, options);
+
+	if (motionCode === 0 || motionCode === 1 || !path || path.usedArcFallback) {
+		return {
+			kind: motionCode === 0 || motionCode === 1 ? "linear" : "fallback",
+			delta,
+			angleFromXDegrees: getAngleFromX(physicalDelta)
+		};
+	}
+
+	return {
+		kind: "arc",
+		delta,
+		plane: path.plane,
+		center: path.center,
+		radius: path.radius,
+		sweepDegrees: path.sweepDegrees,
+		direction: path.direction,
+		arcLength: path.arcLength
+	};
+}
+
+function getProgramDelta(start, end) {
+	return {
+		x: axisDelta(start.x, end.x),
+		y: axisDelta(start.y, end.y),
+		z: axisDelta(start.z, end.z)
+	};
+}
+
+function getPhysicalDelta(start, end, options) {
+	const startPoint = toPhysicalPoint(start, options);
+	const endPoint = toPhysicalPoint(end, options);
+
+	return {
+		x: axisDelta(startPoint.x, endPoint.x),
+		y: axisDelta(startPoint.y, endPoint.y),
+		z: axisDelta(startPoint.z, endPoint.z)
+	};
+}
+
+function axisDelta(startValue, endValue) {
+	if (!Number.isFinite(startValue) || !Number.isFinite(endValue)) {
+		return NaN;
+	}
+
+	return endValue - startValue;
+}
+
+function getAngleFromX(delta) {
+	if (!Number.isFinite(delta.x)) {
+		return NaN;
+	}
+
+	const nonXTravel = Math.hypot(
+		Number.isFinite(delta.y) ? delta.y : 0,
+		Number.isFinite(delta.z) ? delta.z : 0
+	);
+	const length = Math.hypot(delta.x, nonXTravel);
+
+	if (!Number.isFinite(length) || length <= 0) {
+		return NaN;
+	}
+
+	return radiansToDegrees(Math.atan2(nonXTravel, Math.abs(delta.x)));
+}
+
+function radiansToDegrees(radians) {
+	return radians * 180 / Math.PI;
 }
 
 function getArcSweep(motionCode, startAngle, endAngle) {
@@ -839,6 +940,47 @@ function analyzeChronobladeRange(document, range, options) {
 	};
 }
 
+function analyzeVisionRange(document, range, options) {
+	const state = makeInitialState();
+	const macroValues = new Map();
+	const macroAliases = buildMacroAliasMap(document);
+	const rows = [];
+	const targetRange = normalizeLineRange(range, document.lineCount);
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const line = document.lineAt(lineNumber).text;
+		const codeLine = maskProtectedRanges(line);
+		let positionWasUpdated = false;
+
+		trackMacroAssignments(codeLine, macroValues, macroAliases);
+
+		const words = parseWords(codeLine, macroValues, macroAliases);
+		const motionCode = getMotionCode(words);
+
+		applyModalState(words, motionCode, state);
+
+		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
+
+		if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
+			const estimate = estimateMotion(words, activeMotionCode, state, options);
+			positionWasUpdated = true;
+
+			if (isLineInRange(lineNumber, targetRange)) {
+				rows.push(makeVisionMotionRow(lineNumber, activeMotionCode, estimate, options));
+			}
+		}
+
+		if (!positionWasUpdated) {
+			applyPositionUpdate(words, state);
+		}
+	}
+
+	return {
+		rows,
+		range: targetRange
+	};
+}
+
 function normalizeLineRange(range, lineCount) {
 	if (!range) {
 		return {
@@ -924,6 +1066,40 @@ function makeMotionReportRow(lineNumber, motionCode, estimate) {
 		spindle: formatSpindle(estimate),
 		rpmUsed: formatRpmUsed(estimate),
 		warnings: estimate.warnings || []
+	};
+}
+
+function makeVisionMotionRow(lineNumber, motionCode, estimate, options) {
+	return {
+		lineNumber: lineNumber + 1,
+		instruction: `G${motionCode}`,
+		motionCode,
+		start: clonePosition(estimate.start),
+		end: clonePosition(estimate.end),
+		startLabel: formatPosition(estimate.start),
+		endLabel: formatPosition(estimate.end),
+		distance: estimate.distance,
+		timeSeconds: estimate.timeSeconds,
+		points: (estimate.pathPoints || []).map(point => toVisionPoint(point, options)),
+		warnings: estimate.warnings || []
+	};
+}
+
+function toVisionPoint(point, options) {
+	const physicalPoint = toPhysicalPoint(point, options);
+
+	return {
+		x: physicalPoint.x,
+		y: physicalPoint.y,
+		z: physicalPoint.z
+	};
+}
+
+function summarizeVisionRows(rows) {
+	return {
+		moveCount: rows.length,
+		totalDistance: rows.reduce((total, row) => total + (Number.isFinite(row.distance) ? row.distance : 0), 0),
+		unknownRows: rows.filter(row => !Number.isFinite(row.distance) || !row.points.length).length
 	};
 }
 
@@ -1018,6 +1194,8 @@ function formatTime(seconds) {
 module.exports = {
 	estimateMotionAtLine,
 	analyzeChronobladeRange,
+	analyzeVisionRange,
+	summarizeVisionRows,
 	formatPosition,
 	formatNumber,
 	formatTime

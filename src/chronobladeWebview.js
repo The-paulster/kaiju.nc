@@ -3,7 +3,7 @@ const {
 	analyzeChronobladeRange,
 	formatNumber,
 	formatTime
-} = require("./chronobladeEngine");
+} = require("./motionEngine");
 
 let chronobladePanel;
 let chronobladeState;

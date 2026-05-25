@@ -129,6 +129,41 @@ The inspection ignores macro-looking text inside comments and protected angle-br
 
 <img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
 
+## KAIJU Sense
+
+`KAIJU Sense` shows motion details when you hover over an explicit `G0`, `G1`, `G2`, or `G3` move.
+
+The hover shows:
+
+- Start coordinates
+- End coordinates
+- Axis deltas
+- Path length
+- Linear move angle from the X axis
+- Arc direction, plane, center, radius, sweep degrees, circle length, and endpoint deltas
+- Estimated time
+- Feed and spindle state used for the estimate
+- RPM range when constant surface speed is active
+
+Sense walks the document up to the hovered line and uses the previous known position, modal feed, spindle mode, RPM, CSS surface speed, and RPM limit.
+
+Sense settings are controlled with `kaijuNC.sense.enabled`, `kaijuNC.sense.xAxisMode`, `kaijuNC.sense.cssSurfaceSpeedUnit`, `kaijuNC.sense.samples`, and `kaijuNC.sense.rapidRate`.
+
+## KAIJU Vision
+
+`KAIJU Vision` opens a right-click 2D path preview for the current program or selected section.
+
+- Command: `KAIJU Vision`
+- Shortcut: `Ctrl+Alt+V`
+
+The preview can project motion onto `X-Z`, `X-Y`, or `Z-Y`, and it draws sampled `G0`, `G1`, `G2`, and `G3` paths as SVG with direction arrows. The fitted view keeps the whole path in the panel, zoom controls and the mouse wheel adjust the viewBox, the path can be dragged with the mouse, paths and labels stay screen-sized while zooming, optional dashed zero lines can be shown, a compact compass shows positive and negative axis directions, a start marker shows where the preview begins, endpoint labels stack the finishing line number above the end coordinates, and the locked table below the preview keeps eight rows visible.
+
+Use `Save SVG` to export the current plane view to an `.svg` file.
+
+Vision walks the document from the top before drawing a selected section, so modal position, macro assignments, feeds, and arc context are resolved before the selection starts.
+
+Vision settings are controlled with `kaijuNC.vision.plane`, `kaijuNC.vision.xAxisMode`, `kaijuNC.vision.xyOrientation`, `kaijuNC.vision.xzOrientation`, `kaijuNC.vision.zyOrientation`, `kaijuNC.vision.cssSurfaceSpeedUnit`, `kaijuNC.vision.samples`, `kaijuNC.vision.compactPanelWidth`, `kaijuNC.vision.lineThickness`, `kaijuNC.vision.arrowSize`, `kaijuNC.vision.endpointSize`, `kaijuNC.vision.startPointSize`, `kaijuNC.vision.labelFontSize`, `kaijuNC.vision.labelOffset`, `kaijuNC.vision.compassSize`, `kaijuNC.vision.compassOffsetX`, `kaijuNC.vision.compassOffsetY`, and `kaijuNC.vision.rapidRate`. By default, the `X-Z` view uses a lathe-style orientation where `Z+` points right and `X+` points up.
+
 ## KAIJU Chronoblade
 
 `KAIJU Chronoblade` also opens a right-click cycle-time report for the current program. If text is selected, the command reports that section; otherwise it reports the whole program. The panel includes controls for `G0` rapid rate, base tool swap time, and extra turret station time for non-adjacent tool changes, plus buttons to resend either the whole program or the current selection.
@@ -137,20 +172,7 @@ The report lists motion and tool-change rows with line number, instruction, star
 
 The side panel width is controlled separately from Orphan Killer with `kaijuNC.chronoblade.compactPanelWidth`. Default cycle-time assumptions are set with `kaijuNC.chronoblade.rapidRate`, `kaijuNC.chronoblade.toolChangeSeconds`, and `kaijuNC.chronoblade.extraStationSeconds`.
 
-`KAIJU Chronoblade` estimates cutting time when you hover over an explicit `G1`, `G2`, or `G3` move.
-
-The hover shows:
-
-- Start coordinates
-- End coordinates
-- Travel distance
-- Estimated time
-- Feed and spindle state used for the estimate
-- RPM range when constant surface speed is active
-
-Chronoblade walks the document up to the hovered line and uses the previous known position, modal feed, spindle mode, RPM, CSS surface speed, and RPM limit.
-
-It supports:
+KAIJU.NC motion analysis supports:
 
 - Fixed RPM using `G97 S...`
 - Constant surface speed using `G96 S...`
@@ -160,7 +182,7 @@ It supports:
 - Feed-per-rev timing when `G95` is active
 - X-as-diameter lathe mode by default
 
-For CSS moves, Chronoblade samples along the move so a cut that crosses into the RPM limiter is estimated with the clamp taken into account.
+For CSS moves, KAIJU.NC samples along the move so a cut that crosses into the RPM limiter is estimated with the clamp taken into account.
 
 This is an editor estimate only. It does not simulate acceleration, exact controller lookahead, dwell, tool changes, spindle ramp-up, machine limits, or canned cycle behavior.
 

@@ -5,8 +5,9 @@ const { registerMacroAlias } = require("./macroAlias");
 const { registerOrphanKiller } = require("./orphanKiller");
 const { registerDiagnostics } = require("./diagnostics");
 const { registerToolDecorations } = require("./toolDecorations");
-const { registerChronobladeHover } = require("./chronobladeHover");
+const { registerKaijuSenseHover } = require("./kaijuSenseHover");
 const { registerChronobladeWebview } = require("./chronobladeWebview");
+const { registerKaijuVisionWebview } = require("./kaijuVisionWebview");
 
 function activate(context) {
 	registerFormatter(context);
@@ -16,8 +17,9 @@ function activate(context) {
 	registerOrphanKiller(context);
 	registerDiagnostics(context);
 	registerToolDecorations(context);
-	registerChronobladeHover(context);
+	registerKaijuSenseHover(context);
 	registerChronobladeWebview(context);
+	registerKaijuVisionWebview(context);
 }
 
 function deactivate() {}
