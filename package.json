@@ -534,6 +534,21 @@
             "default": "diameter",
             "description": "How KAIJU Vision interprets X-axis values. Diameter mode uses half-X for physical X arc and distance calculations."
           },
+          "kaijuNC.vision.g53.x": {
+            "type": "number",
+            "default": 0,
+            "description": "Preview X coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain an X word."
+          },
+          "kaijuNC.vision.g53.y": {
+            "type": "number",
+            "default": 0,
+            "description": "Preview Y coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain a Y word."
+          },
+          "kaijuNC.vision.g53.z": {
+            "type": "number",
+            "default": 0,
+            "description": "Preview Z coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain a Z word."
+          },
           "kaijuNC.vision.xyOrientation": {
             "type": "string",
             "enum": [
@@ -670,21 +685,6 @@
             "default": 10000,
             "minimum": 0,
             "description": "Default G0 rapid rate used by KAIJU Vision timing context, in program units per minute."
-          },
-          "kaijuNC.vision.g53X": {
-            "type": "number",
-            "default": 0,
-            "description": "Preview X coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain an X word."
-          },
-          "kaijuNC.vision.g53Y": {
-            "type": "number",
-            "default": 0,
-            "description": "Preview Y coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain a Y word."
-          },
-          "kaijuNC.vision.g53Z": {
-            "type": "number",
-            "default": 0,
-            "description": "Preview Z coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain a Z word."
           }
         }
       },

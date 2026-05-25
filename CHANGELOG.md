@@ -15,13 +15,13 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added KAIJU Vision fit/zoom controls and a compact positive/negative axis compass.
 - Added KAIJU Vision path direction arrows and compact stacked endpoint labels with finishing line numbers.
 - Added a KAIJU Vision start-point marker and anchored endpoint labels so tags stay aligned to their points.
-- Added `kaijuNC.vision.g53X`, `kaijuNC.vision.g53Y`, and `kaijuNC.vision.g53Z` so KAIJU Vision can place `G53` machine-coordinate moves at configured preview coordinates.
+- Added `kaijuNC.vision.g53.x`, `kaijuNC.vision.g53.y`, and `kaijuNC.vision.g53.z` so KAIJU Vision can place `G53` machine-coordinate moves at configured preview coordinates.
 - Added KAIJU Vision mouse-wheel zoom, drag panning, configurable line thickness, configurable arrow size, and a locked eight-row result table.
 - Added a KAIJU Vision toggle for dashed zero reference lines.
 - Made the KAIJU Vision viewport and SVG coordinate view square so paths keep a consistent visual scale.
 - Made KAIJU Vision paths, arrows, endpoint labels, and compass stay screen-sized while zooming, and removed the framed viewer background.
 - Added `Save SVG` export from KAIJU Vision.
-- Added `kaijuNC.vision.plane`, `kaijuNC.vision.xAxisMode`, `kaijuNC.vision.xyOrientation`, `kaijuNC.vision.xzOrientation`, `kaijuNC.vision.zyOrientation`, `kaijuNC.vision.cssSurfaceSpeedUnit`, `kaijuNC.vision.samples`, `kaijuNC.vision.compactPanelWidth`, `kaijuNC.vision.lineThickness`, `kaijuNC.vision.arrowSize`, `kaijuNC.vision.endpointSize`, `kaijuNC.vision.startPointSize`, `kaijuNC.vision.labelFontSize`, `kaijuNC.vision.labelOffset`, `kaijuNC.vision.compassSize`, `kaijuNC.vision.compassOffsetX`, `kaijuNC.vision.compassOffsetY`, `kaijuNC.vision.rapidRate`, `kaijuNC.vision.g53X`, `kaijuNC.vision.g53Y`, and `kaijuNC.vision.g53Z`.
+- Added `kaijuNC.vision.plane`, `kaijuNC.vision.xAxisMode`, `kaijuNC.vision.g53.x`, `kaijuNC.vision.g53.y`, `kaijuNC.vision.g53.z`, `kaijuNC.vision.xyOrientation`, `kaijuNC.vision.xzOrientation`, `kaijuNC.vision.zyOrientation`, `kaijuNC.vision.cssSurfaceSpeedUnit`, `kaijuNC.vision.samples`, `kaijuNC.vision.compactPanelWidth`, `kaijuNC.vision.lineThickness`, `kaijuNC.vision.arrowSize`, `kaijuNC.vision.endpointSize`, `kaijuNC.vision.startPointSize`, `kaijuNC.vision.labelFontSize`, `kaijuNC.vision.labelOffset`, `kaijuNC.vision.compassSize`, `kaijuNC.vision.compassOffsetX`, `kaijuNC.vision.compassOffsetY`, and `kaijuNC.vision.rapidRate`.
 - Renamed the shared Chronoblade analysis module to `motionEngine` so Sense and Chronoblade can reuse the same motion state, geometry, and timing logic.
 - Fixed X-Z arc handedness so `G2` displays clockwise in the default lathe-style Vision orientation.
 - Fixed KAIJU Vision diameter-mode drawing so X-Z fillets use physical X travel while endpoint labels keep programmed X coordinates.
