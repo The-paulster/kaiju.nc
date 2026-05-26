@@ -171,7 +171,7 @@ Sense settings are controlled with `kaijuNC.sense.enabled`, `kaijuNC.sense.xAxis
 - Command: `KAIJU Vision`
 - Shortcut: `Ctrl+Alt+V`
 
-The preview can project motion onto `X-Z`, `X-Y`, or `Z-Y`, and it draws sampled `G0`, `G1`, `G2`, and `G3` paths as SVG with direction arrows. `G53` machine-coordinate moves can be placed at configured preview coordinates so retracts and machine-position moves have a visible destination. The fitted view keeps the whole path in the panel, zoom controls and the mouse wheel adjust the viewBox, the path can be dragged with the mouse, paths and labels stay screen-sized while zooming, optional dashed zero lines can be shown, a compact compass shows positive and negative axis directions, a start marker shows where the preview begins, endpoint labels stack the finishing line number above the end coordinates, and the locked table below the preview keeps eight rows visible.
+The preview can project motion onto `X-Z`, `X-Y`, or `Z-Y`, and it draws sampled `G0`, `G1`, `G2`, and `G3` paths as SVG with direction arrows. `G53` machine-coordinate moves can be placed at configured preview coordinates so retracts and machine-position moves have a visible destination. The fitted view keeps the whole path in the panel, zoom controls and the mouse wheel adjust the viewBox, the path can be dragged with the mouse, paths and labels stay screen-sized while zooming, optional dashed zero lines and tool-matched path colors can be shown, a compact compass shows positive and negative axis directions, a start marker shows where the preview begins, endpoint labels stack the finishing line number above the end coordinates, and the locked table below the preview keeps eight rows visible.
 
 Use `Save SVG` to export the current plane view to an `.svg` file.
 
@@ -211,6 +211,18 @@ It can flag missing macro-expression brackets:
 
 ```gcode
 G1 X[#part_od + #finish_allowance
+```
+
+It can also flag address words that were accidentally placed inside brackets:
+
+```gcode
+G01 U4.000 [F#121 * 0.600]
+```
+
+Use the address before the bracket instead:
+
+```gcode
+G01 U4.000 F[#121 * 0.600]
 ```
 
 And missing decimal points on motion-related numeric values:

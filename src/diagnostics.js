@@ -45,6 +45,7 @@ function updateDiagnostics(document, diagnostics) {
 		];
 
 		warnings.push(...makeUnclosedDelimiterWarnings(line, lineNumber));
+		warnings.push(...makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges));
 
 		const directAddressRegex = /\b([XYZUVWABCIJKRFxyzuvwabcijkrf])([-+]?\d+)(?![.\d])/g;
 
@@ -114,6 +115,50 @@ function getNamedMacroRanges(line) {
 			start: match.index,
 			end: match.index + match[0].length - 1
 		});
+	}
+
+	return ranges;
+}
+
+function makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges) {
+	const warnings = [];
+	const bracketRanges = getBracketExpressionRanges(line, ignoreRanges);
+	const addressInsideBracketRegex = /(^|[^#A-Za-z0-9_])([GMXYZUVWABCIJKRFLPQTSHgmxyzuvwabcijkrflpqtsh])(?=\s*(?:[-+]?(?:#|\d|\.|\[)))/g;
+
+	for (const range of bracketRanges) {
+		const expression = line.slice(range.start + 1, range.end);
+		let match;
+
+		while ((match = addressInsideBracketRegex.exec(expression)) !== null) {
+			const prefixLength = match[1].length;
+			const start = range.start + 1 + match.index + prefixLength;
+			const end = start + match[2].length;
+
+			warnings.push(makeAddressInsideBracketWarning(lineNumber, start, end, match[2]));
+		}
+	}
+
+	return warnings;
+}
+
+function getBracketExpressionRanges(line, ignoreRanges) {
+	const ranges = [];
+	const stack = [];
+
+	for (let index = 0; index < line.length; index++) {
+		if (isInsideRange(index, ignoreRanges)) {
+			continue;
+		}
+
+		if (line[index] === "[") {
+			stack.push(index);
+			continue;
+		}
+
+		if (line[index] === "]" && stack.length) {
+			const start = stack.pop();
+			ranges.push({ start, end: index });
+		}
 	}
 
 	return ranges;
@@ -196,6 +241,19 @@ function makeDelimiterWarning(lineNumber, character, message) {
 		range,
 		message,
 		vscode.DiagnosticSeverity.Warning
+	);
+
+	warning.source = "Powerful GCode";
+	return warning;
+}
+
+function makeAddressInsideBracketWarning(lineNumber, start, end, address) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Address word "${address.toUpperCase()}" is inside a bracket expression. Put the address before the bracket, such as ${address.toUpperCase()}[...].`,
+		vscode.DiagnosticSeverity.Error
 	);
 
 	warning.source = "Powerful GCode";

@@ -147,6 +147,7 @@ function getVisionOptions(document, rawOptions = {}) {
 
 	return {
 		plane: ["xy", "xz", "zy"].includes(rawOptions.plane) ? rawOptions.plane : config.get("plane", "xz"),
+		useToolColors: rawOptions.useToolColors === true,
 		xAxisMode: config.get("xAxisMode", chronobladeConfig.get("xAxisMode", "diameter")),
 		xzOrientation: config.get("xzOrientation", "zRightXUp"),
 		xyOrientation: config.get("xyOrientation", "xRightYUp"),
@@ -455,6 +456,7 @@ function renderVisionHtml(document, mode, options, result) {
 		</label>
 		<label class="checkbox"><input id="labels" type="checkbox" checked> Endpoint labels</label>
 		<label class="checkbox"><input id="zeroLines" type="checkbox"> Zero lines</label>
+		<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
 		<button id="fit">Fit View</button>
 		<button id="zoomOut">Zoom -</button>
 		<button id="zoomIn">Zoom +</button>
@@ -483,6 +485,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const planeSelect = document.getElementById("plane");
 		const labelsInput = document.getElementById("labels");
 		const zeroLinesInput = document.getElementById("zeroLines");
+		const toolColorsInput = document.getElementById("toolColors");
 		const viewerSlot = document.getElementById("viewerSlot");
 		const viewer = document.getElementById("viewer");
 		const zoomLabel = document.getElementById("zoomLabel");
@@ -693,6 +696,7 @@ function renderVisionHtml(document, mode, options, result) {
 			currentBounds = bounds;
 			const showLabels = labelsInput.checked;
 			const showZeroLines = zeroLinesInput.checked;
+			const useToolColors = toolColorsInput.checked;
 			const unitsPerPixel = bounds.width / Math.max(1, Math.min(viewerRect.width, viewerRect.height));
 			const labelSize = unitsPerPixel * data.options.labelFontSize;
 			const labelOffset = unitsPerPixel * data.options.labelOffset;
@@ -713,7 +717,8 @@ function renderVisionHtml(document, mode, options, result) {
 			const paths = rows.map(row => {
 				const cls = row.motionCode === 0 ? "rapid" : "cut";
 				const marker = row.motionCode === 0 ? "url(#rapid-arrow)" : "url(#cut-arrow)";
-				return '<polyline class="' + cls + '" marker-end="' + marker + '" points="' + formatPointList(row.projectedPoints) + '" />';
+				const strokeStyle = useToolColors && row.toolColor ? ' style="stroke:' + escapeAttribute(row.toolColor) + '"' : "";
+				return '<polyline class="' + cls + '"' + strokeStyle + ' marker-end="' + marker + '" points="' + formatPointList(row.projectedPoints) + '" />';
 			}).join("");
 			const firstRow = rows[0];
 			const firstPoint = firstRow && firstRow.projectedPoints[0];
@@ -806,11 +811,20 @@ function renderVisionHtml(document, mode, options, result) {
 			return lines.join("");
 		}
 
+		function escapeAttribute(value) {
+			return String(value || "")
+				.replace(/&/g, "&amp;")
+				.replace(/"/g, "&quot;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+		}
+
 		planeSelect.addEventListener("change", () => {
 			resetView();
 		});
 		labelsInput.addEventListener("change", render);
 		zeroLinesInput.addEventListener("change", render);
+		toolColorsInput.addEventListener("change", render);
 		document.getElementById("fit").addEventListener("click", () => {
 			resetView();
 		});
@@ -874,10 +888,10 @@ function renderVisionHtml(document, mode, options, result) {
 			vscode.postMessage({ type: "saveSvg", plane: planeSelect.value, svg: svg.outerHTML });
 		});
 		document.getElementById("whole").addEventListener("click", () => {
-			vscode.postMessage({ type: "whole", options: { plane: planeSelect.value } });
+			vscode.postMessage({ type: "whole", options: { plane: planeSelect.value, useToolColors: toolColorsInput.checked } });
 		});
 		document.getElementById("selection").addEventListener("click", () => {
-			vscode.postMessage({ type: "selection", options: { plane: planeSelect.value } });
+			vscode.postMessage({ type: "selection", options: { plane: planeSelect.value, useToolColors: toolColorsInput.checked } });
 		});
 		window.addEventListener("resize", render);
 

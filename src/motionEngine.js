@@ -8,6 +8,10 @@ const {
 	normalizeMacro,
 	setMacroValue
 } = require("./macroExpressions");
+const {
+	TOOL_COLORS,
+	getToolRanges
+} = require("./toolModel");
 
 const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
 const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
@@ -957,6 +961,7 @@ function analyzeVisionRange(document, range, options) {
 	const state = makeInitialState();
 	const macroValues = new Map();
 	const macroAliases = buildMacroAliasMap(document);
+	const toolRanges = getToolRanges(document);
 	const rows = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
 
@@ -979,7 +984,7 @@ function analyzeVisionRange(document, range, options) {
 			positionWasUpdated = true;
 
 			if (isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeVisionMotionRow(lineNumber, activeMotionCode, estimate, options));
+				rows.push(makeVisionMotionRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
 			}
 		}
 
@@ -992,6 +997,10 @@ function analyzeVisionRange(document, range, options) {
 		rows,
 		range: targetRange
 	};
+}
+
+function getToolRangeAtLine(toolRanges, lineNumber) {
+	return toolRanges.find(range => lineNumber >= range.startLine && lineNumber <= range.endLine);
 }
 
 function normalizeLineRange(range, lineCount) {
@@ -1086,11 +1095,15 @@ function makeMotionReportRow(lineNumber, motionCode, estimate) {
 	};
 }
 
-function makeVisionMotionRow(lineNumber, motionCode, estimate, options) {
+function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRange) {
+	const toolColor = toolRange ? TOOL_COLORS[toolRange.colorIndex % TOOL_COLORS.length] : "";
+
 	return {
 		lineNumber: lineNumber + 1,
 		instruction: estimate.machineCoordinate ? `G53 G${motionCode}` : `G${motionCode}`,
 		motionCode,
+		tool: toolRange ? toolRange.tool : "",
+		toolColor,
 		start: clonePosition(estimate.start),
 		end: clonePosition(estimate.end),
 		startLabel: formatPosition(estimate.start),

@@ -16,6 +16,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added KAIJU Vision path direction arrows and compact stacked endpoint labels with finishing line numbers.
 - Added a KAIJU Vision start-point marker and anchored endpoint labels so tags stay aligned to their points.
 - Added `kaijuNC.vision.g53.x`, `kaijuNC.vision.g53.y`, and `kaijuNC.vision.g53.z` so KAIJU Vision can place `G53` machine-coordinate moves at configured preview coordinates.
+- Added a KAIJU Vision page toggle for coloring path lines with the same tool colors used by gutter tool decorations.
+- Extracted shared tool range and color logic into `toolModel.js` so motion analysis no longer depends on the gutter decoration module.
 - Added KAIJU Vision mouse-wheel zoom, drag panning, configurable line thickness, configurable arrow size, and a locked eight-row result table.
 - Added a KAIJU Vision toggle for dashed zero reference lines.
 - Made the KAIJU Vision viewport and SVG coordinate view square so paths keep a consistent visual scale.
@@ -27,6 +29,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Fixed KAIJU Vision diameter-mode drawing so X-Z fillets use physical X travel while endpoint labels keep programmed X coordinates.
 - Fixed KAIJU Vision so `G10` coordinate-setting lines are not drawn as modal motion or used as tool-position updates.
 - Fixed KAIJU Sense linear angles in diameter X mode so they use physical X travel instead of programmed diameter delta.
+- Added a diagnostic error for address words accidentally placed inside bracket expressions, such as `[F#121 * 0.600]`.
 - Added a right-click `KAIJU Chronoblade` cycle-time report webview with whole-program and selection sends, `G0` rapid timing, tool swap timing, and per-line motion/tool rows.
 - Added `kaijuNC.chronoblade.compactPanelWidth` so the Chronoblade report width can be configured separately from Orphan Killer.
 - Added `kaijuNC.sense.enabled`, `kaijuNC.sense.xAxisMode`, `kaijuNC.sense.cssSurfaceSpeedUnit`, `kaijuNC.sense.samples`, and `kaijuNC.sense.rapidRate` for the new KAIJU Sense hover.
