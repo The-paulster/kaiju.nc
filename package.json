@@ -2,7 +2,7 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PaulCGilesLawson",
   "license": "MIT",
