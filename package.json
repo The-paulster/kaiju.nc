@@ -58,6 +58,7 @@
         "aliases": ["GCode", "gcode"],
         "extensions": [
           ".nc",
+          ".nd",
           ".cnc",
           ".tap",
           ".gcode",
