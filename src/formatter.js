@@ -244,7 +244,7 @@ function shouldInsertSpaceBeforeAddressWord(text, index, outputText) {
 }
 
 function isAddressLetter(character) {
-	return /^[GMXYZUVWABCIJKRFLPQTS]$/.test(character);
+	return /^[GMXYZUVWABCIJKRFLPQTSH]$/.test(character);
 }
 
 function startsAddressValue(text, index) {
