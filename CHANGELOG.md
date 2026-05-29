@@ -36,6 +36,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added `kaijuNC.syntax.toolDecorations.enabled` so tool-range gutter markers can be toggled from the new Syntax settings category.
 - Added `kaijuNC.format.leadingWhitespace` and `kaijuNC.format.softTabSize`, defaulting to preserving leading tabs and full 4-space soft-tabs while removing stray leading spaces and still auto-indenting `WHILE`/`END` blocks using the detected indent style.
 - Fixed `KAIJU Reconstructor` operator spacing for named alias macro math, such as `#foo-#bar`.
+- Fixed `KAIJU Reconstructor` tool-code normalization so `T9` becomes `T09` without assuming a lathe-style `T0909` offset.
 - Split extension settings into Reconstructor, Alias, Orphan Killer, Sense, Vision, and Chronoblade categories in the VS Code Settings UI.
 - Split Chronoblade into shared motion analysis, Sense hover, and webview modules so calculation changes flow through both UI surfaces.
 

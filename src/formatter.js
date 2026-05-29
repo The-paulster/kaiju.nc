@@ -202,8 +202,7 @@ function normalizeGAndMCodes(text) {
 function normalizeToolCodes(text) {
 	return text.replace(/\bT(\d{1,4})(?!\d)/g, (fullMatch, digits) => {
 		if (digits.length <= 2) {
-			const paddedDigits = digits.padStart(2, "0");
-			return `T${paddedDigits}${paddedDigits}`;
+			return `T${digits.padStart(2, "0")}`;
 		}
 
 		if (digits.length === 3) {

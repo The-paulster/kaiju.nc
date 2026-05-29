@@ -94,6 +94,7 @@ Examples of the kinds of cleanup it performs:
 | Before | After |
 | --- | --- |
 | `g1x1.z-2.5f.2` | `G01 X1.000 Z-2.500 F0.200` |
+| `T9` | `T09` |
 | `T606` | `T0606` |
 
 The command opens an options picker before formatting. The default decimal-place count and semicolon behavior can be controlled from VS Code Settings.

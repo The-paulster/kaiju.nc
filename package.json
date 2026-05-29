@@ -408,7 +408,7 @@
           "kaijuNC.format.normalizeToolCodes": {
             "type": "boolean",
             "default": true,
-            "description": "Normalize T codes to four digits, such as T1 to T0101 and T606 to T0606."
+            "description": "Normalize numeric T codes without inventing offsets, such as T1 to T01 and T606 to T0606."
           },
           "kaijuNC.format.leadingWhitespace": {
             "type": "string",
