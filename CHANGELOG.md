@@ -2,7 +2,7 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
-## [Unreleased]
+## [0.2.0]
 
 - Added `KAIJU Decomposition`, a right-click temporary-file view that flattens resolvable macro expressions and simple macro control flow while prompting for manual values when the source is non-deterministic.
 - Added `kaijuNC.decomposition.comparisonTolerance` for KAIJU Decomposition macro comparisons.
