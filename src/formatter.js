@@ -64,6 +64,8 @@ function formatDocumentText(text, options) {
 
 	let formattedText = text;
 
+	formattedText = normalizeNestedCommentParentheses(formattedText);
+
 	// Built-in KAIJU.NC Formatting Standard.
 	formattedText = applyFormattingStandard(formattedText, options);
 
@@ -88,6 +90,58 @@ function formatDocumentText(text, options) {
 	formattedText = indentLoopBlocks(formattedText, options.leadingWhitespace, options.softTabSize);
 
 	return formattedText;
+}
+
+function normalizeNestedCommentParentheses(text) {
+	const newline = text.includes("\r\n") ? "\r\n" : "\n";
+
+	return text
+		.split(/\r?\n/)
+		.map(normalizeNestedCommentParenthesesInLine)
+		.join(newline);
+}
+
+function normalizeNestedCommentParenthesesInLine(line) {
+	let result = "";
+	let commentDepth = 0;
+	let insideAngleBrackets = false;
+
+	for (let index = 0; index < line.length; index++) {
+		const character = line[index];
+
+		if (character === "<" && commentDepth === 0) {
+			insideAngleBrackets = true;
+			result += character;
+			continue;
+		}
+
+		if (character === ">" && insideAngleBrackets) {
+			insideAngleBrackets = false;
+			result += character;
+			continue;
+		}
+
+		if (insideAngleBrackets) {
+			result += character;
+			continue;
+		}
+
+		if (character === "(") {
+			result += commentDepth === 0 ? "(" : "[";
+			commentDepth++;
+			continue;
+		}
+
+		if (character === ")" && commentDepth > 0) {
+			result += commentDepth === 1 ? ")" : "]";
+			commentDepth--;
+			continue;
+		}
+
+		result += character;
+	}
+
+	return result;
 }
 
 function applyFormattingStandard(text, options) {

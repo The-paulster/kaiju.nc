@@ -39,7 +39,7 @@ function provideMacroHover(document, position) {
 
 	if (!definition) {
 		const md = new vscode.MarkdownString([
-			`**${hoveredMacro}**`,
+			`**KAIJU Sense - ${hoveredMacro}**`,
 			"",
 			"`No definition found above or in document.`"
 		].join("\n"));
@@ -49,7 +49,7 @@ function provideMacroHover(document, position) {
 
 	const md = new vscode.MarkdownString();
 
-	md.appendMarkdown(`**${hoveredMacro}**\n\n`);
+	md.appendMarkdown(`**KAIJU Sense - ${hoveredMacro}**\n\n`);
 
 	if (definition.value) {
 		md.appendMarkdown(`**Value:** \`${definition.value}\`\n\n`);

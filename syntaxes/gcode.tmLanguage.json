@@ -8,6 +8,9 @@
 			"include": "#metacomments"
 		},
 		{
+			"include": "#equalscomments"
+		},
+		{
 			"include": "#titlecomments"
 		},
 		{
@@ -162,6 +165,14 @@
 				}
 			]
 		},
+		"equalscomments": {
+			"patterns": [
+				{
+					"name": "comment.equals.gcode",
+					"match": "\\(=[^\\)]*\\)"
+				}
+			]
+		},
 		"titlecomments": {
 			"patterns": [
 				{
@@ -179,6 +190,11 @@
 					"name": "comment.double.gcode",
 					"begin": "\\[",
 					"end": "\\]"
+				},
+				{
+					"name": "comment.brace.gcode",
+					"begin": "\\{",
+					"end": "\\}"
 				}
 			]
 		},

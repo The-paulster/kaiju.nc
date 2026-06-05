@@ -4,6 +4,12 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [Unreleased]
 
+- Added `{...}` as a nested parenthesis-comment highlight style with color `#708E9C`.
+- Renamed KAIJU diagnostic hover source text from `Powerful GCode` to `Kaiju Alert`.
+- Updated macro variable hovers to use the same `KAIJU Sense` title style as motion hovers.
+- Added a warning for nested parenthesis comments such as `((NOTE))`, and made KAIJU Reconstructor convert the inner layer to square brackets.
+- Added `kaijuNC.alerts.nonAscii.enabled`, defaulting on, to warn about non-ASCII characters that some lathe controls may not read reliably.
+- Added separate highlighting for parenthesis comments that start with `(=`.
 - Added `KAIJU Decomposition`, a right-click temporary-file view that flattens resolvable macro expressions and simple macro control flow while prompting for manual values when the source is non-deterministic.
 - Added `kaijuNC.decomposition.comparisonTolerance` for KAIJU Decomposition macro comparisons.
 - Added `KAIJU flow` comments to Decomposition output when jumps, conditionals, or loops affect the flattened path.

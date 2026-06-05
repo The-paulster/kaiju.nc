@@ -5,6 +5,8 @@ const {
 	isInsideRange
 } = require("./textRanges");
 
+const DIAGNOSTIC_SOURCE = "Kaiju Alert";
+
 function registerDiagnostics(context) {
 	const diagnostics = vscode.languages.createDiagnosticCollection("gcode");
 	context.subscriptions.push(diagnostics);
@@ -22,6 +24,13 @@ function registerDiagnostics(context) {
 		vscode.workspace.onDidChangeTextDocument(event => {
 			updateDiagnostics(event.document, diagnostics);
 		}),
+		vscode.workspace.onDidChangeConfiguration(event => {
+			if (event.affectsConfiguration("kaijuNC.alerts.nonAscii.enabled")) {
+				for (const editor of vscode.window.visibleTextEditors) {
+					updateDiagnostics(editor.document, diagnostics);
+				}
+			}
+		}),
 		vscode.workspace.onDidCloseTextDocument(document => {
 			diagnostics.delete(document.uri);
 		})
@@ -35,6 +44,8 @@ function updateDiagnostics(document, diagnostics) {
 	}
 
 	const warnings = [];
+	const config = vscode.workspace.getConfiguration("kaijuNC.alerts", document.uri);
+	const warnNonAscii = config.get("nonAscii.enabled", true);
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -45,7 +56,11 @@ function updateDiagnostics(document, diagnostics) {
 		];
 
 		warnings.push(...makeUnclosedDelimiterWarnings(line, lineNumber));
+		warnings.push(...makeNestedCommentParenthesisWarnings(line, lineNumber));
 		warnings.push(...makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges));
+		if (warnNonAscii) {
+			warnings.push(...makeNonAsciiWarnings(line, lineNumber));
+		}
 
 		const directAddressRegex = /\b([XYZUVWABCIJKRFxyzuvwabcijkrf])([-+]?\d+)(?![.\d])/g;
 
@@ -118,6 +133,63 @@ function getNamedMacroRanges(line) {
 	}
 
 	return ranges;
+}
+
+function makeNonAsciiWarnings(line, lineNumber) {
+	const warnings = [];
+
+	for (let index = 0; index < line.length;) {
+		const codePoint = line.codePointAt(index);
+		const character = String.fromCodePoint(codePoint);
+		const characterLength = character.length;
+
+		if (codePoint > 0x7F) {
+			warnings.push(makeNonAsciiWarning(lineNumber, index, index + characterLength, character, codePoint));
+		}
+
+		index += characterLength;
+	}
+
+	return warnings;
+}
+
+function makeNestedCommentParenthesisWarnings(line, lineNumber) {
+	const warnings = [];
+	let insideComment = false;
+	let insideAngleBrackets = false;
+
+	for (let index = 0; index < line.length; index++) {
+		const character = line[index];
+
+		if (character === "<" && !insideComment) {
+			insideAngleBrackets = true;
+			continue;
+		}
+
+		if (character === ">" && insideAngleBrackets) {
+			insideAngleBrackets = false;
+			continue;
+		}
+
+		if (insideAngleBrackets) {
+			continue;
+		}
+
+		if (character === "(") {
+			if (insideComment) {
+				warnings.push(makeNestedCommentParenthesisWarning(lineNumber, index));
+			}
+
+			insideComment = true;
+			continue;
+		}
+
+		if (character === ")" && insideComment) {
+			insideComment = false;
+		}
+	}
+
+	return warnings;
 }
 
 function makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges) {
@@ -243,7 +315,20 @@ function makeDelimiterWarning(lineNumber, character, message) {
 		vscode.DiagnosticSeverity.Warning
 	);
 
-	warning.source = "Powerful GCode";
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeNestedCommentParenthesisWarning(lineNumber, character) {
+	const range = new vscode.Range(lineNumber, character, lineNumber, character + 1);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		"Nested parentheses inside a comment may not be readable by some controls. KAIJU Reconstructor converts the inner layer to square brackets.",
+		vscode.DiagnosticSeverity.Warning
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
 	return warning;
 }
 
@@ -256,7 +341,21 @@ function makeAddressInsideBracketWarning(lineNumber, start, end, address) {
 		vscode.DiagnosticSeverity.Error
 	);
 
-	warning.source = "Powerful GCode";
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeNonAsciiWarning(lineNumber, start, end, character, codePoint) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+	const codePointText = `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Non-ASCII character "${character}" (${codePointText}) may not be readable by some lathe controls.`,
+		vscode.DiagnosticSeverity.Warning
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
 	return warning;
 }
 
@@ -269,7 +368,7 @@ function makeMissingDecimalWarning(lineNumber, start, end, text) {
 		vscode.DiagnosticSeverity.Warning
 	);
 
-	warning.source = "Powerful GCode";
+	warning.source = DIAGNOSTIC_SOURCE;
 	return warning;
 }
 

@@ -106,6 +106,13 @@
                 }
             },
             {
+                "name": "Equals comments",
+                "scope": "comment.equals.gcode",
+                "settings": {
+                    "foreground": "#C4F20C"
+                }
+            },
+            {
                 "name": "Meta comments",
                 "scope": "comment.meta.gcode",
                 "settings": {
@@ -291,6 +298,13 @@
                 }
             },
             {
+                "name": "Curly brace comment",
+                "scope": "comment.brace.gcode",
+                "settings": {
+                    "foreground": "#81aec4"
+                }
+            },
+            {
                 "name": "A rotary axis",
                 "scope": "support.axis.a.gcode",
                 "settings": {
@@ -372,6 +386,16 @@
             "type": "boolean",
             "default": true,
             "description": "Show KAIJU.NC tool-range gutter markers beside G-code programs."
+          }
+        }
+      },
+      {
+        "title": "KAIJU.NC: Code Alerts",
+        "properties": {
+          "kaijuNC.alerts.nonAscii.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Warn when a G-code file contains non-ASCII characters that some lathe controls may not read reliably."
           }
         }
       },
