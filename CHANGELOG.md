@@ -2,7 +2,7 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
-## [Unreleased]
+## [0.2.0]
 
 - Added `{...}` as a nested parenthesis-comment highlight style with color `#708E9C`.
 - Renamed KAIJU diagnostic hover source text from `Powerful GCode` to `Kaiju Alert`.
