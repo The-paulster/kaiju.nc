@@ -52,7 +52,7 @@ function evaluateNumericExpression(expression, macroValues, macroAliases = new M
 	const expressionBody = normalizedExpression.startsWith("[") && normalizedExpression.endsWith("]")
 		? normalizedExpression.slice(1, -1)
 		: normalizedExpression;
-	const jsExpression = expressionBody
+	const jsExpression = normalizeNumericLiterals(expressionBody
 		.replace(/\b(SIN|COS|TAN|ASIN|ACOS|ATAN|SQRT|ABS|ROUND|FIX|FUP)\s*\[/gi, (_, name) => {
 			return `${FANUC_FUNCTIONS.get(name.toUpperCase())}(`;
 		})
@@ -62,7 +62,7 @@ function evaluateNumericExpression(expression, macroValues, macroAliases = new M
 		.replace(MACRO_REGEX, macro => {
 			const value = getMacroValue(macro, macroValues, macroAliases);
 			return Number.isFinite(value) ? String(value) : "NaN";
-		});
+		}));
 
 	if (jsExpression.includes("NaN")) {
 		return NaN;
@@ -99,6 +99,20 @@ function hasUnsupportedIdentifier(expression) {
 	}
 
 	return false;
+}
+
+function normalizeNumericLiterals(expression) {
+	const numberRegex = /(^|[^#A-Za-z0-9_.])([-+]?(?:\d+(?:\.\d*)?|\.\d+))(?![.\dA-Za-z_])/g;
+
+	return expression.replace(numberRegex, (fullMatch, prefix, numberText) => {
+		const value = Number(numberText);
+
+		if (!Number.isFinite(value)) {
+			return fullMatch;
+		}
+
+		return prefix + String(value);
+	});
 }
 
 function toRadians(degrees) {

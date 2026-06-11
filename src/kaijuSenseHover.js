@@ -9,6 +9,10 @@ const {
 	formatNumber,
 	formatTime
 } = require("./motionEngine");
+const {
+	getConfiguredValue,
+	getMachineModeProfile
+} = require("./machineMode");
 
 function registerKaijuSenseHover(context) {
 	context.subscriptions.push(
@@ -49,10 +53,13 @@ function provideKaijuSenseHover(document, position) {
 function getSenseOptions(document) {
 	const senseConfig = vscode.workspace.getConfiguration("kaijuNC.sense", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
+	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
 
 	return {
 		enabled: senseConfig.get("enabled", chronobladeConfig.get("enabled", true)),
-		xAxisMode: senseConfig.get("xAxisMode", chronobladeConfig.get("xAxisMode", "diameter")),
+		machineMode: profile.id,
+		defaultFeedMode: profile.defaultFeedMode,
+		xAxisMode: getConfiguredValue(senseConfig, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
 		cssSurfaceSpeedUnit: senseConfig.get("cssSurfaceSpeedUnit", chronobladeConfig.get("cssSurfaceSpeedUnit", "mPerMin")),
 		samples: clampNumber(senseConfig.get("samples", chronobladeConfig.get("samples", 96)), 12, 500),
 		rapidRate: clampNumber(senseConfig.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY)

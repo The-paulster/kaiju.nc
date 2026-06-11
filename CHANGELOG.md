@@ -2,6 +2,16 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.3.0]
+
+- Fixed KAIJU Decomposition macro-expression evaluation so CNC-style leading-zero numbers like `00.50` work inside larger expressions.
+- Added a KAIJU Syntax error for `GOTO` targets that do not have a matching `N` label.
+- Added inline reference decorations after `N` labels targeted by `GOTO` statements.
+- Added KAIJU Sense hover details and amber line highlighting for `GOTO` label references.
+- Added KAIJU Rangefinder for selecting current tool ranges, picked tool ranges, N-label spans, and the current N block.
+- Added right-click KAIJU Machine Mode commands for Mill, Lathe (Radius), and Lathe (Diameter), with matching Chronoblade/Sense/Vision X-axis settings and motion-analysis feed defaults.
+- Added Kaiju Alert checks for duplicate and out-of-order `N` sequence numbers, each with its own setting.
+
 ## [0.2.0]
 
 - Added `{...}` as a nested parenthesis-comment highlight style with color `#708E9C`.

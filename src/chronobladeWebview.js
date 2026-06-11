@@ -4,6 +4,10 @@ const {
 	formatNumber,
 	formatTime
 } = require("./motionEngine");
+const {
+	getConfiguredValue,
+	getMachineModeProfile
+} = require("./machineMode");
 
 let chronobladePanel;
 let chronobladeState;
@@ -135,9 +139,12 @@ function getRangeForMode(editor, mode) {
 
 function getChronobladeOptions(document, rawOptions = {}) {
 	const reportConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
+	const profile = getMachineModeProfile(reportConfig.get("machineMode", "latheDiameter"));
 
 	return {
-		xAxisMode: reportConfig.get("xAxisMode", "diameter"),
+		machineMode: profile.id,
+		defaultFeedMode: profile.defaultFeedMode,
+		xAxisMode: getConfiguredValue(reportConfig, "xAxisMode", profile.xAxisMode),
 		cssSurfaceSpeedUnit: reportConfig.get("cssSurfaceSpeedUnit", "mPerMin"),
 		samples: clampNumber(reportConfig.get("samples", 96), 12, 500),
 		compactPanelWidth: clampNumber(reportConfig.get("compactPanelWidth", 0.45), 0.2, 0.7),

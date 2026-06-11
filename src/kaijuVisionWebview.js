@@ -5,6 +5,10 @@ const {
 	formatNumber,
 	summarizeVisionRows
 } = require("./motionEngine");
+const {
+	getConfiguredValue,
+	getMachineModeProfile
+} = require("./machineMode");
 
 let visionPanel;
 let visionState;
@@ -144,11 +148,14 @@ function getRangeForMode(editor, mode) {
 function getVisionOptions(document, rawOptions = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.vision", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
+	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
 
 	return {
 		plane: ["xy", "xz", "zy"].includes(rawOptions.plane) ? rawOptions.plane : config.get("plane", "xz"),
 		useToolColors: rawOptions.useToolColors === true,
-		xAxisMode: config.get("xAxisMode", chronobladeConfig.get("xAxisMode", "diameter")),
+		machineMode: profile.id,
+		defaultFeedMode: profile.defaultFeedMode,
+		xAxisMode: getConfiguredValue(config, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
 		xzOrientation: config.get("xzOrientation", "zRightXUp"),
 		xyOrientation: config.get("xyOrientation", "xRightYUp"),
 		zyOrientation: config.get("zyOrientation", "zRightYUp"),

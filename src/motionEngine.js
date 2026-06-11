@@ -17,7 +17,7 @@ const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
 const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
 
 function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options) {
-	const state = makeInitialState();
+	const state = makeInitialState(options);
 	const macroValues = new Map();
 	const macroAliases = buildMacroAliasMap(document);
 
@@ -46,12 +46,12 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 	return undefined;
 }
 
-function makeInitialState() {
+function makeInitialState(options = {}) {
 	return {
 		position: {},
 		motionCode: undefined,
 		feed: undefined,
-		feedMode: "perRev",
+		feedMode: options.defaultFeedMode === "perMinute" ? "perMinute" : "perRev",
 		spindleMode: "fixed",
 		rpm: undefined,
 		cssSurfaceSpeed: undefined,
@@ -890,7 +890,7 @@ function maskProtectedRanges(line) {
 }
 
 function analyzeChronobladeRange(document, range, options) {
-	const state = makeInitialState();
+	const state = makeInitialState(options);
 	const macroValues = new Map();
 	const macroAliases = buildMacroAliasMap(document);
 	const rows = [];
@@ -958,7 +958,7 @@ function analyzeChronobladeRange(document, range, options) {
 }
 
 function analyzeVisionRange(document, range, options) {
-	const state = makeInitialState();
+	const state = makeInitialState(options);
 	const macroValues = new Map();
 	const macroAliases = buildMacroAliasMap(document);
 	const toolRanges = getToolRanges(document);

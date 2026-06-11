@@ -25,7 +25,7 @@ function registerDiagnostics(context) {
 			updateDiagnostics(event.document, diagnostics);
 		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.alerts.nonAscii.enabled")) {
+			if (event.affectsConfiguration("kaijuNC.alerts") || event.affectsConfiguration("kaijuNC.syntax.unresolvedGotos.enabled")) {
 				for (const editor of vscode.window.visibleTextEditors) {
 					updateDiagnostics(editor.document, diagnostics);
 				}
@@ -45,7 +45,17 @@ function updateDiagnostics(document, diagnostics) {
 
 	const warnings = [];
 	const config = vscode.workspace.getConfiguration("kaijuNC.alerts", document.uri);
+	const syntaxConfig = vscode.workspace.getConfiguration("kaijuNC.syntax", document.uri);
 	const warnNonAscii = config.get("nonAscii.enabled", true);
+	const warnDuplicateSequenceNumbers = config.get("duplicateSequenceNumbers.enabled", true);
+	const warnSequenceNumberOrder = config.get("sequenceNumberOrder.enabled", true);
+	const warnUnresolvedGotos = syntaxConfig.get("unresolvedGotos.enabled", true);
+	const seenSequenceNumbers = new Map();
+	const sequenceNumberOrder = { previous: null };
+
+	if (warnUnresolvedGotos) {
+		warnings.push(...makeUnresolvedGotoTargetWarnings(document));
+	}
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -58,6 +68,12 @@ function updateDiagnostics(document, diagnostics) {
 		warnings.push(...makeUnclosedDelimiterWarnings(line, lineNumber));
 		warnings.push(...makeNestedCommentParenthesisWarnings(line, lineNumber));
 		warnings.push(...makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges));
+		if (warnDuplicateSequenceNumbers) {
+			warnings.push(...makeDuplicateSequenceNumberWarnings(line, lineNumber, ignoreRanges, seenSequenceNumbers));
+		}
+		if (warnSequenceNumberOrder) {
+			warnings.push(...makeOutOfOrderSequenceNumberWarnings(line, lineNumber, ignoreRanges, sequenceNumberOrder));
+		}
 		if (warnNonAscii) {
 			warnings.push(...makeNonAsciiWarnings(line, lineNumber));
 		}
@@ -133,6 +149,146 @@ function getNamedMacroRanges(line) {
 	}
 
 	return ranges;
+}
+
+function makeUnresolvedGotoTargetWarnings(document) {
+	const warnings = [];
+	const labels = getSequenceLabels(document);
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const line = document.lineAt(lineNumber).text;
+		const codeLine = maskProtectedRanges(line);
+		const gotoRegex = /\bGOTO\s+(N?)(\d+)(?![.\d])/gi;
+		let match;
+
+		while ((match = gotoRegex.exec(codeLine)) !== null) {
+			const normalizedTarget = normalizeSequenceNumber(match[2]);
+
+			if (labels.has(normalizedTarget)) {
+				continue;
+			}
+
+			const targetText = `${match[1]}${match[2]}`;
+			const targetStart = match.index + match[0].length - targetText.length;
+
+			warnings.push(
+				makeUnresolvedGotoTargetWarning(
+					lineNumber,
+					targetStart,
+					targetStart + targetText.length,
+					targetText.toUpperCase()
+				)
+			);
+		}
+	}
+
+	return warnings;
+}
+
+function getSequenceLabels(document) {
+	const labels = new Set();
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
+		const match = codeLine.match(/^\s*[Nn](\d+)(?![.\d])/);
+
+		if (match) {
+			labels.add(normalizeSequenceNumber(match[1]));
+		}
+	}
+
+	return labels;
+}
+
+function normalizeSequenceNumber(text) {
+	return String(Number.parseInt(text, 10));
+}
+
+function maskProtectedRanges(line) {
+	const characters = line.split("");
+	const protectedRanges = [
+		...getCommentRanges(line),
+		...getAngleBracketRanges(line)
+	];
+
+	for (const range of protectedRanges) {
+		for (let index = range.start; index <= range.end; index++) {
+			characters[index] = " ";
+		}
+	}
+
+	return characters.join("");
+}
+
+function makeDuplicateSequenceNumberWarnings(line, lineNumber, ignoreRanges, seenSequenceNumbers) {
+	const warnings = [];
+	const sequenceNumberRegex = /\b[Nn](\d+)(?![.\d])/g;
+	let match;
+
+	while ((match = sequenceNumberRegex.exec(line)) !== null) {
+		const start = match.index;
+		const end = start + match[0].length;
+
+		if (isInsideRange(start, ignoreRanges)) {
+			continue;
+		}
+
+		const normalizedSequenceNumber = String(Number.parseInt(match[1], 10));
+		const previous = seenSequenceNumbers.get(normalizedSequenceNumber);
+
+		if (previous) {
+			warnings.push(
+				makeDuplicateSequenceNumberWarning(
+					lineNumber,
+					start,
+					end,
+					match[0].toUpperCase(),
+					previous.lineNumber
+				)
+			);
+			continue;
+		}
+
+		seenSequenceNumbers.set(normalizedSequenceNumber, { lineNumber });
+	}
+
+	return warnings;
+}
+
+function makeOutOfOrderSequenceNumberWarnings(line, lineNumber, ignoreRanges, sequenceNumberOrder) {
+	const warnings = [];
+	const sequenceNumberRegex = /\b[Nn](\d+)(?![.\d])/g;
+	let match;
+
+	while ((match = sequenceNumberRegex.exec(line)) !== null) {
+		const start = match.index;
+		const end = start + match[0].length;
+
+		if (isInsideRange(start, ignoreRanges)) {
+			continue;
+		}
+
+		const value = Number.parseInt(match[1], 10);
+		const text = match[0].toUpperCase();
+		const previous = sequenceNumberOrder.previous;
+
+		if (previous && value < previous.value) {
+			warnings.push(
+				makeOutOfOrderSequenceNumberWarning(
+					lineNumber,
+					start,
+					end,
+					text,
+					previous.text,
+					previous.lineNumber
+				)
+			);
+		}
+
+		sequenceNumberOrder.previous = { value, text, lineNumber };
+	}
+
+	return warnings;
 }
 
 function makeNonAsciiWarnings(line, lineNumber) {
@@ -338,6 +494,45 @@ function makeAddressInsideBracketWarning(lineNumber, start, end, address) {
 	const warning = new vscode.Diagnostic(
 		range,
 		`Address word "${address.toUpperCase()}" is inside a bracket expression. Put the address before the bracket, such as ${address.toUpperCase()}[...].`,
+		vscode.DiagnosticSeverity.Error
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeDuplicateSequenceNumberWarning(lineNumber, start, end, sequenceNumber, firstLineNumber) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Duplicate sequence number "${sequenceNumber}". First used on line ${firstLineNumber + 1}.`,
+		vscode.DiagnosticSeverity.Error
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeOutOfOrderSequenceNumberWarning(lineNumber, start, end, sequenceNumber, previousSequenceNumber, previousLineNumber) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Sequence number "${sequenceNumber}" is out of order. Previous sequence number is "${previousSequenceNumber}" on line ${previousLineNumber + 1}.`,
+		vscode.DiagnosticSeverity.Error
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeUnresolvedGotoTargetWarning(lineNumber, start, end, target) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`GOTO target "${target}" has no matching N label.`,
 		vscode.DiagnosticSeverity.Error
 	);
 

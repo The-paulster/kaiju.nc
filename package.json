@@ -2,7 +2,7 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PaulCGilesLawson",
   "license": "MIT",
@@ -386,6 +386,11 @@
             "type": "boolean",
             "default": true,
             "description": "Show KAIJU.NC tool-range gutter markers beside G-code programs."
+          },
+          "kaijuNC.syntax.unresolvedGotos.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when a GOTO target does not have a matching N label."
           }
         }
       },
@@ -396,6 +401,16 @@
             "type": "boolean",
             "default": true,
             "description": "Warn when a G-code file contains non-ASCII characters that some lathe controls may not read reliably."
+          },
+          "kaijuNC.alerts.duplicateSequenceNumbers.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when the same N sequence number appears more than once in a G-code file."
+          },
+          "kaijuNC.alerts.sequenceNumberOrder.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when N sequence numbers decrease instead of staying in order."
           }
         }
       },
@@ -503,6 +518,11 @@
             "type": "boolean",
             "default": true,
             "description": "Enable KAIJU Sense motion hovers on G0, G1, G2, and G3 moves."
+          },
+          "kaijuNC.sense.labelReferences.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show inline reference markers after N labels targeted by GOTO statements."
           },
           "kaijuNC.sense.xAxisMode": {
             "type": "string",
@@ -716,6 +736,16 @@
       {
         "title": "KAIJU.NC: Chronoblade",
         "properties": {
+          "kaijuNC.chronoblade.machineMode": {
+            "type": "string",
+            "enum": [
+              "mill",
+              "latheRadius",
+              "latheDiameter"
+            ],
+            "default": "latheDiameter",
+            "description": "Machine mode used by KAIJU Chronoblade, Sense, and Vision. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
+          },
           "kaijuNC.chronoblade.xAxisMode": {
             "type": "string",
             "enum": [
@@ -793,6 +823,22 @@
       {
         "command": "kaijuNC.decompose",
         "title": "KAIJU Decomposition"
+      },
+      {
+        "command": "kaijuNC.rangefinder",
+        "title": "KAIJU Rangefinder"
+      },
+      {
+        "command": "kaijuNC.machineMode.mill",
+        "title": "KAIJU Machine Mode: Mill"
+      },
+      {
+        "command": "kaijuNC.machineMode.latheRadius",
+        "title": "KAIJU Machine Mode: Lathe (Radius)"
+      },
+      {
+        "command": "kaijuNC.machineMode.latheDiameter",
+        "title": "KAIJU Machine Mode: Lathe (Diameter)"
       }
     ],
     "keybindings": [
@@ -833,6 +879,12 @@
         "when": "editorTextFocus && editorLangId == gcode"
       }
     ],
+    "submenus": [
+      {
+        "id": "kaijuNC.machineModeMenu",
+        "label": "KAIJU Machine Mode"
+      }
+    ],
 
     "menus": {
       "editor/context": [
@@ -865,6 +917,33 @@
           "command": "kaijuNC.decompose",
           "when": "editorLangId == gcode",
           "group": "navigation"
+        },
+        {
+          "command": "kaijuNC.rangefinder",
+          "when": "editorLangId == gcode",
+          "group": "navigation"
+        },
+        {
+          "submenu": "kaijuNC.machineModeMenu",
+          "when": "editorLangId == gcode",
+          "group": "z_kaijuMachineMode"
+        }
+      ],
+      "kaijuNC.machineModeMenu": [
+        {
+          "command": "kaijuNC.machineMode.mill",
+          "when": "editorLangId == gcode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kaijuNC.machineMode.latheRadius",
+          "when": "editorLangId == gcode",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kaijuNC.machineMode.latheDiameter",
+          "when": "editorLangId == gcode",
+          "group": "navigation@3"
         }
       ]
     }
