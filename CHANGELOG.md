@@ -4,6 +4,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.3.0]
 
+- Added Ctrl+Click navigation and a small hover hint for `GOTO` label targets.
+- Removed duplicate decoration text from `GOTO` target hovers so they only show the target information.
+- Tightened GOTO label-reference hover highlights so they clear sooner without changing VS Code's normal hover appearance delay.
+- Fixed KAIJU Decomposition so later uses of a macro assigned by the program do not prompt for manual input just because the assigned expression could not be reduced.
 - Fixed KAIJU Decomposition macro-expression evaluation so CNC-style leading-zero numbers like `00.50` work inside larger expressions.
 - Added a KAIJU Syntax error for `GOTO` targets that do not have a matching `N` label.
 - Added inline reference decorations after `N` labels targeted by `GOTO` statements.

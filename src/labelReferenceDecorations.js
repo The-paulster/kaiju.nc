@@ -7,6 +7,7 @@ const {
 const LABEL_REFERENCE_MARKER = "\u21A9";
 const REFERENCE_HIGHLIGHT_BACKGROUND = "rgba(255, 193, 7, 0.22)";
 const REFERENCE_HIGHLIGHT_BORDER = "rgba(255, 193, 7, 0.65)";
+const HOVER_HIGHLIGHT_CLEAR_DELAY_MS = 1500;
 
 function registerLabelReferenceDecorations(context) {
 	const decorationType = vscode.window.createTextEditorDecorationType({
@@ -48,6 +49,21 @@ function registerLabelReferenceDecorations(context) {
 		vscode.languages.registerHoverProvider({ language: "gcode" }, {
 			provideHover(document, position) {
 				if (!areLabelReferenceDecorationsEnabled(document)) {
+					clearHoverHighlightDecorations(document, {
+						incomingReference: hoverIncomingReferenceDecorationType,
+						targetLabel: hoverTargetLabelDecorationType
+					});
+					return undefined;
+				}
+
+				const referenceInfo = getLabelReferenceAtPosition(document, position)
+					|| getGotoReferenceAtPosition(document, position);
+
+				if (!referenceInfo) {
+					clearHoverHighlightDecorations(document, {
+						incomingReference: hoverIncomingReferenceDecorationType,
+						targetLabel: hoverTargetLabelDecorationType
+					});
 					return undefined;
 				}
 
@@ -61,15 +77,24 @@ function registerLabelReferenceDecorations(context) {
 						incomingReference: hoverIncomingReferenceDecorationType,
 						targetLabel: hoverTargetLabelDecorationType
 					});
-				}, 4000);
+				}, HOVER_HIGHLIGHT_CLEAR_DELAY_MS);
 
-				const referenceInfo = getLabelReferenceAtPosition(document, position);
-
-				if (!referenceInfo) {
+				return new vscode.Hover(referenceInfo.detail, referenceInfo.range);
+			}
+		}),
+		vscode.languages.registerDefinitionProvider({ language: "gcode" }, {
+			provideDefinition(document, position) {
+				if (!areLabelReferenceDecorationsEnabled(document)) {
 					return undefined;
 				}
 
-				return new vscode.Hover(referenceInfo.detail, referenceInfo.range);
+				const referenceInfo = getGotoReferenceAtPosition(document, position);
+
+				if (!referenceInfo || !referenceInfo.target) {
+					return undefined;
+				}
+
+				return new vscode.Location(document.uri, makeLabelRange(referenceInfo.target));
 			}
 		})
 	);
@@ -91,6 +116,10 @@ function registerLabelReferenceDecorations(context) {
 		vscode.window.onDidChangeVisibleTextEditors(scheduleUpdate),
 		vscode.window.onDidChangeTextEditorSelection(event => {
 			if (vscode.window.visibleTextEditors.includes(event.textEditor)) {
+				clearHoverHighlightDecorations(event.textEditor.document, {
+					incomingReference: hoverIncomingReferenceDecorationType,
+					targetLabel: hoverTargetLabelDecorationType
+				});
 				updateLabelReferenceDecorations(event.textEditor, {
 					labelReference: decorationType,
 					incomingReference: incomingReferenceDecorationType,
@@ -191,11 +220,33 @@ function getLabelReferenceAtPosition(document, position) {
 	};
 }
 
-function buildSelectionHighlightDecorations(document, selections) {
+function getGotoReferenceAtPosition(document, position) {
+	const reference = getReferenceAtPosition(document, position);
+
+	if (!reference) {
+		return undefined;
+	}
+
+	const labels = buildLabelMap(document);
+	const target = labels.get(reference.label);
+
+	if (!target) {
+		return undefined;
+	}
+
+	return {
+		range: new vscode.Range(position.line, reference.start, position.line, reference.end),
+		target,
+		detail: formatGotoReferenceDetail(reference, target)
+	};
+}
+
+function buildSelectionHighlightDecorations(document, selections, options = {}) {
 	const labels = buildLabelMap(document);
 	const references = buildReferenceMap(document);
 	const incomingReferenceLines = new Map();
 	const targetLabelLines = new Map();
+	const includeHoverMessages = options.includeHoverMessages !== false;
 
 	for (const lineNumber of getSelectedLineNumbers(document, selections)) {
 		const labelInfo = getLabelAtLine(document, lineNumber);
@@ -224,8 +275,10 @@ function buildSelectionHighlightDecorations(document, selections) {
 	}
 
 	return {
-		incomingReferences: [...incomingReferenceLines.values()].map(makeLineHighlightDecoration),
-		targetLabels: [...targetLabelLines.values()].map(makeLineHighlightDecoration)
+		incomingReferences: [...incomingReferenceLines.values()]
+			.map(lineInfo => makeLineHighlightDecoration(lineInfo, { includeHoverMessages })),
+		targetLabels: [...targetLabelLines.values()]
+			.map(lineInfo => makeLineHighlightDecoration(lineInfo, { includeHoverMessages }))
 	};
 }
 
@@ -239,7 +292,7 @@ function updateHoverHighlightDecorations(document, position, decorationTypes) {
 	const highlightDecorations = buildSelectionHighlightDecorations(document, [{
 		start: position,
 		end: position
-	}]);
+	}], { includeHoverMessages: false });
 
 	editor.setDecorations(decorationTypes.incomingReference, highlightDecorations.incomingReferences);
 	editor.setDecorations(decorationTypes.targetLabel, highlightDecorations.targetLabels);
@@ -349,6 +402,34 @@ function getReferencesAtLine(document, lineNumber) {
 	return references;
 }
 
+function getReferenceAtPosition(document, position) {
+	const line = document.lineAt(position.line).text;
+	const codeLine = maskProtectedRanges(line);
+	const gotoRegex = /\bGOTO\s*N?(\d+)(?![.\d])/gi;
+	let match;
+
+	while ((match = gotoRegex.exec(codeLine)) !== null) {
+		const start = match.index;
+		const end = match.index + match[0].length;
+
+		if (position.character < start || position.character > end) {
+			continue;
+		}
+
+		const prefix = codeLine.slice(0, match.index);
+
+		return {
+			label: normalizeSequenceNumber(match[1]),
+			kind: /\bIF\b/i.test(prefix) ? "IF GOTO" : "GOTO",
+			text: line,
+			start,
+			end
+		};
+	}
+
+	return undefined;
+}
+
 function addReference(references, label, reference) {
 	if (!references.has(label)) {
 		references.set(label, []);
@@ -367,6 +448,20 @@ function formatReferenceDetail(references) {
 	].join("\n"));
 }
 
+function formatGotoReferenceDetail(reference, target) {
+	const markdown = new vscode.MarkdownString([
+		`**KAIJU Sense - ${reference.kind}**`,
+		"",
+		`Targets **L${target.lineNumber + 1}:** \`${target.text}\``,
+		"",
+		`<small><em>Ctrl+Click to jump to ${target.text}.</em></small>`
+	].join("\n"));
+
+	markdown.supportHtml = true;
+
+	return markdown;
+}
+
 function formatReferenceCount(count) {
 	return `${count} ref${count === 1 ? "" : "s"}`;
 }
@@ -375,11 +470,16 @@ function makeLabelRange(labelInfo) {
 	return new vscode.Range(labelInfo.lineNumber, labelInfo.start, labelInfo.lineNumber, labelInfo.end);
 }
 
-function makeLineHighlightDecoration(lineInfo) {
-	return {
-		range: new vscode.Range(lineInfo.lineNumber, 0, lineInfo.lineNumber, Number.MAX_SAFE_INTEGER),
-		hoverMessage: lineInfo.message
+function makeLineHighlightDecoration(lineInfo, options = {}) {
+	const decoration = {
+		range: new vscode.Range(lineInfo.lineNumber, 0, lineInfo.lineNumber, Number.MAX_SAFE_INTEGER)
 	};
+
+	if (options.includeHoverMessages !== false) {
+		decoration.hoverMessage = lineInfo.message;
+	}
+
+	return decoration;
 }
 
 function getSelectedLineNumbers(document, selections) {

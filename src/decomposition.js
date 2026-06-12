@@ -66,6 +66,7 @@ async function decomposeDocument(document) {
 	const context = {
 		document,
 		macroValues: new Map(),
+		assignedMacros: new Set(),
 		macroAliases: buildMacroAliasMap(document),
 		manualInputs: new Map(),
 		warnings: [],
@@ -257,6 +258,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 async function trackAssignments(codeLine, lineNumber, context) {
 	for (const assignment of findAssignments(codeLine)) {
 		const value = await evaluateExpression(assignment.value, lineNumber, context);
+		markMacroAssigned(context, assignment.macro);
 		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
 	}
 }
@@ -376,6 +378,10 @@ async function promptForUnknownMacros(expression, lineNumber, context) {
 			continue;
 		}
 
+		if (hasAssignedMacro(context.assignedMacros, macro, resolvedMacro)) {
+			continue;
+		}
+
 		const entered = await vscode.window.showInputBox({
 			title: "KAIJU Decomposition",
 			prompt: `Line ${lineNumber + 1}: enter a numeric value for ${macro}`,
@@ -395,6 +401,14 @@ async function promptForUnknownMacros(expression, lineNumber, context) {
 	}
 
 	return {};
+}
+
+function markMacroAssigned(context, macro) {
+	const normalizedMacro = normalizeMacro(macro);
+	const resolvedMacro = resolveMacroAlias(normalizedMacro, context.macroAliases);
+
+	context.assignedMacros.add(normalizedMacro);
+	context.assignedMacros.add(resolvedMacro);
 }
 
 function skipWhitespace(text, index) {
@@ -448,6 +462,10 @@ function readBracketToken(text, start) {
 
 function hasMacroValue(macroValues, macro, resolvedMacro) {
 	return Number.isFinite(macroValues.get(macro)) || Number.isFinite(macroValues.get(resolvedMacro));
+}
+
+function hasAssignedMacro(assignedMacros, macro, resolvedMacro) {
+	return assignedMacros.has(macro) || assignedMacros.has(resolvedMacro);
 }
 
 function makeExecutionStateKey(macroValues) {
