@@ -17,6 +17,7 @@ function getSenseOptions(document) {
 		enabled: senseConfig.get("enabled", chronobladeConfig.get("enabled", true)),
 		statusVerbose: senseConfig.get("statusBarVerbose", true),
 		statusSyntaxColors: senseConfig.get("statusBarSyntaxColors", false),
+		syntaxColoredHoverValues: senseConfig.get("syntaxColoredHoverValues", false),
 		machineMode: profile.id,
 		defaultFeedMode: profile.defaultFeedMode,
 		xAxisMode: getConfiguredValue(senseConfig, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),

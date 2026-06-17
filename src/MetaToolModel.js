@@ -1,4 +1,4 @@
-// Role: parse and model tool ranges/colors for Sense and Rangefinder features.
+// Role: parse and model tool ranges/colors for Sense, Vision, and Rangefinder features.
 // Keep editor decorations in kaijuSense/tool.js.
 const { buildAliasEntries } = require("./MetaMacroEngine");
 
@@ -100,23 +100,18 @@ function resolveToolCode(toolText, macroValues) {
 	const numericValue = evaluateNumericExpression(expression, macroValues);
 
 	if (!Number.isFinite(numericValue)) {
-		return "";
+		return trimmedToolText;
 	}
 
 	return normalizeToolDigits(String(Math.trunc(Math.abs(numericValue))));
 }
 
 function normalizeToolDigits(digits) {
-	if (digits.length <= 2) {
-		const paddedDigits = digits.padStart(2, "0");
-		return `${paddedDigits}${paddedDigits}`;
+	if (digits.length <= 4) {
+		return digits;
 	}
 
-	if (digits.length === 3) {
-		return digits.padStart(4, "0");
-	}
-
-	return digits.slice(0, 4);
+	return digits.slice(-4);
 }
 
 function trackMacroAssignments(codeLine, macroValues, aliasMacrosByNumber) {

@@ -21,6 +21,14 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added a `Ctrl+Alt+F` / `Cmd+Alt+F` shortcut for KAIJU Rangefinder.
 - Clarified KAIJU Decomposition as a readable execution trace for inspecting and debugging macro-driven G-code, not verified machine-ready output.
 - Added shared human-display decimal formatting with configurable minimum and maximum decimal places, defaulting to three.
+- Added an experimental syntax-colored KAIJU Sense hover value mode for testing; it is currently less readable than the default compact hover.
+- Added `N` label separator rows to KAIJU Chronoblade reports so program position is easier to follow.
+- Added `kaijuNC.vision.zoomStep` and `kaijuNC.vision.wheelZoomStep`, defaulting KAIJU Vision zoom controls to larger steps.
+- Added a small dark outline to KAIJU Vision endpoint labels so they stay readable over path lines.
+- Increased the default KAIJU Vision endpoint/start label font size.
+- Brightened and strengthened KAIJU Vision's tool-color path strokes while leaving the shared tool decoration colors unchanged.
+- Added experimental KAIJU Vision endpoint label avoidance with connector lines, defaulting off while the layout behavior is still being tuned.
+- Added KAIJU Vision tool-change markers with under-layer green dots and gutter-colored tool transition labels.
 - Added right-click KAIJU Machine Mode commands for Mill, Lathe (Radius), and Lathe (Diameter), with matching Chronoblade/Sense/Vision X-axis settings and motion-analysis feed defaults.
 - Added Kaiju Alert checks for duplicate and out-of-order `N` sequence numbers, each with its own setting.
 

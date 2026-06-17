@@ -451,6 +451,8 @@ function renderVisionHtml(document, mode, options, result) {
 		const viewerSlot = document.getElementById("viewerSlot");
 		const viewer = document.getElementById("viewer");
 		const zoomLabel = document.getElementById("zoomLabel");
+		const zoomStep = Math.max(1.01, Number(data.options.zoomStep) || 1.75);
+		const wheelZoomStep = Math.max(1.01, Number(data.options.wheelZoomStep) || 1.36);
 		let zoom = 1;
 		let pan = { x: 0, y: 0 };
 		let currentFitBounds;
@@ -520,6 +522,10 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function getDrawableRows(plane) {
 			return data.rows.map(row => {
+				if (row.type === "tool") {
+					return Object.assign({}, row, { projectedPoints: [] });
+				}
+
 				const points = (row.points || [])
 					.map(point => project(point, plane))
 					.filter(Boolean);
@@ -529,11 +535,21 @@ function renderVisionHtml(document, mode, options, result) {
 			}).filter(row => row.projectedPoints.length >= 2);
 		}
 
-		function makeBounds(rows) {
+		function getDrawableToolChanges(plane) {
+			return data.rows.filter(row => row.type === "tool")
+				.map(row => Object.assign({}, row, { projectedPoint: project(row.point || {}, plane) }))
+				.filter(row => row.projectedPoint);
+		}
+
+		function makeBounds(rows, toolChanges) {
 			const points = [];
 
 			for (const row of rows) {
 				points.push(...row.projectedPoints);
+			}
+
+			for (const toolChange of toolChanges) {
+				points.push(toolChange.projectedPoint);
 			}
 
 			if (!points.length) {
@@ -651,8 +667,9 @@ function renderVisionHtml(document, mode, options, result) {
 			sizeViewer();
 			const plane = planes[planeSelect.value] || planes.xz;
 			const rows = getDrawableRows(plane);
+			const toolChanges = getDrawableToolChanges(plane);
 			const viewerRect = viewer.getBoundingClientRect();
-			const fitBounds = makeBounds(rows);
+			const fitBounds = makeBounds(rows, toolChanges);
 			currentFitBounds = fitBounds;
 			const bounds = zoomBounds(fitBounds);
 			currentBounds = bounds;
@@ -668,10 +685,16 @@ function renderVisionHtml(document, mode, options, result) {
 			const compassTextSize = compassSize * 0.16;
 			const endpointSize = unitsPerPixel * data.options.endpointSize;
 			const startPointSize = unitsPerPixel * data.options.startPointSize;
+			const toolChangeSize = unitsPerPixel * 4;
 			const arrowSize = unitsPerPixel * 8 * data.options.arrowSize;
+			const endpointLabelOutline = unitsPerPixel * 1.5;
+			const labelHitboxPadding = unitsPerPixel * 8;
+			const connectorPointGap = unitsPerPixel * 2;
+			const connectorLabelGap = unitsPerPixel * 0.35;
+			const endpointLabelAvoidance = data.options.endpointLabelAvoidance !== false;
 			const lineScale = data.options.lineThickness;
 
-			if (!rows.length) {
+			if (!rows.length && !toolChanges.length) {
 				viewer.innerHTML = '<p class="empty" style="padding: 16px;">No drawable moves found for the selected plane.</p>';
 				return;
 			}
@@ -679,28 +702,43 @@ function renderVisionHtml(document, mode, options, result) {
 			const paths = rows.map(row => {
 				const cls = row.motionCode === 0 ? "rapid" : "cut";
 				const marker = row.motionCode === 0 ? "url(#rapid-arrow)" : "url(#cut-arrow)";
-				const strokeStyle = useToolColors && row.toolColor ? ' style="stroke:' + escapeAttribute(row.toolColor) + '"' : "";
+				const toolColor = useToolColors && row.toolColor ? boostToolColor(row.toolColor) : "";
+				const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
 				return '<polyline class="' + cls + '"' + strokeStyle + ' marker-end="' + marker + '" points="' + formatPointList(row.projectedPoints) + '" />';
 			}).join("");
+			const toolDots = toolChanges.map(toolChange => renderToolChangeDot(toolChange, toolChangeSize)).join("");
+			const toolLabels = toolChanges.map(toolChange => renderToolChangeLabel(toolChange, toolChangeSize, labelSize, labelOffset, showLabels)).join("");
 			const firstRow = rows[0];
 			const firstPoint = firstRow && firstRow.projectedPoints[0];
-			const startPoint = firstPoint
-				? renderPointLabel(firstPoint, startPointSize, labelSize, labelOffset, "start-point", "start-label", showLabels ? "START" : "", showLabels ? firstRow.startLabel : "", 1)
-				: "";
-			const endpoints = rows.map(row => {
+			const labelTargets = [];
+
+			if (firstPoint) {
+				labelTargets.push(makePointLabelTarget(firstPoint, startPointSize, "start-point", "start-label", showLabels ? "START" : "", showLabels ? firstRow.startLabel : ""));
+			}
+
+			for (const row of rows) {
 				const end = row.projectedEnd || row.projectedPoints[row.projectedPoints.length - 1];
 
 				if (!end) {
-					return "";
+					continue;
 				}
 
-				return renderPointLabel(end, endpointSize, labelSize, labelOffset, "endpoint", "endpoint-label", showLabels ? "L" + row.lineNumber : "", showLabels ? row.endLabel : "", 1);
-			}).join("");
+				labelTargets.push(makePointLabelTarget(end, endpointSize, "endpoint", "endpoint-label", showLabels ? "L" + row.lineNumber : "", showLabels ? row.endLabel : ""));
+			}
+
+			const labelsAndMarkers = layoutPointLabels(labelTargets, {
+				labelSize,
+				labelOffset,
+				labelHitboxPadding,
+				connectorPointGap,
+				connectorLabelGap,
+				endpointLabelAvoidance
+			}).map(renderPointLabel).join("");
 			const zeroAxes = showZeroLines ? renderZeroAxes(bounds) : "";
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
 			const svg = '<svg id="vision-svg" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.point-label{text-anchor:middle;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.label-connector{stroke:#fff;stroke-width:0.85;stroke-linecap:round;opacity:0.9;vector-effect:non-scaling-stroke;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
 				'</style>' +
 				'<defs>' +
 					'<marker id="rapid-arrow" markerWidth="' + arrowSize + '" markerHeight="' + arrowSize + '" refX="' + arrowSize + '" refY="' + arrowSize / 2 + '" orient="auto" markerUnits="userSpaceOnUse"><path class="arrow-rapid" d="M0,0 L' + arrowSize + ',' + arrowSize / 2 + ' L0,' + arrowSize + ' Z" /></marker>' +
@@ -708,31 +746,265 @@ function renderVisionHtml(document, mode, options, result) {
 				'</defs>' +
 				zeroAxes +
 				compass +
+				toolDots +
 				paths +
-				startPoint +
-				endpoints +
+				labelsAndMarkers +
+				toolLabels +
 				'</svg>';
 
 			viewer.innerHTML = svg;
 		}
 
-		function renderPointLabel(point, pointSize, labelSize, labelOffset, pointClass, labelClass, labelLine, coordinateLine, verticalDirection) {
-			const x = round(point.x);
-			const y = round(point.y);
-			const marker = '<circle class="' + pointClass + '" cx="' + x + '" cy="' + y + '" r="' + pointSize + '" />';
+		function makePointLabelTarget(point, pointSize, pointClass, labelClass, labelLine, coordinateLine) {
+			return {
+				point,
+				pointSize,
+				pointClass,
+				labelClass,
+				labelLine,
+				coordinateLine
+			};
+		}
 
-			if (!labelLine && !coordinateLine) {
+		function layoutPointLabels(targets, options) {
+			const pointObstacles = targets.map(target => makePointObstacle(target.point, target.pointSize, options.labelHitboxPadding));
+			const placedLabelBoxes = [];
+			const placedConnectors = [];
+
+			return targets.map(target => {
+				if (!target.labelLine && !target.coordinateLine) {
+					return target;
+				}
+
+				const candidates = makeLabelCandidates(target, options);
+				let chosen = candidates[0];
+
+				if (options.endpointLabelAvoidance) {
+					let bestScore = Number.POSITIVE_INFINITY;
+
+					for (const candidate of candidates) {
+						const connector = candidate.index === 0 ? undefined : makeLabelConnector(target.point, target.pointSize, candidate.box, options.connectorPointGap, options.connectorLabelGap);
+						const collisionScore = scoreLabelCandidate(candidate.box, connector, pointObstacles, placedLabelBoxes, placedConnectors);
+						const score = collisionScore + candidate.priority;
+
+						if (score < bestScore) {
+							chosen = Object.assign({}, candidate, { connector });
+							bestScore = score;
+						}
+
+						if (collisionScore === 0) {
+							break;
+						}
+					}
+				}
+
+				placedLabelBoxes.push(chosen.box);
+
+				if (chosen.connector) {
+					placedConnectors.push(chosen.connector);
+				}
+
+				return Object.assign({}, target, {
+					labelX: chosen.labelX,
+					firstBaselineY: chosen.firstBaselineY,
+					connector: chosen.connector
+				});
+			});
+		}
+
+		function makePointObstacle(point, radius, padding) {
+			return {
+				left: point.x - radius - padding,
+				top: point.y - radius - padding,
+				right: point.x + radius + padding,
+				bottom: point.y + radius + padding
+			};
+		}
+
+		function makeLabelCandidates(target, options) {
+			const metrics = measurePointLabel(target, options.labelSize, options.labelHitboxPadding);
+			const xDistance = target.pointSize + options.labelOffset + metrics.width / 2 + options.labelSize * 0.75;
+			const yDistance = target.pointSize + options.labelOffset + metrics.height / 2 + options.labelSize * 0.75;
+			const offsets = [[0, yDistance]];
+			const rings = [1.15, 1.65, 2.25, 3.0];
+			const angles = [];
+
+			for (let angle = 0; angle < 360; angle += 10) {
+				angles.push(angle);
+			}
+
+			for (const ring of rings) {
+				for (const angle of angles) {
+					offsets.push(makeAngleOffset(angle, xDistance * ring, yDistance * ring));
+				}
+			}
+
+			return offsets.map((offset, index) => makeLabelCandidate(target.point.x + offset[0], target.point.y + offset[1], metrics, index, offset));
+		}
+
+		function measurePointLabel(target, labelSize, padding) {
+			const lineCount = target.coordinateLine ? 2 : 1;
+			const maxCharacters = Math.max(String(target.labelLine || "").length, String(target.coordinateLine || "").length, 1);
+
+			return {
+				width: maxCharacters * labelSize * 0.72 + padding * 2,
+				height: (lineCount === 1 ? labelSize * 1.2 : labelSize * 2.35) + padding * 2,
+				lineCount,
+				padding,
+				firstBaselineOffset: padding + labelSize * 0.9
+			};
+		}
+
+		function makeAngleOffset(angleDegrees, xRadius, yRadius) {
+			const radians = angleDegrees * Math.PI / 180;
+
+			return [
+				Math.cos(radians) * xRadius,
+				Math.sin(radians) * yRadius
+			];
+		}
+
+		function makeLabelCandidate(centerX, centerY, metrics, index, offset) {
+			const left = centerX - metrics.width / 2;
+			const top = centerY - metrics.height / 2;
+			const distance = offset ? Math.hypot(offset[0], offset[1]) : 0;
+
+			return {
+				index,
+				priority: distance * 0.02 + index * 0.001,
+				labelX: centerX,
+				firstBaselineY: top + metrics.firstBaselineOffset,
+				box: {
+					left,
+					top,
+					right: left + metrics.width,
+					bottom: top + metrics.height
+				}
+			};
+		}
+
+		function scoreLabelCandidate(box, connector, pointObstacles, placedLabelBoxes, placedConnectors) {
+			let score = 0;
+
+			for (const obstacle of pointObstacles) {
+				score += getIntersectionArea(box, obstacle) * 1000;
+			}
+
+			for (const placedBox of placedLabelBoxes) {
+				score += getIntersectionArea(box, placedBox) * 1200;
+			}
+
+			if (connector) {
+				for (const placedConnector of placedConnectors) {
+					if (segmentsIntersect(connector, placedConnector)) {
+						score += 100000000;
+					}
+				}
+			}
+
+			return score;
+		}
+
+		function segmentsIntersect(a, b) {
+			const directionA = {
+				x: a.x2 - a.x1,
+				y: a.y2 - a.y1
+			};
+			const directionB = {
+				x: b.x2 - b.x1,
+				y: b.y2 - b.y1
+			};
+			const denominator = cross(directionA, directionB);
+
+			if (Math.abs(denominator) < 0.000001) {
+				return false;
+			}
+
+			const delta = {
+				x: b.x1 - a.x1,
+				y: b.y1 - a.y1
+			};
+			const t = cross(delta, directionB) / denominator;
+			const u = cross(delta, directionA) / denominator;
+
+			return t > 0.03 && t < 0.97 && u > 0.03 && u < 0.97;
+		}
+
+		function cross(a, b) {
+			return a.x * b.y - a.y * b.x;
+		}
+
+		function getIntersectionArea(a, b) {
+			const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+			const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+
+			return width * height;
+		}
+
+		function makeLabelConnector(point, pointSize, box, pointGap, labelGap) {
+			const targetX = Math.max(box.left, Math.min(box.right, point.x));
+			const targetY = Math.max(box.top, Math.min(box.bottom, point.y));
+			const dx = targetX - point.x;
+			const dy = targetY - point.y;
+			const length = Math.hypot(dx, dy);
+
+			if (length <= 0) {
+				return undefined;
+			}
+
+			const ux = dx / length;
+			const uy = dy / length;
+
+			return {
+				x1: point.x + ux * (pointSize + pointGap),
+				y1: point.y + uy * (pointSize + pointGap),
+				x2: targetX - ux * labelGap,
+				y2: targetY - uy * labelGap
+			};
+		}
+
+		function renderPointLabel(target) {
+			const x = round(target.point.x);
+			const y = round(target.point.y);
+			const marker = '<circle class="' + target.pointClass + '" cx="' + x + '" cy="' + y + '" r="' + target.pointSize + '" />';
+
+			if (!target.labelLine && !target.coordinateLine) {
 				return marker;
 			}
 
-			const textY = verticalDirection < 0
-				? -(pointSize + labelOffset + labelSize * 0.35)
-				: pointSize + labelOffset + labelSize;
+			const connector = target.connector
+				? '<line class="label-connector" x1="' + round(target.connector.x1) + '" y1="' + round(target.connector.y1) + '" x2="' + round(target.connector.x2) + '" y2="' + round(target.connector.y2) + '" />'
+				: "";
 
 			return marker +
-				'<text class="point-label ' + labelClass + '" transform="translate(' + x + ' ' + y + ')" y="' + round(textY) + '">' +
-					'<tspan x="0">' + svgEscape(labelLine) + '</tspan>' +
-					'<tspan x="0" dy="' + round(labelSize * 1.15) + '">' + svgEscape(coordinateLine) + '</tspan>' +
+				connector +
+				'<text class="point-label ' + target.labelClass + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
+					'<tspan x="' + round(target.labelX) + '">' + svgEscape(target.labelLine) + '</tspan>' +
+					(target.coordinateLine ? '<tspan x="' + round(target.labelX) + '" dy="1.15em">' + svgEscape(target.coordinateLine) + '</tspan>' : "") +
+				'</text>';
+		}
+
+		function renderToolChangeDot(toolChange, markerSize) {
+			return '<circle class="tool-change-dot" cx="' + round(toolChange.projectedPoint.x) + '" cy="' + round(toolChange.projectedPoint.y) + '" r="' + markerSize + '" />';
+		}
+
+		function renderToolChangeLabel(toolChange, markerSize, labelSize, labelOffset, showLabels) {
+			if (!showLabels) {
+				return "";
+			}
+
+			const x = toolChange.projectedPoint.x + markerSize + labelOffset;
+			const y = toolChange.projectedPoint.y - markerSize - labelOffset;
+			const previousTool = toolChange.previousTool || "";
+			const currentTool = toolChange.tool || "";
+			const previousColor = toolChange.previousToolColor || "var(--vscode-foreground,#d4d4d4)";
+			const currentColor = toolChange.toolColor || "var(--vscode-foreground,#d4d4d4)";
+			const lineLabel = "L" + toolChange.lineNumber + " ";
+
+			return '<text class="tool-change-label" x="' + round(x) + '" y="' + round(y) + '">' +
+				'<tspan fill="var(--vscode-foreground,#d4d4d4)">' + svgEscape(lineLabel) + '</tspan>' +
+				(previousTool ? '<tspan fill="' + escapeAttribute(previousColor) + '">' + svgEscape(previousTool) + '</tspan><tspan fill="var(--vscode-foreground,#d4d4d4)"> -> </tspan>' : "") +
+				'<tspan fill="' + escapeAttribute(currentColor) + '">' + svgEscape(currentTool) + '</tspan>' +
 				'</text>';
 		}
 
@@ -781,6 +1053,45 @@ function renderVisionHtml(document, mode, options, result) {
 				.replace(/>/g, "&gt;");
 		}
 
+		function boostToolColor(color) {
+			const match = String(color || "").match(/^#([0-9a-f]{6})$/i);
+
+			if (!match) {
+				return color;
+			}
+
+			const red = parseInt(match[1].slice(0, 2), 16) / 255;
+			const green = parseInt(match[1].slice(2, 4), 16) / 255;
+			const blue = parseInt(match[1].slice(4, 6), 16) / 255;
+			const max = Math.max(red, green, blue);
+			const min = Math.min(red, green, blue);
+			const lightness = (max + min) / 2;
+			const delta = max - min;
+			let hue = 0;
+			let saturation = 0;
+
+			if (delta !== 0) {
+				saturation = delta / (1 - Math.abs(2 * lightness - 1));
+
+				if (max === red) {
+					hue = 60 * (((green - blue) / delta) % 6);
+				} else if (max === green) {
+					hue = 60 * ((blue - red) / delta + 2);
+				} else {
+					hue = 60 * ((red - green) / delta + 4);
+				}
+			}
+
+			if (hue < 0) {
+				hue += 360;
+			}
+
+			const boostedSaturation = Math.min(100, Math.round((saturation * 1.55 + 0.22) * 100));
+			const boostedLightness = Math.min(66, Math.max(48, Math.round((lightness * 1.12 + 0.1) * 100)));
+
+			return "hsl(" + Math.round(hue) + " " + boostedSaturation + "% " + boostedLightness + "%)";
+		}
+
 		planeSelect.addEventListener("change", () => {
 			resetView();
 		});
@@ -791,14 +1102,14 @@ function renderVisionHtml(document, mode, options, result) {
 			resetView();
 		});
 		document.getElementById("zoomOut").addEventListener("click", () => {
-			setZoom(zoom / 1.25);
+			setZoom(zoom / zoomStep);
 		});
 		document.getElementById("zoomIn").addEventListener("click", () => {
-			setZoom(zoom * 1.25);
+			setZoom(zoom * zoomStep);
 		});
 		viewer.addEventListener("wheel", event => {
 			event.preventDefault();
-			setZoom(zoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12), event);
+			setZoom(zoom * (event.deltaY < 0 ? wheelZoomStep : 1 / wheelZoomStep), event);
 		}, { passive: false });
 		viewer.addEventListener("pointerdown", event => {
 			if (!currentBounds || event.button !== 0) {

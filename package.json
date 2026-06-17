@@ -553,6 +553,11 @@
             "default": false,
             "description": "Color the left-side KAIJU Sense cursor-state status bar codes with colors matching KAIJU.NC syntax highlighting. VS Code applies this by splitting the readout into adjacent status bar items."
           },
+          "kaijuNC.sense.syntaxColoredHoverValues": {
+            "type": "boolean",
+            "default": false,
+            "description": "Experimental: show KAIJU Sense motion-hover values in G-code code blocks so VS Code can apply syntax coloring. This is taller and currently less readable than the default compact hover; leave it off unless you are testing it."
+          },
           "kaijuNC.sense.xAxisMode": {
             "type": "string",
             "enum": [
@@ -691,6 +696,20 @@
             "maximum": 0.8,
             "description": "Target width fraction for the KAIJU Vision side editor group when VS Code has a simple two-column layout."
           },
+          "kaijuNC.vision.zoomStep": {
+            "type": "number",
+            "default": 1.75,
+            "minimum": 1.01,
+            "maximum": 5,
+            "description": "Multiplier used by KAIJU Vision zoom buttons. The default is three times larger than the previous button step."
+          },
+          "kaijuNC.vision.wheelZoomStep": {
+            "type": "number",
+            "default": 1.36,
+            "minimum": 1.01,
+            "maximum": 5,
+            "description": "Multiplier used by KAIJU Vision mouse-wheel zoom. The default is three times larger than the previous wheel step."
+          },
           "kaijuNC.vision.lineThickness": {
             "type": "number",
             "default": 1,
@@ -721,7 +740,7 @@
           },
           "kaijuNC.vision.labelFontSize": {
             "type": "number",
-            "default": 9,
+            "default": 11,
             "minimum": 5,
             "maximum": 32,
             "description": "Endpoint and start label font size in KAIJU Vision, in screen pixels."
@@ -732,6 +751,11 @@
             "minimum": 0,
             "maximum": 80,
             "description": "Distance between KAIJU Vision point markers and their labels, in screen pixels."
+          },
+          "kaijuNC.vision.endpointLabelAvoidance": {
+            "type": "boolean",
+            "default": false,
+            "description": "Experimental: move KAIJU Vision endpoint labels away from endpoint dots and other labels when possible, drawing a small connector line when a label is displaced. Off by default because dense programs can make the current layout pass slow or awkward."
           },
           "kaijuNC.vision.compassSize": {
             "type": "number",

@@ -1051,6 +1051,12 @@ function analyzeChronobladeRange(document, range, options) {
 		applyModalState(words, motionCode, state);
 
 		if (isLineInRange(lineNumber, targetRange)) {
+			const labelRow = makeLabelReportRow(lineNumber, line, codeLine);
+
+			if (labelRow) {
+				rows.push(labelRow);
+			}
+
 			for (const toolChange of makeToolChangeRows(words, previousTool, options)) {
 				rows.push({
 					type: "tool",
@@ -1118,6 +1124,12 @@ function analyzeVisionRange(document, range, options) {
 
 		applyModalState(words, motionCode, state);
 
+		const toolRange = getToolRangeStartingAtLine(toolRanges, lineNumber);
+
+		if (toolRange && isLineInRange(lineNumber, targetRange)) {
+			rows.push(makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, options));
+		}
+
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
 
 		if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
@@ -1138,6 +1150,16 @@ function analyzeVisionRange(document, range, options) {
 		rows,
 		range: targetRange
 	};
+}
+
+function getToolRangeStartingAtLine(toolRanges, lineNumber) {
+	return toolRanges.find(range => range.startLine === lineNumber);
+}
+
+function getPreviousToolRange(toolRanges, toolRange) {
+	const index = toolRanges.indexOf(toolRange);
+
+	return index > 0 ? toolRanges[index - 1] : undefined;
 }
 
 function getToolRangeAtLine(toolRanges, lineNumber) {
@@ -1184,20 +1206,60 @@ function makeToolChangeRows(words, previousTool, options) {
 	}];
 }
 
-function getLastTool(words) {
-	const toolWord = lastWord(words, "T");
+function makeLabelReportRow(lineNumber, line, codeLine) {
+	const match = codeLine.match(/^\s*(N\d+)/i);
 
-	if (!toolWord || !Number.isFinite(toolWord.value)) {
+	if (!match) {
 		return undefined;
 	}
 
+	return {
+		type: "label",
+		lineNumber: lineNumber + 1,
+		instruction: match[1].toUpperCase(),
+		comment: getLineComments(line).join(" "),
+		start: "",
+		end: "",
+		distance: NaN,
+		timeSeconds: 0,
+		feed: NaN,
+		feedMode: "",
+		spindle: "",
+		rpmUsed: "",
+		warnings: []
+	};
+}
+
+function getLineComments(line) {
+	return getCommentRanges(line)
+		.map(range => line.slice(range.start, range.end + 1).trim())
+		.filter(Boolean);
+}
+
+function getLastTool(words) {
+	const toolWord = lastWord(words, "T");
+
+	if (!toolWord) {
+		return undefined;
+	}
+
+	if (!Number.isFinite(toolWord.value)) {
+		return {
+			label: `T${toolWord.raw.trim()}`,
+			station: undefined,
+			offset: undefined
+		};
+	}
+
 	const value = Math.abs(Math.trunc(toolWord.value));
-	const toolDigits = String(value).padStart(4, "0").slice(-4);
+	const toolDigits = /^\d{1,4}$/.test(toolWord.raw.trim())
+		? toolWord.raw.trim()
+		: String(value).slice(-4);
 
 	return {
 		label: `T${toolDigits}`,
-		station: Number(toolDigits.slice(0, 2)),
-		offset: Number(toolDigits.slice(2, 4))
+		station: Number(toolDigits.length >= 4 ? toolDigits.slice(0, 2) : toolDigits),
+		offset: toolDigits.length >= 4 ? Number(toolDigits.slice(2, 4)) : undefined
 	};
 }
 
@@ -1258,6 +1320,26 @@ function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRang
 	};
 }
 
+function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, position, options) {
+	const toolColor = TOOL_COLORS[toolRange.colorIndex % TOOL_COLORS.length];
+	const previousToolColor = previousToolRange ? TOOL_COLORS[previousToolRange.colorIndex % TOOL_COLORS.length] : "";
+	const previousTool = previousToolRange ? previousToolRange.tool : "";
+
+	return {
+		type: "tool",
+		lineNumber: lineNumber + 1,
+		instruction: previousTool ? `${previousTool} -> ${toolRange.tool}` : toolRange.tool,
+		previousTool,
+		tool: toolRange.tool,
+		previousToolColor,
+		toolColor,
+		point: toVisionPoint(position, options),
+		distance: NaN,
+		points: [],
+		warnings: []
+	};
+}
+
 function toVisionPoint(point, options) {
 	const physicalPoint = toPhysicalPoint(point, options);
 
@@ -1269,10 +1351,12 @@ function toVisionPoint(point, options) {
 }
 
 function summarizeVisionRows(rows) {
+	const motionRows = rows.filter(row => row.type !== "tool");
+
 	return {
-		moveCount: rows.length,
-		totalDistance: rows.reduce((total, row) => total + (Number.isFinite(row.distance) ? row.distance : 0), 0),
-		unknownRows: rows.filter(row => !Number.isFinite(row.distance) || !row.points.length).length
+		moveCount: motionRows.length,
+		totalDistance: motionRows.reduce((total, row) => total + (Number.isFinite(row.distance) ? row.distance : 0), 0),
+		unknownRows: motionRows.filter(row => !Number.isFinite(row.distance) || !row.points.length).length
 	};
 }
 
@@ -1287,6 +1371,10 @@ function summarizeChronobladeRows(rows) {
 	};
 
 	for (const row of rows) {
+		if (row.type === "label") {
+			continue;
+		}
+
 		if (Number.isFinite(row.distance)) {
 			summary.totalDistance += row.distance;
 		}

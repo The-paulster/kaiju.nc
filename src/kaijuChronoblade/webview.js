@@ -308,6 +308,12 @@ function renderChronobladeHtml(document, mode, options, result) {
 			min-width: 18ch;
 		}
 
+		tr.label-row td {
+			background: var(--vscode-editor-inactiveSelectionBackground);
+			color: var(--vscode-descriptionForeground);
+			font-weight: 600;
+		}
+
 		code {
 			font-family: var(--vscode-editor-font-family);
 			background: var(--vscode-textCodeBlock-background);
@@ -392,6 +398,15 @@ function renderRows(rows, humanFormat) {
 	}
 
 	const body = rows.map(row => {
+		if (row.type === "label") {
+			const comment = row.comment ? ` ${row.comment}` : "";
+
+			return `<tr class="label-row">
+				<td>${escapeHtml(row.lineNumber)}</td>
+				<td colspan="9"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}</td>
+			</tr>`;
+		}
+
 		return `<tr>
 			<td>${escapeHtml(row.lineNumber)}</td>
 			<td><code>${escapeHtml(row.instruction)}</code></td>
