@@ -1,15 +1,18 @@
+// Role: own KAIJU Sense N-label and GOTO editor UX: inline reference markers,
+// label/GOTO hovers, Ctrl+Click target navigation, and related highlights.
+// Keep fork-resolution alerts in fork.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges
-} = require("./textRanges");
+} = require("../MetaTextRanges");
 
 const LABEL_REFERENCE_MARKER = "\u21A9";
 const REFERENCE_HIGHLIGHT_BACKGROUND = "rgba(255, 193, 7, 0.22)";
 const REFERENCE_HIGHLIGHT_BORDER = "rgba(255, 193, 7, 0.65)";
 const HOVER_HIGHLIGHT_CLEAR_DELAY_MS = 1500;
 
-function registerLabelReferenceDecorations(context) {
+function registerKaijuSenseNLabels(context) {
 	const decorationType = vscode.window.createTextEditorDecorationType({
 		after: {
 			margin: "0 0 0 1ch",
@@ -522,7 +525,7 @@ function maskProtectedRanges(line) {
 }
 
 module.exports = {
-	registerLabelReferenceDecorations,
+	registerKaijuSenseNLabels,
 	buildLabelReferenceDecorations,
 	getLabelReferenceAtPosition,
 	buildSelectionHighlightDecorations

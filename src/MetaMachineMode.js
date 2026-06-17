@@ -1,21 +1,26 @@
+// Role: own configured KAIJU machine profiles, profile-setting commands, and the
+// right-side machine-profile status bar. Keep cursor modal state in Sense files.
 const vscode = require("vscode");
 
 const MACHINE_MODE_PROFILES = {
 	mill: {
 		id: "mill",
 		label: "Mill",
+		statusLabel: "Mill",
 		xAxisMode: "radius",
 		defaultFeedMode: "perMinute"
 	},
 	latheRadius: {
 		id: "latheRadius",
 		label: "Lathe (Radius)",
+		statusLabel: "Lathe - Radius",
 		xAxisMode: "radius",
 		defaultFeedMode: "perRev"
 	},
 	latheDiameter: {
 		id: "latheDiameter",
 		label: "Lathe (Diameter)",
+		statusLabel: "Lathe - Diameter",
 		xAxisMode: "diameter",
 		defaultFeedMode: "perRev"
 	}
@@ -29,6 +34,43 @@ function registerMachineModeCommands(context) {
 			})
 		);
 	}
+
+	registerMachineModeStatusBar(context);
+}
+
+function registerMachineModeStatusBar(context) {
+	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
+	statusBarItem.tooltip = "KAIJU.NC configured machine mode";
+	context.subscriptions.push(statusBarItem);
+
+	const update = () => updateMachineModeStatusBar(statusBarItem);
+
+	update();
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(update),
+		vscode.workspace.onDidChangeConfiguration(event => {
+			if (event.affectsConfiguration("kaijuNC.chronoblade.machineMode")) {
+				update();
+			}
+		})
+	);
+}
+
+function updateMachineModeStatusBar(statusBarItem) {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor || !editor.document || editor.document.languageId !== "gcode") {
+		statusBarItem.hide();
+		return;
+	}
+
+	const config = vscode.workspace.getConfiguration("kaijuNC.chronoblade", editor.document.uri);
+	const profile = getMachineModeProfile(config.get("machineMode", "latheDiameter"));
+
+	// Right-side configuration indicator: this is the selected KAIJU machine profile,
+	// not the cursor-specific modal G/M state shown by KAIJU Sense.
+	statusBarItem.text = `KAIJU: ${profile.statusLabel}`;
+	statusBarItem.show();
 }
 
 async function setMachineMode(profileId) {

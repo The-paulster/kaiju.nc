@@ -524,6 +524,16 @@
             "default": true,
             "description": "Show inline reference markers after N labels targeted by GOTO statements."
           },
+          "kaijuNC.sense.statusBarVerbose": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show verbose labels in the left-side KAIJU Sense cursor-state status bar, such as G00 (Rapid), instead of only modal codes. This does not affect the right-side machine-mode indicator."
+          },
+          "kaijuNC.sense.statusBarSyntaxColors": {
+            "type": "boolean",
+            "default": false,
+            "description": "Color the left-side KAIJU Sense cursor-state status bar codes with colors matching KAIJU.NC syntax highlighting. VS Code applies this by splitting the readout into adjacent status bar items."
+          },
           "kaijuNC.sense.xAxisMode": {
             "type": "string",
             "enum": [
@@ -876,6 +886,12 @@
         "command": "kaijuNC.decompose",
         "key": "ctrl+alt+d",
         "mac": "cmd+alt+d",
+        "when": "editorTextFocus && editorLangId == gcode"
+      },
+      {
+        "command": "kaijuNC.rangefinder",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
         "when": "editorTextFocus && editorLangId == gcode"
       }
     ],

@@ -1,9 +1,12 @@
+// Role: own KAIJU Alert diagnostics. Keep protected-text parsing in
+// MetaTextRanges.js and nonblocking Sense fork notices in kaijuSense/fork.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges,
 	isInsideRange
-} = require("./textRanges");
+} = require("../MetaTextRanges");
+const { getAlertOptions } = require("./options");
 
 const DIAGNOSTIC_SOURCE = "Kaiju Alert";
 
@@ -44,16 +47,11 @@ function updateDiagnostics(document, diagnostics) {
 	}
 
 	const warnings = [];
-	const config = vscode.workspace.getConfiguration("kaijuNC.alerts", document.uri);
-	const syntaxConfig = vscode.workspace.getConfiguration("kaijuNC.syntax", document.uri);
-	const warnNonAscii = config.get("nonAscii.enabled", true);
-	const warnDuplicateSequenceNumbers = config.get("duplicateSequenceNumbers.enabled", true);
-	const warnSequenceNumberOrder = config.get("sequenceNumberOrder.enabled", true);
-	const warnUnresolvedGotos = syntaxConfig.get("unresolvedGotos.enabled", true);
+	const options = getAlertOptions(document);
 	const seenSequenceNumbers = new Map();
 	const sequenceNumberOrder = { previous: null };
 
-	if (warnUnresolvedGotos) {
+	if (options.warnUnresolvedGotos) {
 		warnings.push(...makeUnresolvedGotoTargetWarnings(document));
 	}
 
@@ -66,15 +64,15 @@ function updateDiagnostics(document, diagnostics) {
 		];
 
 		warnings.push(...makeUnclosedDelimiterWarnings(line, lineNumber));
-		warnings.push(...makeNestedCommentParenthesisWarnings(line, lineNumber));
+		warnings.push(...makeMultipleCommentParenthesisWarnings(line, lineNumber));
 		warnings.push(...makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges));
-		if (warnDuplicateSequenceNumbers) {
+		if (options.warnDuplicateSequenceNumbers) {
 			warnings.push(...makeDuplicateSequenceNumberWarnings(line, lineNumber, ignoreRanges, seenSequenceNumbers));
 		}
-		if (warnSequenceNumberOrder) {
+		if (options.warnSequenceNumberOrder) {
 			warnings.push(...makeOutOfOrderSequenceNumberWarnings(line, lineNumber, ignoreRanges, sequenceNumberOrder));
 		}
-		if (warnNonAscii) {
+		if (options.warnNonAscii) {
 			warnings.push(...makeNonAsciiWarnings(line, lineNumber));
 		}
 
@@ -309,10 +307,11 @@ function makeNonAsciiWarnings(line, lineNumber) {
 	return warnings;
 }
 
-function makeNestedCommentParenthesisWarnings(line, lineNumber) {
+function makeMultipleCommentParenthesisWarnings(line, lineNumber) {
 	const warnings = [];
 	let insideComment = false;
 	let insideAngleBrackets = false;
+	let hasClosedComment = false;
 
 	for (let index = 0; index < line.length; index++) {
 		const character = line[index];
@@ -332,8 +331,8 @@ function makeNestedCommentParenthesisWarnings(line, lineNumber) {
 		}
 
 		if (character === "(") {
-			if (insideComment) {
-				warnings.push(makeNestedCommentParenthesisWarning(lineNumber, index));
+			if (insideComment || hasClosedComment) {
+				warnings.push(makeMultipleCommentParenthesisWarning(lineNumber, index));
 			}
 
 			insideComment = true;
@@ -342,6 +341,7 @@ function makeNestedCommentParenthesisWarnings(line, lineNumber) {
 
 		if (character === ")" && insideComment) {
 			insideComment = false;
+			hasClosedComment = true;
 		}
 	}
 
@@ -475,12 +475,12 @@ function makeDelimiterWarning(lineNumber, character, message) {
 	return warning;
 }
 
-function makeNestedCommentParenthesisWarning(lineNumber, character) {
+function makeMultipleCommentParenthesisWarning(lineNumber, character) {
 	const range = new vscode.Range(lineNumber, character, lineNumber, character + 1);
 
 	const warning = new vscode.Diagnostic(
 		range,
-		"Nested parentheses inside a comment may not be readable by some controls. KAIJU Reconstructor converts the inner layer to square brackets.",
+		"Two sets of comment brackets on one line may not be readable by some controls. KAIJU Reconstructor converts nested parentheses to square brackets.",
 		vscode.DiagnosticSeverity.Warning
 	);
 

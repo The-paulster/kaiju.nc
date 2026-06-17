@@ -1,3 +1,5 @@
+// Role: own KAIJU Reconstructor document formatting rules. Keep default options
+// in options.js and command-palette option UI in command.js.
 const vscode = require("vscode");
 
 function registerFormatter(context) {

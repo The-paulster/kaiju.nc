@@ -1,3 +1,5 @@
+// Role: provide shared protected-text range helpers for comments and angle
+// brackets. Keep feature-specific parsing decisions in the owning KAIJU modules.
 function getCommentRanges(line) {
 	const ranges = [];
 	let start = -1;

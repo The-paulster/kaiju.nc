@@ -1,10 +1,10 @@
+// Role: implement KAIJU Alias commands and editor toggling. Keep shared macro
+// alias parsing and expression evaluation in MetaMacroEngine.js.
 const vscode = require("vscode");
-const {
-	getCommentRanges,
-	getAngleBracketRanges
-} = require("./textRanges");
+const { buildAliasEntries, makeMacroRegex } = require("../MetaMacroEngine");
+const { getAliasOptions } = require("./options");
 
-function registerMacroAlias(context) {
+function registerKaijuAlias(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("kaijuNC.aliasMacros", async () => {
 			await runMacroAliasCommand();
@@ -34,173 +34,6 @@ async function runMacroAliasCommand() {
 	}
 
 	await toggleAliases(editor, aliasedEntries, getAliasOptions(editor.document));
-}
-
-function getAliasOptions(document) {
-	const config = vscode.workspace.getConfiguration("kaijuNC.alias", document.uri);
-
-	return {
-		caseSensitive: config.get("caseSensitive", false)
-	};
-}
-
-function buildAliasEntries(document) {
-	const aliases = new Map();
-	const macros = new Set();
-
-	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-		const line = document.lineAt(lineNumber).text;
-
-		if (hasExecutableGMCode(line)) {
-			break;
-		}
-
-		for (const macro of collectNumericMacros(line)) {
-			macros.add(macro);
-		}
-
-		for (const candidate of findAliasCandidatesInLine(line, lineNumber)) {
-			if (!aliases.has(candidate.macro)) {
-				aliases.set(candidate.macro, candidate);
-			}
-		}
-	}
-
-	return [...macros]
-		.sort(compareMacroNames)
-		.map(macro => {
-			const alias = aliases.get(macro);
-
-			return {
-				macro,
-				alias: alias ? alias.alias : "",
-				phrase: alias ? alias.phrase : "",
-				sourceLine: alias ? alias.lineNumber : -1
-			};
-		});
-}
-
-function collectNumericMacros(text) {
-	const macros = new Set();
-	const macroRegex = /#\d+/g;
-	let match;
-
-	while ((match = macroRegex.exec(text)) !== null) {
-		macros.add(match[0]);
-	}
-
-	return macros;
-}
-
-function hasExecutableGMCode(line) {
-	const searchableLine = maskProtectedRanges(line);
-
-	return /(^|[^A-Za-z0-9_])[GgMm]\d+/.test(searchableLine);
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let i = range.start; i <= range.end; i++) {
-			characters[i] = " ";
-		}
-	}
-
-	return characters.join("");
-}
-
-function findAliasCandidatesInLine(line, lineNumber) {
-	const candidates = [];
-	const commentRanges = getCommentRanges(line);
-
-	for (const range of commentRanges) {
-		const commentText = line.slice(range.start + 1, range.end);
-		const commentCandidate = makeCommentAliasCandidate(commentText, lineNumber);
-
-		if (commentCandidate) {
-			candidates.push(commentCandidate);
-			continue;
-		}
-
-		const inlineCandidate = makeInlineAssignmentAliasCandidate(line, range, lineNumber);
-
-		if (inlineCandidate) {
-			candidates.push(inlineCandidate);
-		}
-	}
-
-	return candidates;
-}
-
-function makeCommentAliasCandidate(commentText, lineNumber) {
-	const match = commentText.match(/^\s*(#\d+)\s*(?:=\s*)?(.+)$/);
-
-	if (!match) {
-		return undefined;
-	}
-
-	return makeAliasCandidate(match[1], match[2], lineNumber);
-}
-
-function makeInlineAssignmentAliasCandidate(line, commentRange, lineNumber) {
-	const codeBeforeComment = line.slice(0, commentRange.start);
-	const assignments = [...codeBeforeComment.matchAll(/#\d+\s*=/g)];
-
-	if (!assignments.length) {
-		return undefined;
-	}
-
-	const macro = assignments[assignments.length - 1][0].match(/#\d+/)[0];
-	const commentText = line.slice(commentRange.start + 1, commentRange.end);
-
-	return makeAliasCandidate(macro, commentText, lineNumber);
-}
-
-function makeAliasCandidate(macro, phrase, lineNumber) {
-	const alias = makeAliasName(phrase);
-
-	if (!alias) {
-		return undefined;
-	}
-
-	return {
-		macro,
-		alias,
-		phrase: cleanAliasPhrase(phrase),
-		lineNumber
-	};
-}
-
-function makeAliasName(phrase) {
-	const cleanedPhrase = cleanAliasPhrase(phrase);
-
-	if (!cleanedPhrase) {
-		return "";
-	}
-
-	const alias = cleanedPhrase
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "_")
-		.replace(/^_+|_+$/g, "")
-		.replace(/_+/g, "_");
-
-	if (!alias) {
-		return "";
-	}
-
-	return /^[a-z_]/.test(alias) ? alias : `var_${alias}`;
-}
-
-function cleanAliasPhrase(phrase) {
-	return phrase
-		.split("[")[0]
-		.replace(/\s+/g, " ")
-		.trim();
 }
 
 async function toggleAliases(editor, entries, options = {}) {
@@ -329,27 +162,12 @@ function restoreSourceMacros(text, tokens) {
 	}, text);
 }
 
-function makeMacroRegex(macro, options = {}) {
-	const flags = options.caseSensitive ? "g" : "gi";
-
-	return new RegExp(`${escapeRegex(macro)}(?![A-Za-z0-9_])`, flags);
-}
-
 function countMatches(text, regex) {
 	regex.lastIndex = 0;
 	return [...text.matchAll(regex)].length;
 }
 
-function compareMacroNames(left, right) {
-	return Number(left.slice(1)) - Number(right.slice(1));
-}
-
-function escapeRegex(text) {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 module.exports = {
-	registerMacroAlias,
-	buildAliasEntries,
+	registerKaijuAlias,
 	toggleAliases
 };

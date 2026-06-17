@@ -1,9 +1,11 @@
+// Role: own KAIJU Rangefinder selection commands. Keep shared tool modeling in
+// MetaToolModel.js and protected-text parsing in MetaTextRanges.js.
 const vscode = require("vscode");
-const { getToolRanges } = require("./toolModel");
+const { getToolRanges } = require("../MetaToolModel");
 const {
 	getCommentRanges,
 	getAngleBracketRanges
-} = require("./textRanges");
+} = require("../MetaTextRanges");
 
 function registerKaijuRangefinder(context) {
 	context.subscriptions.push(

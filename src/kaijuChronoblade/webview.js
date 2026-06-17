@@ -1,13 +1,13 @@
+// Role: render and run KAIJU Chronoblade cycle-time reports. Keep shared
+// motion interpretation in MetaMotionEngine.js and machine defaults in
+// MetaMachineMode.js.
 const vscode = require("vscode");
 const {
 	analyzeChronobladeRange,
 	formatNumber,
 	formatTime
-} = require("./motionEngine");
-const {
-	getConfiguredValue,
-	getMachineModeProfile
-} = require("./machineMode");
+} = require("../MetaMotionEngine");
+const { getChronobladeOptions } = require("./options");
 
 let chronobladePanel;
 let chronobladeState;
@@ -135,37 +135,6 @@ function getRangeForMode(editor, mode) {
 	}
 
 	return editor.selection;
-}
-
-function getChronobladeOptions(document, rawOptions = {}) {
-	const reportConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
-	const profile = getMachineModeProfile(reportConfig.get("machineMode", "latheDiameter"));
-
-	return {
-		machineMode: profile.id,
-		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: getConfiguredValue(reportConfig, "xAxisMode", profile.xAxisMode),
-		cssSurfaceSpeedUnit: reportConfig.get("cssSurfaceSpeedUnit", "mPerMin"),
-		samples: clampNumber(reportConfig.get("samples", 96), 12, 500),
-		compactPanelWidth: clampNumber(reportConfig.get("compactPanelWidth", 0.45), 0.2, 0.7),
-		rapidRate: clampNumber(coalesce(rawOptions.rapidRate, reportConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY),
-		toolChangeSeconds: clampNumber(coalesce(rawOptions.toolChangeSeconds, reportConfig.get("toolChangeSeconds", 4)), 0, Number.POSITIVE_INFINITY),
-		extraStationSeconds: clampNumber(coalesce(rawOptions.extraStationSeconds, reportConfig.get("extraStationSeconds", 0.5)), 0, Number.POSITIVE_INFINITY)
-	};
-}
-
-function coalesce(value, fallback) {
-	return value === undefined || value === null || value === "" ? fallback : value;
-}
-
-function clampNumber(value, min, max) {
-	const number = Number(value);
-
-	if (!Number.isFinite(number)) {
-		return min;
-	}
-
-	return Math.max(min, Math.min(max, number));
 }
 
 async function compactChronobladePanelEditorGroup(options) {

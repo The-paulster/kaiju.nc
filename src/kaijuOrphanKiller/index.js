@@ -1,14 +1,20 @@
+// Role: render and run KAIJU Orphan Killer macro definition/reference reports.
+// Keep alias command behavior in kaijuAlias/ and Sense macro hovers in
+// kaijuSense/macro.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges,
 	isInsideRange
-} = require("./textRanges");
-const { buildAliasEntries } = require("./macroAlias");
+} = require("../MetaTextRanges");
+const { buildAliasEntries } = require("../MetaMacroEngine");
+const {
+	DEFAULT_IGNORED_MACROS,
+	getOrphanKillerOptions
+} = require("./options");
 
 let orphanPanel;
 let orphanState;
-const DEFAULT_IGNORED_MACROS = "1001-";
 
 function registerOrphanKiller(context) {
 	context.subscriptions.push(
@@ -74,15 +80,6 @@ async function renderOrphanPanel(document) {
 	orphanPanel.title = "KAIJU Orphan Killer";
 	orphanPanel.webview.html = renderOrphanHtml(document, result);
 	await compactOrphanPanelEditorGroup(document, options);
-}
-
-function getOrphanKillerOptions(document) {
-	const config = vscode.workspace.getConfiguration("kaijuNC.orphanKiller", document.uri);
-
-	return {
-		compactPanelWidth: clampNumber(config.get("compactPanelWidth", 0.3), 0.15, 0.5),
-		ignoredMacros: config.get("ignoredMacros", DEFAULT_IGNORED_MACROS)
-	};
 }
 
 async function compactOrphanPanelEditorGroup(document, options) {
@@ -322,16 +319,6 @@ function addLine(map, macro, lineNumber) {
 
 function normalizeMacro(macro) {
 	return macro.toUpperCase();
-}
-
-function clampNumber(value, min, max) {
-	const number = Number(value);
-
-	if (!Number.isFinite(number)) {
-		return min;
-	}
-
-	return Math.max(min, Math.min(max, number));
 }
 
 function renderOrphanHtml(document, result) {

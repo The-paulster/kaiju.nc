@@ -1,7 +1,9 @@
+// Role: render KAIJU Sense tool-range editor decorations. Keep tool parsing and
+// range calculation in ../MetaToolModel.js.
 const vscode = require("vscode");
-const { TOOL_COLORS, getToolRanges } = require("./toolModel");
+const { TOOL_COLORS, getToolRanges } = require("../MetaToolModel");
 
-function registerToolDecorations(context) {
+function registerKaijuSenseTool(context) {
 	const decorationTypes = TOOL_COLORS.map(color => {
 		const decorationType = vscode.window.createTextEditorDecorationType({
 			gutterIconPath: makeToolMarkerUri(color),
@@ -87,5 +89,5 @@ function makeToolMarkerUri(color) {
 }
 
 module.exports = {
-	registerToolDecorations
+	registerKaijuSenseTool
 };

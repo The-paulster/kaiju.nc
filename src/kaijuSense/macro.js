@@ -1,17 +1,19 @@
+// Role: provide KAIJU Sense macro hovers. Keep alias toggling in ../kaijuAlias.js
+// and macro parsing/evaluation in ../MetaMacroEngine.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
 	isInsideRange
-} = require("./textRanges");
+} = require("../MetaTextRanges");
 const {
 	buildMacroAliasMap,
 	evaluateNumericExpression,
 	normalizeMacro,
 	resolveMacroAlias,
 	setMacroValue
-} = require("./macroExpressions");
+} = require("../MetaMacroEngine");
 
-function registerMacroHover(context) {
+function registerKaijuSenseMacro(context) {
 	context.subscriptions.push(
 		vscode.languages.registerHoverProvider({ language: "gcode" }, {
 			provideHover(document, position) {
@@ -200,5 +202,5 @@ function escapeMarkdown(text) {
 }
 
 module.exports = {
-	registerMacroHover
+	registerKaijuSenseMacro
 };

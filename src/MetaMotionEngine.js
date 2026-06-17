@@ -1,17 +1,22 @@
+// Role: interpret G-code motion/modal state and provide shared motion analysis
+// primitives. UI modules may read snapshots from here, but editor rendering and
+// product UI belong in the KAIJU feature modules. Status bar modal definitions
+// are data-driven from MetaModalDefs.json.
 const {
 	getCommentRanges,
 	getAngleBracketRanges
-} = require("./textRanges");
+} = require("./MetaTextRanges");
 const {
 	buildMacroAliasMap,
 	evaluateNumericExpression,
 	normalizeMacro,
 	setMacroValue
-} = require("./macroExpressions");
+} = require("./MetaMacroEngine");
 const {
 	TOOL_COLORS,
 	getToolRanges
-} = require("./toolModel");
+} = require("./MetaToolModel");
+const STATUS_MODAL_GROUPS = require("./MetaModalDefs.json");
 
 const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
 const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
@@ -46,6 +51,39 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 	return undefined;
 }
 
+// Status-bar read model only. This intentionally reuses the same G-code modal
+// parsing as motion analysis, but it does not estimate geometry, time, or update
+// position. Status-only modal groups live in MetaModalDefs.json so
+// future built-in or custom modal codes can be added without touching
+// Chronoblade, Vision, or Sense hover timing.
+function getModalStateAtLine(document, targetLineNumber, options = {}) {
+	const state = makeInitialState(options);
+	const statusState = makeInitialStatusModalState(options);
+	const macroValues = new Map();
+	const macroAliases = buildMacroAliasMap(document);
+	const lastLineNumber = Math.min(Math.max(targetLineNumber, 0), document.lineCount - 1);
+
+	for (let lineNumber = 0; lineNumber <= lastLineNumber; lineNumber++) {
+		const line = document.lineAt(lineNumber).text;
+		const codeLine = maskProtectedRanges(line);
+
+		trackMacroAssignments(codeLine, macroValues, macroAliases);
+
+		const words = parseWords(codeLine, macroValues, macroAliases);
+		const motionCode = getMotionCode(words);
+
+		applyModalState(words, motionCode, state);
+		applyStatusModalState(words, statusState);
+	}
+
+	return {
+		motionCode: state.motionCode,
+		feedMode: state.feedMode,
+		spindleMode: state.spindleMode,
+		modalGroups: getStatusModalEntries(statusState)
+	};
+}
+
 function makeInitialState(options = {}) {
 	return {
 		position: {},
@@ -57,6 +95,16 @@ function makeInitialState(options = {}) {
 		cssSurfaceSpeed: undefined,
 		rpmLimit: undefined
 	};
+}
+
+function makeInitialStatusModalState(options = {}) {
+	const statusState = new Map();
+	const defaultFeedModeCode = options.defaultFeedMode === "perMinute" ? 94 : 95;
+
+	setStatusModalEntry(statusState, "feedMode", defaultFeedModeCode);
+	setStatusModalEntry(statusState, "spindleSpeedMode", 97);
+
+	return statusState;
 }
 
 function trackMacroAssignments(codeLine, macroValues, macroAliases) {
@@ -207,7 +255,7 @@ function applyModalState(words, motionCode, state) {
 
 		if (code === 94) {
 			state.feedMode = "perMinute";
-		} else if (code === 95) {
+		} else if (code === 95 || code === 99) {
 			state.feedMode = "perRev";
 		} else if (code === 96) {
 			state.spindleMode = "css";
@@ -238,6 +286,90 @@ function applyModalState(words, motionCode, state) {
 	if (REPORT_MOTION_CODES.has(motionCode)) {
 		state.motionCode = motionCode;
 	}
+}
+
+function applyStatusModalState(words, statusState) {
+	for (const group of STATUS_MODAL_GROUPS) {
+		for (const word of words) {
+			if (word.letter !== group.letter || !Number.isFinite(word.value)) {
+				continue;
+			}
+
+			setStatusModalEntry(statusState, group.key, Math.trunc(word.value), word, words);
+		}
+	}
+}
+
+function setStatusModalEntry(statusState, groupKey, code, word, words = []) {
+	const group = STATUS_MODAL_GROUPS.find(candidate => candidate.key === groupKey);
+	const definition = group && group.codes[code];
+
+	if (!group || !definition) {
+		return;
+	}
+
+	const entry = definition.formatter
+		? makeFormattedStatusModalEntry(definition.formatter, word, words, group, definition)
+		: makeStatusModalEntry(group, definition);
+
+	if (entry) {
+		statusState.set(group.key, entry);
+	}
+}
+
+function makeFormattedStatusModalEntry(formatter, word, words, group, definition) {
+	if (formatter === "speedLimitS") {
+		return makeSpeedLimitStatusEntry(word, words, group, definition);
+	}
+
+	return undefined;
+}
+
+function makeStatusModalEntry(group, definition) {
+	return {
+		key: group.key,
+		order: group.order,
+		code: definition.code,
+		label: definition.label
+	};
+}
+
+function makeSpeedLimitStatusEntry(word, words, group, definition) {
+	const sWord = lastWord(words, "S");
+
+	if (!sWord || !Number.isFinite(sWord.value)) {
+		return undefined;
+	}
+
+	return {
+		key: group.key,
+		order: group.order,
+		code: `G50 S${formatNumber(sWord.value)}`,
+		label: definition.label
+	};
+}
+
+function getStatusModalEntries(statusState) {
+	return [...statusState.values()].sort((a, b) => a.order - b.order);
+}
+
+function formatModalStateStatus(modalState, verbose) {
+	const entries = modalState && Array.isArray(modalState.modalGroups)
+		? modalState.modalGroups
+		: [];
+
+	return entries
+		.map(entry => verbose ? `${entry.code} (${entry.label})` : entry.code)
+		.join(" ");
+}
+
+function getStatusModalGroups() {
+	return STATUS_MODAL_GROUPS.map(group => ({
+		key: group.key,
+		order: group.order,
+		letter: group.letter,
+		codes: Object.keys(group.codes).map(Number)
+	}));
 }
 
 function lastWord(words, letter) {
@@ -1223,6 +1355,10 @@ function formatTime(seconds) {
 
 module.exports = {
 	estimateMotionAtLine,
+	// Read-only modal snapshot for the KAIJU Sense status bar.
+	getModalStateAtLine,
+	formatModalStateStatus,
+	getStatusModalGroups,
 	analyzeChronobladeRange,
 	analyzeVisionRange,
 	summarizeVisionRows,

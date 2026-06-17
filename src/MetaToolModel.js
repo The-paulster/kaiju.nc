@@ -1,4 +1,6 @@
-const { buildAliasEntries } = require("./macroAlias");
+// Role: parse and model tool ranges/colors for Sense and Rangefinder features.
+// Keep editor decorations in kaijuSense/tool.js.
+const { buildAliasEntries } = require("./MetaMacroEngine");
 
 const TOOL_COLORS = [
 	"#8f4f4f",

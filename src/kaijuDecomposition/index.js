@@ -1,8 +1,11 @@
+// Role: own KAIJU Decomposition expansion and prompt behavior. Keep shared
+// macro evaluation in MetaMacroEngine.js and formatting in
+// kaijuReconstructor/formatter.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges
-} = require("./textRanges");
+} = require("../MetaTextRanges");
 const {
 	MACRO_REGEX,
 	buildMacroAliasMap,
@@ -10,15 +13,18 @@ const {
 	normalizeMacro,
 	resolveMacroAlias,
 	setMacroValue
-} = require("./macroExpressions");
+} = require("../MetaMacroEngine");
 const {
 	getFormattingOptions,
 	formatDocumentText
-} = require("./formatter");
+} = require("../kaijuReconstructor/formatter");
+const {
+	DEFAULT_COMPARISON_TOLERANCE,
+	getDecompositionOptions
+} = require("./options");
 
 const MAX_EXECUTION_STEPS = 20000;
 const MAX_OUTPUT_LINES = 50000;
-const DEFAULT_COMPARISON_TOLERANCE = 1e-7;
 
 class DecompositionCancelled extends Error {}
 
@@ -474,17 +480,6 @@ function makeExecutionStateKey(macroValues) {
 		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([macro, value]) => `${macro}=${formatNumber(value)}`)
 		.join("|");
-}
-
-function getDecompositionOptions(document) {
-	const config = vscode.workspace.getConfiguration("kaijuNC.decomposition", document.uri);
-	const comparisonTolerance = config.get("comparisonTolerance", DEFAULT_COMPARISON_TOLERANCE);
-
-	return {
-		comparisonTolerance: Number.isFinite(comparisonTolerance) && comparisonTolerance >= 0
-			? comparisonTolerance
-			: DEFAULT_COMPARISON_TOLERANCE
-	};
 }
 
 function findAssignments(codeLine) {

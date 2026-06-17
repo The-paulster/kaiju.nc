@@ -12,7 +12,13 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added a KAIJU Syntax error for `GOTO` targets that do not have a matching `N` label.
 - Added inline reference decorations after `N` labels targeted by `GOTO` statements.
 - Added KAIJU Sense hover details and amber line highlighting for `GOTO` label references.
+- Added a left-side KAIJU Sense cursor-state status bar readout backed by modal-code definitions, with verbose labels like `G00 (Rapid)` / `M08 (Coolant on)` or compact codes like `G00 M08`.
+- Added optional syntax-style colors for the KAIJU Sense cursor-state status bar.
+- Added a non-blocking KAIJU Alert warning when an existing `GOTO` target stops being forked after duplicate `N` labels are reduced to one, with formatted details available from the alert.
+- Expanded the comment-bracket Kaiju Alert so separate comment pairs like `()()` are warned alongside nested pairs like `(())`.
+- Added a right-side configured machine-mode status bar indicator for Mill, Lathe - Radius, and Lathe - Diameter.
 - Added KAIJU Rangefinder for selecting current tool ranges, picked tool ranges, N-label spans, and the current N block.
+- Added a `Ctrl+Alt+F` / `Cmd+Alt+F` shortcut for KAIJU Rangefinder.
 - Added right-click KAIJU Machine Mode commands for Mill, Lathe (Radius), and Lathe (Diameter), with matching Chronoblade/Sense/Vision X-axis settings and motion-analysis feed defaults.
 - Added Kaiju Alert checks for duplicate and out-of-order `N` sequence numbers, each with its own setting.
 
@@ -37,7 +43,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added a KAIJU Vision start-point marker and anchored endpoint labels so tags stay aligned to their points.
 - Added `kaijuNC.vision.g53.x`, `kaijuNC.vision.g53.y`, and `kaijuNC.vision.g53.z` so KAIJU Vision can place `G53` machine-coordinate moves at configured preview coordinates.
 - Added a KAIJU Vision page toggle for coloring path lines with the same tool colors used by gutter tool decorations.
-- Extracted shared tool range and color logic into `toolModel.js` so motion analysis no longer depends on the gutter decoration module.
+- Extracted shared tool range and color logic into `MetaToolModel.js` so motion analysis no longer depends on the Sense gutter decoration module.
 - Added KAIJU Vision mouse-wheel zoom, drag panning, configurable line thickness, configurable arrow size, and a locked eight-row result table.
 - Added a KAIJU Vision toggle for dashed zero reference lines.
 - Made the KAIJU Vision viewport and SVG coordinate view square so paths keep a consistent visual scale.

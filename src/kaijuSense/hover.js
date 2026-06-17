@@ -1,18 +1,17 @@
+// Role: provide KAIJU Sense motion hovers for G00-G03 moves. Keep status bar
+// rendering in statusBar.js and keep macro hovers in macro.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges,
 	isInsideRange
-} = require("./textRanges");
+} = require("../MetaTextRanges");
 const {
 	estimateMotionAtLine,
 	formatNumber,
 	formatTime
-} = require("./motionEngine");
-const {
-	getConfiguredValue,
-	getMachineModeProfile
-} = require("./machineMode");
+} = require("../MetaMotionEngine");
+const { getSenseOptions } = require("./options");
 
 function registerKaijuSenseHover(context) {
 	context.subscriptions.push(
@@ -48,22 +47,6 @@ function provideKaijuSenseHover(document, position) {
 	}
 
 	return new vscode.Hover(renderKaijuSenseHover(estimate));
-}
-
-function getSenseOptions(document) {
-	const senseConfig = vscode.workspace.getConfiguration("kaijuNC.sense", document.uri);
-	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
-	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
-
-	return {
-		enabled: senseConfig.get("enabled", chronobladeConfig.get("enabled", true)),
-		machineMode: profile.id,
-		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: getConfiguredValue(senseConfig, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
-		cssSurfaceSpeedUnit: senseConfig.get("cssSurfaceSpeedUnit", chronobladeConfig.get("cssSurfaceSpeedUnit", "mPerMin")),
-		samples: clampNumber(senseConfig.get("samples", chronobladeConfig.get("samples", 96)), 12, 500),
-		rapidRate: clampNumber(senseConfig.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY)
-	};
 }
 
 function getMotionAtPosition(document, position) {
@@ -197,16 +180,6 @@ function formatSignedNumber(value) {
 
 	const formatted = formatNumber(value);
 	return value > 0 ? `+${formatted}` : formatted;
-}
-
-function clampNumber(value, min, max) {
-	const number = Number(value);
-
-	if (!Number.isFinite(number)) {
-		return min;
-	}
-
-	return Math.max(min, Math.min(max, number));
 }
 
 module.exports = {

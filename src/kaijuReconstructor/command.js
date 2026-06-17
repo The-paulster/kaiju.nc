@@ -1,8 +1,10 @@
+// Role: own KAIJU Reconstructor command-palette formatting flow. Keep the
+// formatting engine and default options in formatter.js/options.js.
 const vscode = require("vscode");
 const {
-	getFormattingOptions,
 	formatDocumentText
 } = require("./formatter");
+const { getFormattingOptions } = require("./options");
 
 function registerFormatCommand(context) {
 	context.subscriptions.push(

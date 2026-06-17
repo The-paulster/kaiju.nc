@@ -1,0 +1,91 @@
+[
+  {
+    "key": "motion",
+    "order": 10,
+    "letter": "G",
+    "codes": {
+      "0": { "code": "G00", "label": "Rapid" },
+      "1": { "code": "G01", "label": "Linear" },
+      "2": { "code": "G02", "label": "CW Arc" },
+      "3": { "code": "G03", "label": "CCW Arc" }
+    }
+  },
+  {
+    "key": "spindleDirection",
+    "order": 20,
+    "letter": "M",
+    "codes": {
+      "3": { "code": "M03", "label": "CW" },
+      "4": { "code": "M04", "label": "CCW" },
+      "5": { "code": "M05", "label": "Stop" }
+    }
+  },
+  {
+    "key": "feedMode",
+    "order": 30,
+    "letter": "G",
+    "codes": {
+      "94": { "code": "G94", "label": "Feed/min" },
+      "95": { "code": "G95", "label": "Feed/rev" },
+      "99": { "code": "G99", "label": "Feed/rev" }
+    }
+  },
+  {
+    "key": "plane",
+    "order": 40,
+    "letter": "G",
+    "codes": {
+      "17": { "code": "G17", "label": "X-Y plane" },
+      "18": { "code": "G18", "label": "X-Z plane" },
+      "19": { "code": "G19", "label": "Y-Z plane" }
+    }
+  },
+  {
+    "key": "spindleSpeedMode",
+    "order": 50,
+    "letter": "G",
+    "codes": {
+      "96": { "code": "G96", "label": "CSS" },
+      "97": { "code": "G97", "label": "Fixed RPM" }
+    }
+  },
+  {
+    "key": "speedLimit",
+    "order": 60,
+    "letter": "G",
+    "codes": {
+      "50": { "formatter": "speedLimitS", "label": "Speed limit" }
+    }
+  },
+  {
+    "key": "coordinateSystem",
+    "order": 70,
+    "letter": "G",
+    "codes": {
+      "54": { "code": "G54", "label": "Coordinate system" },
+      "55": { "code": "G55", "label": "Coordinate system" },
+      "56": { "code": "G56", "label": "Coordinate system" },
+      "57": { "code": "G57", "label": "Coordinate system" },
+      "58": { "code": "G58", "label": "Coordinate system" },
+      "59": { "code": "G59", "label": "Coordinate system" }
+    }
+  },
+  {
+    "key": "cuttingMode",
+    "order": 80,
+    "letter": "G",
+    "codes": {
+      "61": { "code": "G61", "label": "Exact stop" },
+      "64": { "code": "G64", "label": "Cutting, no exact stop" }
+    }
+  },
+  {
+    "key": "coolant",
+    "order": 90,
+    "letter": "M",
+    "codes": {
+      "8": { "code": "M08", "label": "Coolant on" },
+      "9": { "code": "M09", "label": "Coolant off" }
+    }
+  }
+]
