@@ -19,6 +19,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added a right-side configured machine-mode status bar indicator for Mill, Lathe - Radius, and Lathe - Diameter.
 - Added KAIJU Rangefinder for selecting current tool ranges, picked tool ranges, N-label spans, and the current N block.
 - Added a `Ctrl+Alt+F` / `Cmd+Alt+F` shortcut for KAIJU Rangefinder.
+- Clarified KAIJU Decomposition as a readable execution trace for inspecting and debugging macro-driven G-code, not verified machine-ready output.
+- Added shared human-display decimal formatting with configurable minimum and maximum decimal places, defaulting to three.
 - Added right-click KAIJU Machine Mode commands for Mill, Lathe (Radius), and Lathe (Diameter), with matching Chronoblade/Sense/Vision X-axis settings and motion-analysis feed defaults.
 - Added Kaiju Alert checks for duplicate and out-of-order `N` sequence numbers, each with its own setting.
 

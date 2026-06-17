@@ -10,6 +10,7 @@ const {
 function getSenseOptions(document) {
 	const senseConfig = vscode.workspace.getConfiguration("kaijuNC.sense", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
+	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
 	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
 
 	return {
@@ -21,7 +22,11 @@ function getSenseOptions(document) {
 		xAxisMode: getConfiguredValue(senseConfig, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
 		cssSurfaceSpeedUnit: senseConfig.get("cssSurfaceSpeedUnit", chronobladeConfig.get("cssSurfaceSpeedUnit", "mPerMin")),
 		samples: clampNumber(senseConfig.get("samples", chronobladeConfig.get("samples", 96)), 12, 500),
-		rapidRate: clampNumber(senseConfig.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY)
+		rapidRate: clampNumber(senseConfig.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY),
+		humanFormat: {
+			minimumDecimalPlaces: clampNumber(displayConfig.get("minimumDecimalPlaces", 3), 0, 9),
+			maximumDecimalPlaces: clampNumber(displayConfig.get("maximumDecimalPlaces", 3), 0, 9)
+		}
 	};
 }
 

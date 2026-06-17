@@ -9,6 +9,7 @@ const {
 function getVisionOptions(document, rawOptions = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.vision", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
+	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
 	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
 
 	return {
@@ -33,6 +34,10 @@ function getVisionOptions(document, rawOptions = {}) {
 		compassSize: clampNumber(config.get("compassSize", 78), 24, 220),
 		compassOffsetX: clampNumber(config.get("compassOffsetX", 14), 0, 240),
 		compassOffsetY: clampNumber(config.get("compassOffsetY", 14), 0, 240),
+		humanFormat: {
+			minimumDecimalPlaces: clampNumber(displayConfig.get("minimumDecimalPlaces", 3), 0, 9),
+			maximumDecimalPlaces: clampNumber(displayConfig.get("maximumDecimalPlaces", 3), 0, 9)
+		},
 		g53Position: {
 			x: Number(config.get("g53.x", 0)),
 			y: Number(config.get("g53.y", 0)),

@@ -46,7 +46,7 @@ function provideKaijuSenseHover(document, position) {
 		return undefined;
 	}
 
-	return new vscode.Hover(renderKaijuSenseHover(estimate));
+	return new vscode.Hover(renderKaijuSenseHover(estimate, options.humanFormat));
 }
 
 function getMotionAtPosition(document, position) {
@@ -78,36 +78,36 @@ function getMotionAtPosition(document, position) {
 	return undefined;
 }
 
-function renderKaijuSenseHover(estimate) {
+function renderKaijuSenseHover(estimate, humanFormat) {
 	const md = new vscode.MarkdownString();
 	const geometry = estimate.geometry || {};
 
 	md.appendMarkdown(`**KAIJU Sense - G${String(estimate.motionCode).padStart(2, "0")}**\n\n`);
-	md.appendMarkdown(`**Start:** \`${formatPosition(estimate.start)}\`\n\n`);
-	md.appendMarkdown(`**End:** \`${formatPosition(estimate.end)}\`\n\n`);
-	md.appendMarkdown(`**Delta:** \`${formatDelta(geometry.delta)}\`\n\n`);
-	md.appendMarkdown(`**Path length:** \`${formatNumber(estimate.distance)}\`\n\n`);
+	md.appendMarkdown(`**Start:** \`${formatPosition(estimate.start, humanFormat)}\`\n\n`);
+	md.appendMarkdown(`**End:** \`${formatPosition(estimate.end, humanFormat)}\`\n\n`);
+	md.appendMarkdown(`**Delta:** \`${formatDelta(geometry.delta, humanFormat)}\`\n\n`);
+	md.appendMarkdown(`**Path length:** \`${formatNumber(estimate.distance, humanFormat)}\`\n\n`);
 
 	if (geometry.kind === "arc") {
-		appendArcGeometry(md, geometry);
+		appendArcGeometry(md, geometry, humanFormat);
 	} else {
-		appendLinearGeometry(md, geometry);
+		appendLinearGeometry(md, geometry, humanFormat);
 	}
 
 	md.appendMarkdown(`**Estimated time:** \`${formatTime(estimate.timeSeconds)}\`\n\n`);
 
 	if (Number.isFinite(estimate.feed)) {
-		md.appendMarkdown(`**Feed:** \`${formatNumber(estimate.feed)} ${estimate.feedMode === "perRev" ? "per rev" : "per min"}\`\n\n`);
+		md.appendMarkdown(`**Feed:** \`${formatNumber(estimate.feed, humanFormat)} ${estimate.feedMode === "perRev" ? "per rev" : "per min"}\`\n\n`);
 	}
 
 	if (estimate.spindleMode === "css") {
-		md.appendMarkdown(`**Spindle:** \`G96 S${formatNumber(estimate.cssSurfaceSpeed)}${Number.isFinite(estimate.rpmLimit) ? `, limit ${formatNumber(estimate.rpmLimit)} rpm` : ""}\`\n\n`);
+		md.appendMarkdown(`**Spindle:** \`G96 S${formatNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? `, limit ${formatNumber(estimate.rpmLimit, humanFormat)} rpm` : ""}\`\n\n`);
 	} else if (Number.isFinite(estimate.rpm)) {
-		md.appendMarkdown(`**Spindle:** \`G97 ${formatNumber(estimate.rpm)} rpm\`\n\n`);
+		md.appendMarkdown(`**Spindle:** \`G97 ${formatNumber(estimate.rpm, humanFormat)} rpm\`\n\n`);
 	}
 
 	if (Number.isFinite(estimate.minRpm) && Number.isFinite(estimate.maxRpm)) {
-		md.appendMarkdown(`**RPM used:** \`${formatNumber(estimate.minRpm)} - ${formatNumber(estimate.maxRpm)}\`\n\n`);
+		md.appendMarkdown(`**RPM used:** \`${formatNumber(estimate.minRpm, humanFormat)} - ${formatNumber(estimate.maxRpm, humanFormat)}\`\n\n`);
 	}
 
 	if (estimate.usedArcFallback) {
@@ -121,13 +121,13 @@ function renderKaijuSenseHover(estimate) {
 	return md;
 }
 
-function appendLinearGeometry(md, geometry) {
+function appendLinearGeometry(md, geometry, humanFormat) {
 	if (Number.isFinite(geometry.angleFromXDegrees)) {
-		md.appendMarkdown(`**Angle from X:** \`${formatNumber(geometry.angleFromXDegrees)} deg\`\n\n`);
+		md.appendMarkdown(`**Angle from X:** \`${formatNumber(geometry.angleFromXDegrees, humanFormat)} deg\`\n\n`);
 	}
 }
 
-function appendArcGeometry(md, geometry) {
+function appendArcGeometry(md, geometry, humanFormat) {
 	if (geometry.direction) {
 		md.appendMarkdown(`**Arc direction:** \`${geometry.direction}\`\n\n`);
 	}
@@ -137,48 +137,48 @@ function appendArcGeometry(md, geometry) {
 	}
 
 	if (geometry.center) {
-		md.appendMarkdown(`**Center:** \`${formatPosition(geometry.center)}\`\n\n`);
+		md.appendMarkdown(`**Center:** \`${formatPosition(geometry.center, humanFormat)}\`\n\n`);
 	}
 
 	if (Number.isFinite(geometry.radius)) {
-		md.appendMarkdown(`**Radius:** \`${formatNumber(geometry.radius)}\`\n\n`);
+		md.appendMarkdown(`**Radius:** \`${formatNumber(geometry.radius, humanFormat)}\`\n\n`);
 	}
 
 	if (Number.isFinite(geometry.sweepDegrees)) {
-		md.appendMarkdown(`**Sweep:** \`${formatNumber(geometry.sweepDegrees)} deg\`\n\n`);
+		md.appendMarkdown(`**Sweep:** \`${formatNumber(geometry.sweepDegrees, humanFormat)} deg\`\n\n`);
 	}
 
 	if (Number.isFinite(geometry.arcLength)) {
-		md.appendMarkdown(`**Circle length:** \`${formatNumber(geometry.arcLength)}\`\n\n`);
+		md.appendMarkdown(`**Circle length:** \`${formatNumber(geometry.arcLength, humanFormat)}\`\n\n`);
 	}
 
 }
 
-function formatPosition(position) {
+function formatPosition(position, humanFormat) {
 	return ["x", "y", "z"]
 		.filter(axis => Number.isFinite(position[axis]))
-		.map(axis => `${axis.toUpperCase()}${formatNumber(position[axis])}`)
+		.map(axis => `${axis.toUpperCase()}${formatNumber(position[axis], humanFormat)}`)
 		.join(" ") || "unknown";
 }
 
-function formatDelta(delta) {
+function formatDelta(delta, humanFormat) {
 	if (!delta) {
 		return "unknown";
 	}
 
 	const parts = ["x", "y", "z"]
 		.filter(axis => Number.isFinite(delta[axis]))
-		.map(axis => `${axis.toUpperCase()}${formatSignedNumber(delta[axis])}`);
+		.map(axis => `${axis.toUpperCase()}${formatSignedNumber(delta[axis], humanFormat)}`);
 
 	return parts.length ? parts.join(" ") : "unknown";
 }
 
-function formatSignedNumber(value) {
+function formatSignedNumber(value, humanFormat) {
 	if (!Number.isFinite(value)) {
 		return "unknown";
 	}
 
-	const formatted = formatNumber(value);
+	const formatted = formatNumber(value, humanFormat);
 	return value > 0 ? `+${formatted}` : formatted;
 }
 

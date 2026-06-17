@@ -16,6 +16,11 @@ const {
 	TOOL_COLORS,
 	getToolRanges
 } = require("./MetaToolModel");
+const {
+	formatHumanNumber,
+	formatHumanPosition,
+	formatHumanTime
+} = require("./MetaHumanFormat");
 const STATUS_MODAL_GROUPS = require("./MetaModalDefs.json");
 
 const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
@@ -344,9 +349,13 @@ function makeSpeedLimitStatusEntry(word, words, group, definition) {
 	return {
 		key: group.key,
 		order: group.order,
-		code: `G50 S${formatNumber(sWord.value)}`,
+		code: `G50 S${formatCodeNumber(sWord.value)}`,
 		label: definition.label
 	};
+}
+
+function formatCodeNumber(value) {
+	return Number(value).toString();
 }
 
 function getStatusModalEntries(statusState) {
@@ -1073,7 +1082,7 @@ function analyzeChronobladeRange(document, range, options) {
 			positionWasUpdated = true;
 
 			if (isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate));
+				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate, options));
 			}
 		}
 
@@ -1210,19 +1219,21 @@ function estimateToolChangeTime(previousTool, tool, options) {
 	return baseTime + extraStationSteps * extraStationTime;
 }
 
-function makeMotionReportRow(lineNumber, motionCode, estimate) {
+function makeMotionReportRow(lineNumber, motionCode, estimate, options) {
+	const humanFormat = options && options.humanFormat;
+
 	return {
 		type: "motion",
 		lineNumber: lineNumber + 1,
 		instruction: `G${motionCode}`,
-		start: formatPosition(estimate.start),
-		end: formatPosition(estimate.end),
+		start: formatPosition(estimate.start, humanFormat),
+		end: formatPosition(estimate.end, humanFormat),
 		distance: estimate.distance,
 		timeSeconds: estimate.timeSeconds,
 		feed: estimate.feed,
 		feedMode: estimate.feedMode,
-		spindle: formatSpindle(estimate),
-		rpmUsed: formatRpmUsed(estimate),
+		spindle: formatSpindle(estimate, humanFormat),
+		rpmUsed: formatRpmUsed(estimate, humanFormat),
 		warnings: estimate.warnings || []
 	};
 }
@@ -1238,8 +1249,8 @@ function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRang
 		toolColor,
 		start: clonePosition(estimate.start),
 		end: clonePosition(estimate.end),
-		startLabel: formatPosition(estimate.start),
-		endLabel: formatPosition(estimate.end),
+		startLabel: formatPosition(estimate.start, options.humanFormat),
+		endLabel: formatPosition(estimate.end, options.humanFormat),
 		distance: estimate.distance,
 		timeSeconds: estimate.timeSeconds,
 		points: (estimate.pathPoints || []).map(point => toVisionPoint(point, options)),
@@ -1299,58 +1310,36 @@ function summarizeChronobladeRows(rows) {
 	return summary;
 }
 
-function formatSpindle(estimate) {
+function formatSpindle(estimate, humanFormat) {
 	if (estimate.spindleMode === "css") {
-		return `G96 S${formatNumber(estimate.cssSurfaceSpeed)}${Number.isFinite(estimate.rpmLimit) ? ` / limit ${formatNumber(estimate.rpmLimit)}` : ""}`;
+		return `G96 S${formatNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` / limit ${formatNumber(estimate.rpmLimit, humanFormat)}` : ""}`;
 	}
 
 	if (Number.isFinite(estimate.rpm)) {
-		return `G97 ${formatNumber(estimate.rpm)} rpm`;
+		return `G97 ${formatNumber(estimate.rpm, humanFormat)} rpm`;
 	}
 
 	return "";
 }
 
-function formatRpmUsed(estimate) {
+function formatRpmUsed(estimate, humanFormat) {
 	if (Number.isFinite(estimate.minRpm) && Number.isFinite(estimate.maxRpm)) {
-		return `${formatNumber(estimate.minRpm)} - ${formatNumber(estimate.maxRpm)}`;
+		return `${formatNumber(estimate.minRpm, humanFormat)} - ${formatNumber(estimate.maxRpm, humanFormat)}`;
 	}
 
 	return "";
 }
 
-function formatPosition(position) {
-	return ["x", "y", "z"]
-		.filter(axis => Number.isFinite(position[axis]))
-		.map(axis => `${axis.toUpperCase()}${formatNumber(position[axis])}`)
-		.join(" ");
+function formatPosition(position, options) {
+	return formatHumanPosition(position, options);
 }
 
-function formatNumber(value) {
-	if (!Number.isFinite(value)) {
-		return "unknown";
-	}
-
-	const rounded = Math.abs(value) >= 100
-		? value.toFixed(2)
-		: value.toFixed(4);
-
-	return rounded.replace(/\.?0+$/, "");
+function formatNumber(value, options) {
+	return formatHumanNumber(value, options);
 }
 
 function formatTime(seconds) {
-	if (!Number.isFinite(seconds)) {
-		return "unknown";
-	}
-
-	if (seconds < 60) {
-		return `${seconds.toFixed(2)} s`;
-	}
-
-	const minutes = Math.floor(seconds / 60);
-	const remainingSeconds = seconds - minutes * 60;
-
-	return `${minutes} min ${remainingSeconds.toFixed(1)} s`;
+	return formatHumanTime(seconds);
 }
 
 module.exports = {

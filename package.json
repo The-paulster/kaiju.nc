@@ -512,6 +512,25 @@
         }
       },
       {
+        "title": "KAIJU.NC: Display",
+        "properties": {
+          "kaijuNC.display.minimumDecimalPlaces": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 0,
+            "maximum": 9,
+            "description": "Minimum decimal places shown in human-facing KAIJU numeric readouts."
+          },
+          "kaijuNC.display.maximumDecimalPlaces": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 0,
+            "maximum": 9,
+            "description": "Maximum decimal places shown in human-facing KAIJU numeric readouts. Set this above the minimum to allow extra precision in display text."
+          }
+        }
+      },
+      {
         "title": "KAIJU.NC: Sense",
         "properties": {
           "kaijuNC.sense.enabled": {

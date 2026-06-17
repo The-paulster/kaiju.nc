@@ -353,11 +353,11 @@ function renderChronobladeHtml(document, mode, options, result) {
 		${renderMetric("Cutting", formatTime(summary.cuttingTimeSeconds))}
 		${renderMetric("G0", formatTime(summary.rapidTimeSeconds))}
 		${renderMetric("Tool", formatTime(summary.toolTimeSeconds))}
-		${renderMetric("Distance", formatNumber(summary.totalDistance))}
+		${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat))}
 	</section>
 
 	${summary.unknownTimeRows ? `<p class="note">${escapeHtml(summary.unknownTimeRows)} row(s) have unknown time because required motion data is missing.</p>` : ""}
-	${renderRows(result.rows)}
+	${renderRows(result.rows, options.humanFormat)}
 
 	<script>
 		const vscode = acquireVsCodeApi();
@@ -386,7 +386,7 @@ function renderMetric(label, value) {
 	</div>`;
 }
 
-function renderRows(rows) {
+function renderRows(rows, humanFormat) {
 	if (!rows.length) {
 		return "<p class=\"empty\">No motion or tool-change rows found.</p>";
 	}
@@ -397,8 +397,8 @@ function renderRows(rows) {
 			<td><code>${escapeHtml(row.instruction)}</code></td>
 			<td>${escapeHtml(row.start || "-")}</td>
 			<td>${escapeHtml(row.end || "-")}</td>
-			<td>${escapeHtml(formatNumber(row.distance))}</td>
-			<td>${escapeHtml(formatFeed(row))}</td>
+			<td>${escapeHtml(formatNumber(row.distance, humanFormat))}</td>
+			<td>${escapeHtml(formatFeed(row, humanFormat))}</td>
 			<td>${escapeHtml(row.spindle || "-")}</td>
 			<td>${escapeHtml(row.rpmUsed || "-")}</td>
 			<td>${escapeHtml(formatTime(row.timeSeconds))}</td>
@@ -427,12 +427,12 @@ function renderRows(rows) {
 	</div>`;
 }
 
-function formatFeed(row) {
+function formatFeed(row, humanFormat) {
 	if (!Number.isFinite(row.feed)) {
 		return "-";
 	}
 
-	return `${formatNumber(row.feed)} ${row.feedMode === "perRev" ? "per rev" : "per min"}`;
+	return `${formatNumber(row.feed, humanFormat)} ${row.feedMode === "perRev" ? "per rev" : "per min"}`;
 }
 
 function escapeHtml(text) {

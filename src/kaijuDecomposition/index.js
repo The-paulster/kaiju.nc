@@ -1,6 +1,6 @@
-// Role: own KAIJU Decomposition expansion and prompt behavior. Keep shared
-// macro evaluation in MetaMacroEngine.js and formatting in
-// kaijuReconstructor/formatter.js.
+// Role: own KAIJU Decomposition's readable execution trace for inspecting and
+// debugging macro-driven G-code. Keep shared macro evaluation in
+// MetaMacroEngine.js and formatting in kaijuReconstructor/formatter.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
@@ -64,7 +64,7 @@ async function runKaijuDecompositionCommand() {
 		? ` ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"} added.`
 		: "";
 
-	vscode.window.showInformationMessage(`KAIJU Decomposition opened as a temporary document.${warningText}`);
+	vscode.window.showInformationMessage(`KAIJU Decomposition opened an execution trace as a temporary document.${warningText}`);
 }
 
 async function decomposeDocument(document) {
@@ -77,6 +77,7 @@ async function decomposeDocument(document) {
 		manualInputs: new Map(),
 		warnings: [],
 		labels: buildLabelMap(document),
+		seenOutputLabels: new Set(),
 		loopStack: [],
 		lineStates: new Map(),
 		options: getDecompositionOptions(document)
@@ -110,6 +111,12 @@ async function decomposeDocument(document) {
 
 			const line = document.lineAt(lineNumber).text;
 			const codeLine = maskProtectedRanges(line);
+			const labelLine = makeFirstVisitLabelLine(line, codeLine, lineNumber, context);
+
+			if (labelLine) {
+				outputLines.push(labelLine);
+			}
+
 			const controlResult = await handleControlLine(codeLine, lineNumber, context);
 
 			if (controlResult.cancelled) {
@@ -120,12 +127,16 @@ async function decomposeDocument(document) {
 				outputLines.push(controlResult.comment);
 			}
 
+			if (controlResult.comments) {
+				outputLines.push(...controlResult.comments);
+			}
+
 			if (controlResult.nextLine !== undefined) {
 				lineNumber = controlResult.nextLine;
 				continue;
 			}
 
-			await trackAssignments(codeLine, lineNumber, context);
+			outputLines.push(...await variableTracker(codeLine, lineNumber, context));
 
 			if (isOutputLine(codeLine)) {
 				const decomposedLine = await decomposeLine(line, lineNumber, context);
@@ -184,13 +195,13 @@ async function handleControlLine(codeLine, lineNumber, context) {
 
 	if (ifThen) {
 		const condition = await evaluateCondition(ifThen.condition, lineNumber, context);
-
-		if (condition.value) {
-			await trackAssignments(ifThen.body, lineNumber, context);
-		}
+		const assignmentComments = condition.value
+			? await variableTracker(ifThen.body, lineNumber, context)
+			: [];
 
 		return {
 			comment: makeFlowComment(lineNumber, `IF ${condition.value ? "true" : "false"}, ${condition.value ? "applied" : "skipped"} THEN ${ifThen.body}`),
+			comments: assignmentComments,
 			nextLine: lineNumber + 1
 		};
 	}
@@ -261,12 +272,20 @@ async function handleControlLine(codeLine, lineNumber, context) {
 	return {};
 }
 
-async function trackAssignments(codeLine, lineNumber, context) {
+async function variableTracker(codeLine, lineNumber, context) {
+	const comments = [];
+
 	for (const assignment of findAssignments(codeLine)) {
 		const value = await evaluateExpression(assignment.value, lineNumber, context);
 		markMacroAssigned(context, assignment.macro);
 		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
+
+		if (Number.isFinite(value)) {
+			comments.push(makeMacroAssignmentComment(assignment, value));
+		}
 	}
+
+	return comments;
 }
 
 async function decomposeLine(line, lineNumber, context) {
@@ -634,6 +653,27 @@ function buildLabelMap(document) {
 	return labels;
 }
 
+function makeFirstVisitLabelLine(line, codeLine, lineNumber, context) {
+	if (context.seenOutputLabels.has(lineNumber)) {
+		return undefined;
+	}
+
+	const match = codeLine.match(/^\s*(N\d+)/i);
+
+	if (!match) {
+		return undefined;
+	}
+
+	context.seenOutputLabels.add(lineNumber);
+
+	const label = match[1].toUpperCase();
+	const comments = getCommentRanges(line)
+		.map(range => line.slice(range.start, range.end + 1).trim())
+		.filter(Boolean);
+
+	return [label, ...comments].join(" ");
+}
+
 function resolveTargetLabel(target, lineNumber, context) {
 	const targetLine = context.labels.get(String(target));
 
@@ -739,11 +779,26 @@ function makeFlowComment(lineNumber, message) {
 	return `( KAIJU flow line ${lineNumber + 1}: ${message} )`;
 }
 
+function makeMacroAssignmentComment(assignment, value) {
+	return `(${assignment.macro} = ${formatMacroAssignmentValue(assignment.value, value)})`;
+}
+
+function formatMacroAssignmentValue(rawValue, value) {
+	const trimmedValue = String(rawValue || "").trim();
+
+	if (/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmedValue) && Number.isFinite(Number(trimmedValue))) {
+		return trimmedValue;
+	}
+
+	return formatNumber(value);
+}
+
 function makeOutputText(sourceName, context, outputLines) {
 	const header = [
 		"( KAIJU Decomposition )",
 		`( Source: ${sourceName} )`,
-		"( This is an inspection aid, not verified machine-ready code. )"
+		"( Macro-driven G-code execution trace for inspection and debugging. )",
+		"( This is not verified machine-ready code. )"
 	];
 
 	if (context.manualInputs.size) {

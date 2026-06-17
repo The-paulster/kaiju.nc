@@ -69,6 +69,7 @@ flowchart TD
 	motion --> text
 	motion --> macro
 	motion --> tool
+	motion --> humanFormat[MetaHumanFormat.js]
 	motion --> modalDefs[MetaModalDefs.json]
 	macro --> text
 	tool --> macro
@@ -84,7 +85,7 @@ flowchart LR
 
 	entryModules["extension.js"]
 	featureModules["kaijuSense/<br/>kaijuAlert/<br/>kaijuReconstructor/<br/>kaijuChronoblade/<br/>kaijuVision/<br/>kaijuDecomposition/<br/>kaijuRangefinder/<br/>kaijuAlias/<br/>kaijuOrphanKiller/"]
-	metaModules["MetaMotionEngine.js<br/>MetaMachineMode.js<br/>MetaMacroEngine.js<br/>MetaToolModel.js<br/>MetaModalDefs.json"]
+	metaModules["MetaMotionEngine.js<br/>MetaMachineMode.js<br/>MetaMacroEngine.js<br/>MetaToolModel.js<br/>MetaHumanFormat.js<br/>MetaModalDefs.json"]
 	utilityModules["MetaTextRanges.js"]
 
 	entry --> entryModules
@@ -99,6 +100,7 @@ flowchart LR
 - Feature folders own commands, hovers, webviews, diagnostics, status bars, and their `options.js` files.
 - Root `Meta...` modules are shared infrastructure, not user-facing feature surfaces.
 - `MetaMotionEngine.js` is the shared motion/modal interpreter for Sense, Vision, and Chronoblade.
+- `MetaHumanFormat.js` formats raw numbers for human-facing UI only; it must not be used as a calculation step.
 - `MetaMacroEngine.js` centralizes macro alias parsing and macro expression/value resolution for expression-aware features.
 - `MetaToolModel.js` owns tool colors and tool ranges; Sense and Rangefinder consume it.
 - `MetaTextRanges.js` is the low-level comment/angle-bracket helper used across features.

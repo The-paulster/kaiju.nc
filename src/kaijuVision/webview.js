@@ -430,7 +430,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 	<section class="summary">
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
-		<span>${escapeHtml(formatNumber(summary.totalDistance))} total distance</span>
+		<span>${escapeHtml(formatNumber(summary.totalDistance, options.humanFormat))} total distance</span>
 		${summary.unknownRows ? `<span>${escapeHtml(summary.unknownRows)} row(s) have incomplete path data</span>` : ""}
 		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span></span>
 	</section>
@@ -438,7 +438,7 @@ function renderVisionHtml(document, mode, options, result) {
 	<div id="viewerSlot" class="viewer-slot">
 		<div id="viewer" class="viewer"></div>
 	</div>
-	${renderRows(result.rows)}
+	${renderRows(result.rows, options.humanFormat)}
 
 	<script type="application/json" id="vision-data">${escapeScriptJson(payload)}</script>
 	<script>
@@ -863,7 +863,7 @@ function renderVisionHtml(document, mode, options, result) {
 </html>`;
 }
 
-function renderRows(rows) {
+function renderRows(rows, humanFormat) {
 	if (!rows.length) {
 		return "<p class=\"empty\">No motion rows found.</p>";
 	}
@@ -874,7 +874,7 @@ function renderRows(rows) {
 			<td><code>${escapeHtml(row.instruction)}</code></td>
 			<td>${escapeHtml(row.startLabel || "-")}</td>
 			<td>${escapeHtml(row.endLabel || "-")}</td>
-			<td>${escapeHtml(formatNumber(row.distance))}</td>
+			<td>${escapeHtml(formatNumber(row.distance, humanFormat))}</td>
 			<td class="notes">${escapeHtml((row.warnings || []).join(" ")) || "-"}</td>
 		</tr>`;
 	}).join("");
