@@ -399,6 +399,28 @@ function renderVisionHtml(document, mode, options, result) {
 			min-width: 18ch;
 		}
 
+		th.tool-marker-header,
+		td.tool-marker-cell {
+			width: 4px;
+			min-width: 4px;
+			max-width: 4px;
+			padding: 0;
+		}
+
+		th.tool-marker-gap,
+		td.tool-marker-gap {
+			width: 6px;
+			min-width: 6px;
+			max-width: 6px;
+			padding: 0;
+		}
+
+		tr.label-row td {
+			background: var(--vscode-editor-inactiveSelectionBackground);
+			color: var(--vscode-descriptionForeground);
+			font-weight: 600;
+		}
+
 		code {
 			font-family: var(--vscode-editor-font-family);
 			background: var(--vscode-textCodeBlock-background);
@@ -1180,12 +1202,25 @@ function renderRows(rows, humanFormat) {
 	}
 
 	const body = rows.map(row => {
+		if (row.type === "label") {
+			const comment = row.comment ? ` ${row.comment}` : "";
+
+			return `<tr class="label-row">
+				${renderToolMarkerCell(row)}
+				<td class="tool-marker-gap"></td>
+				<td>${escapeHtml(row.lineNumber)}</td>
+				<td colspan="5"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}</td>
+			</tr>`;
+		}
+
 		return `<tr>
+			${renderToolMarkerCell(row)}
+			<td class="tool-marker-gap"></td>
 			<td>${escapeHtml(row.lineNumber)}</td>
 			<td><code>${escapeHtml(row.instruction)}</code></td>
 			<td>${escapeHtml(row.startLabel || "-")}</td>
 			<td>${escapeHtml(row.endLabel || "-")}</td>
-			<td>${escapeHtml(formatNumber(row.distance, humanFormat))}</td>
+			<td>${escapeHtml(formatDistance(row, humanFormat))}</td>
 			<td class="notes">${escapeHtml((row.warnings || []).join(" ")) || "-"}</td>
 		</tr>`;
 	}).join("");
@@ -1194,6 +1229,8 @@ function renderRows(rows, humanFormat) {
 		<table>
 			<thead>
 				<tr>
+					<th class="tool-marker-header"></th>
+					<th class="tool-marker-gap"></th>
 					<th>Line</th>
 					<th>Move</th>
 					<th>Start</th>
@@ -1207,6 +1244,28 @@ function renderRows(rows, humanFormat) {
 	</div>`;
 }
 
+function renderToolMarkerCell(row) {
+	const style = row.toolColor ? ` style="background:${escapeAttribute(row.toolColor)}"` : "";
+
+	return `<td class="tool-marker-cell"${style}></td>`;
+}
+
+function formatDistance(row, humanFormat) {
+	if (row.type === "tool") {
+		return "Tool change";
+	}
+
+	if (isZeroDistance(row)) {
+		return "0.00";
+	}
+
+	return formatNumber(row.distance, humanFormat);
+}
+
+function isZeroDistance(row) {
+	return Number.isFinite(row.distance) && Math.abs(row.distance) < 0.000000001;
+}
+
 function escapeHtml(text) {
 	return String(text)
 		.replace(/&/g, "&amp;")
@@ -1214,6 +1273,10 @@ function escapeHtml(text) {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#39;");
+}
+
+function escapeAttribute(text) {
+	return escapeHtml(text);
 }
 
 function escapeScriptJson(value) {

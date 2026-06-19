@@ -14,6 +14,11 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added KAIJU Sense hover details and amber line highlighting for `GOTO` label references.
 - Added a left-side KAIJU Sense cursor-state status bar readout backed by modal-code definitions, with verbose labels like `G00 (Rapid)` / `M08 (Coolant on)` or compact codes like `G00 M08`.
 - Added optional syntax-style colors for the KAIJU Sense cursor-state status bar.
+- Added an `Alias: On` / `Alias: Off` / `Alias: Mixed` right-side status bar indicator for KAIJU Alias mode.
+- Added optional colors for the right-side machine-mode and alias-mode status bar indicators.
+- Added a Kaiju Alert error for mixed KAIJU Alias mode when alias macros and their original numeric macros are both used in one document.
+- Added a Kaiju Alert error for undefined KAIJU Alias names like `#ap_5` when no matching alias definition exists before the first G/M block.
+- Delayed undefined KAIJU Alias errors until typing pauses so partial alias names do not stay flagged mid-edit.
 - Added a non-blocking KAIJU Alert warning when an existing `GOTO` target stops being forked after duplicate `N` labels are reduced to one, with formatted details available from the alert.
 - Expanded the comment-bracket Kaiju Alert so separate comment pairs like `()()` are warned alongside nested pairs like `(())`.
 - Added a right-side configured machine-mode status bar indicator for Mill, Lathe - Radius, and Lathe - Diameter.
@@ -23,6 +28,12 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added shared human-display decimal formatting with configurable minimum and maximum decimal places, defaulting to three.
 - Added an experimental syntax-colored KAIJU Sense hover value mode for testing; it is currently less readable than the default compact hover.
 - Added `N` label separator rows to KAIJU Chronoblade reports so program position is easier to follow.
+- Added `N` label separator rows to the KAIJU Vision motion list.
+- Added per-`N` label section totals to KAIJU Chronoblade label separator rows.
+- Added narrow tool-color marker columns to the KAIJU Chronoblade and KAIJU Vision webview lists.
+- Kept KAIJU Chronoblade label section totals focused on `Total: <time>` without appending unknown-row text.
+- Showed `Tool change` in webview distance columns for tool-change rows instead of a generic unknown value.
+- Showed zero-distance motion rows as `0.00` in webview distance columns instead of a generic unknown value.
 - Added `kaijuNC.vision.zoomStep` and `kaijuNC.vision.wheelZoomStep`, defaulting KAIJU Vision zoom controls to larger steps.
 - Added a small dark outline to KAIJU Vision endpoint labels so they stay readable over path lines.
 - Increased the default KAIJU Vision endpoint/start label font size.
@@ -31,6 +42,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added KAIJU Vision tool-change markers with under-layer green dots and gutter-colored tool transition labels.
 - Added right-click KAIJU Machine Mode commands for Mill, Lathe (Radius), and Lathe (Diameter), with matching Chronoblade/Sense/Vision X-axis settings and motion-analysis feed defaults.
 - Added Kaiju Alert checks for duplicate and out-of-order `N` sequence numbers, each with its own setting.
+- Fixed S-code syntax highlighting so decimal spindle values like `S665.000` are colored as one complete S word.
 
 ## [0.2.0]
 

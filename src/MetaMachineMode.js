@@ -1,6 +1,8 @@
 // Role: own configured KAIJU machine profiles, profile-setting commands, and the
-// right-side machine-profile status bar. Keep cursor modal state in Sense files.
+// right-side machine/alias mode status bars. Keep cursor modal state in Sense files.
 const vscode = require("vscode");
+const { getAliasModeState } = require("./kaijuAlias");
+const { getAliasOptions } = require("./kaijuAlias/options");
 
 const MACHINE_MODE_PROFILES = {
 	mill: {
@@ -26,6 +28,18 @@ const MACHINE_MODE_PROFILES = {
 	}
 };
 
+const MACHINE_MODE_STATUS_COLORS = {
+	mill: "#4EC9B0",
+	latheRadius: "#DCDCAA",
+	latheDiameter: "#CE9178"
+};
+
+const ALIAS_STATUS_COLORS = {
+	on: "#29c718",
+	off: "#8A8A8A",
+	mixed: "#ff0037"
+};
+
 function registerMachineModeCommands(context) {
 	for (const profile of Object.values(MACHINE_MODE_PROFILES)) {
 		context.subscriptions.push(
@@ -39,38 +53,98 @@ function registerMachineModeCommands(context) {
 }
 
 function registerMachineModeStatusBar(context) {
-	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
-	statusBarItem.tooltip = "KAIJU.NC configured machine mode";
-	context.subscriptions.push(statusBarItem);
+	const statusBar = {
+		machineItem: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90),
+		aliasItem: vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 89)
+	};
+	statusBar.machineItem.tooltip = "KAIJU.NC configured machine mode";
+	statusBar.aliasItem.tooltip = "KAIJU Alias mode in the current document";
+	context.subscriptions.push(statusBar.machineItem, statusBar.aliasItem);
 
-	const update = () => updateMachineModeStatusBar(statusBarItem);
+	const update = () => updateMachineModeStatusBar(statusBar);
 
 	update();
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(update),
+		vscode.workspace.onDidChangeTextDocument(event => {
+			const editor = vscode.window.activeTextEditor;
+
+			if (editor && event.document === editor.document) {
+				update();
+			}
+		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.chronoblade.machineMode")) {
+			if (
+				event.affectsConfiguration("kaijuNC.chronoblade.machineMode")
+				|| event.affectsConfiguration("kaijuNC.alias")
+				|| event.affectsConfiguration("kaijuNC.display.statusBarModeColors")
+			) {
 				update();
 			}
 		})
 	);
 }
 
-function updateMachineModeStatusBar(statusBarItem) {
+function updateMachineModeStatusBar(statusBar) {
 	const editor = vscode.window.activeTextEditor;
 
 	if (!editor || !editor.document || editor.document.languageId !== "gcode") {
-		statusBarItem.hide();
+		hideMachineModeStatusBar(statusBar);
 		return;
 	}
 
-	const config = vscode.workspace.getConfiguration("kaijuNC.chronoblade", editor.document.uri);
+	const document = editor.document;
+	const config = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
+	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
 	const profile = getMachineModeProfile(config.get("machineMode", "latheDiameter"));
+	const useModeColors = displayConfig.get("statusBarModeColors", false);
 
 	// Right-side configuration indicator: this is the selected KAIJU machine profile,
 	// not the cursor-specific modal G/M state shown by KAIJU Sense.
-	statusBarItem.text = `KAIJU: ${profile.statusLabel}`;
-	statusBarItem.show();
+	statusBar.machineItem.text = `KAIJU: ${profile.statusLabel}`;
+	statusBar.machineItem.color = useModeColors ? getMachineModeStatusColor(profile.id) : undefined;
+	statusBar.machineItem.show();
+
+	const aliasState = getAliasModeState(document, getAliasOptions(document));
+	statusBar.aliasItem.text = `Alias: ${getAliasStatusLabel(aliasState.mode)}`;
+	statusBar.aliasItem.tooltip = getAliasStatusTooltip(aliasState);
+	statusBar.aliasItem.color = useModeColors ? getAliasStatusColor(aliasState.mode) : undefined;
+	statusBar.aliasItem.show();
+}
+
+function hideMachineModeStatusBar(statusBar) {
+	statusBar.machineItem.hide();
+	statusBar.aliasItem.hide();
+}
+
+function getMachineModeStatusColor(profileId) {
+	return MACHINE_MODE_STATUS_COLORS[profileId] || MACHINE_MODE_STATUS_COLORS.latheDiameter;
+}
+
+function getAliasStatusLabel(mode) {
+	if (mode === "mixed") {
+		return "Mixed";
+	}
+
+	return mode === "on" ? "On" : "Off";
+}
+
+function getAliasStatusTooltip(aliasState) {
+	if (!aliasState.hasAliasDefinitions) {
+		return "KAIJU Alias mode: no alias comments found before the first G/M block.";
+	}
+
+	if (aliasState.mode === "mixed") {
+		return "KAIJU Alias mode: aliases and numeric macros are mixed in this document.";
+	}
+
+	return aliasState.mode === "on"
+		? "KAIJU Alias mode: aliases are active in this document."
+		: "KAIJU Alias mode: numeric macros are active in this document.";
+}
+
+function getAliasStatusColor(mode) {
+	return ALIAS_STATUS_COLORS[mode] || ALIAS_STATUS_COLORS.off;
 }
 
 async function setMachineMode(profileId) {

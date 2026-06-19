@@ -411,6 +411,16 @@
             "type": "boolean",
             "default": true,
             "description": "Show an error when N sequence numbers decrease instead of staying in order."
+          },
+          "kaijuNC.alerts.mixedAliasMode.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when a G-code file mixes KAIJU Alias names and their original numeric macros."
+          },
+          "kaijuNC.alerts.undefinedAliases.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when a named KAIJU Alias macro is used without a matching alias definition before the first G/M block."
           }
         }
       },
@@ -527,6 +537,11 @@
             "minimum": 0,
             "maximum": 9,
             "description": "Maximum decimal places shown in human-facing KAIJU numeric readouts. Set this above the minimum to allow extra precision in display text."
+          },
+          "kaijuNC.display.statusBarModeColors": {
+            "type": "boolean",
+            "default": true,
+            "description": "Color the right-side KAIJU machine-mode and alias-mode status bar indicators."
           }
         }
       },
@@ -550,7 +565,7 @@
           },
           "kaijuNC.sense.statusBarSyntaxColors": {
             "type": "boolean",
-            "default": false,
+            "default": true,
             "description": "Color the left-side KAIJU Sense cursor-state status bar codes with colors matching KAIJU.NC syntax highlighting. VS Code applies this by splitting the readout into adjacent status bar items."
           },
           "kaijuNC.sense.syntaxColoredHoverValues": {

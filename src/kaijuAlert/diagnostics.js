@@ -6,12 +6,19 @@ const {
 	getAngleBracketRanges,
 	isInsideRange
 } = require("../MetaTextRanges");
+const {
+	getAliasModeState,
+	getUndefinedAliasOccurrences
+} = require("../kaijuAlias");
+const { getAliasOptions } = require("../kaijuAlias/options");
 const { getAlertOptions } = require("./options");
 
 const DIAGNOSTIC_SOURCE = "Kaiju Alert";
+const UNDEFINED_ALIAS_DIAGNOSTIC_DELAY_MS = 900;
 
 function registerDiagnostics(context) {
 	const diagnostics = vscode.languages.createDiagnosticCollection("gcode");
+	const undefinedAliasTimers = new Map();
 	context.subscriptions.push(diagnostics);
 
 	if (vscode.window.activeTextEditor) {
@@ -25,27 +32,34 @@ function registerDiagnostics(context) {
 			}
 		}),
 		vscode.workspace.onDidChangeTextDocument(event => {
-			updateDiagnostics(event.document, diagnostics);
+			updateDiagnostics(event.document, diagnostics, { includeUndefinedAliases: false });
+			scheduleUndefinedAliasDiagnostics(event.document, diagnostics, undefinedAliasTimers);
 		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.alerts") || event.affectsConfiguration("kaijuNC.syntax.unresolvedGotos.enabled")) {
+			if (
+				event.affectsConfiguration("kaijuNC.alerts")
+				|| event.affectsConfiguration("kaijuNC.alias")
+				|| event.affectsConfiguration("kaijuNC.syntax.unresolvedGotos.enabled")
+			) {
 				for (const editor of vscode.window.visibleTextEditors) {
 					updateDiagnostics(editor.document, diagnostics);
 				}
 			}
 		}),
 		vscode.workspace.onDidCloseTextDocument(document => {
+			clearUndefinedAliasTimer(document, undefinedAliasTimers);
 			diagnostics.delete(document.uri);
 		})
 	);
 }
 
-function updateDiagnostics(document, diagnostics) {
+function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	if (document.languageId !== "gcode") {
 		diagnostics.delete(document.uri);
 		return;
 	}
 
+	const includeUndefinedAliases = updateOptions.includeUndefinedAliases !== false;
 	const warnings = [];
 	const options = getAlertOptions(document);
 	const seenSequenceNumbers = new Map();
@@ -53,6 +67,12 @@ function updateDiagnostics(document, diagnostics) {
 
 	if (options.warnUnresolvedGotos) {
 		warnings.push(...makeUnresolvedGotoTargetWarnings(document));
+	}
+	if (options.warnMixedAliasMode) {
+		warnings.push(...makeMixedAliasModeWarnings(document));
+	}
+	if (includeUndefinedAliases && options.warnUndefinedAliases) {
+		warnings.push(...makeUndefinedAliasWarnings(document));
 	}
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -132,6 +152,33 @@ function updateDiagnostics(document, diagnostics) {
 	}
 
 	diagnostics.set(document.uri, warnings);
+}
+
+function scheduleUndefinedAliasDiagnostics(document, diagnostics, timers) {
+	clearUndefinedAliasTimer(document, timers);
+
+	if (document.languageId !== "gcode") {
+		return;
+	}
+
+	const timer = setTimeout(() => {
+		timers.delete(document.uri.toString());
+		updateDiagnostics(document, diagnostics);
+	}, UNDEFINED_ALIAS_DIAGNOSTIC_DELAY_MS);
+
+	timers.set(document.uri.toString(), timer);
+}
+
+function clearUndefinedAliasTimer(document, timers) {
+	const key = document.uri.toString();
+	const timer = timers.get(key);
+
+	if (!timer) {
+		return;
+	}
+
+	clearTimeout(timer);
+	timers.delete(key);
 }
 
 function getNamedMacroRanges(line) {
@@ -305,6 +352,24 @@ function makeNonAsciiWarnings(line, lineNumber) {
 	}
 
 	return warnings;
+}
+
+function makeMixedAliasModeWarnings(document) {
+	const state = getAliasModeState(document, getAliasOptions(document));
+
+	if (state.mode !== "mixed") {
+		return [];
+	}
+
+	return [
+		...state.aliasOccurrences,
+		...state.numericOccurrences
+	].map(makeMixedAliasModeWarning);
+}
+
+function makeUndefinedAliasWarnings(document) {
+	return getUndefinedAliasOccurrences(document, getAliasOptions(document))
+		.map(makeUndefinedAliasWarning);
 }
 
 function makeMultipleCommentParenthesisWarnings(line, lineNumber) {
@@ -548,6 +613,32 @@ function makeNonAsciiWarning(lineNumber, start, end, character, codePoint) {
 		range,
 		`Non-ASCII character "${character}" (${codePointText}) may not be readable by some lathe controls.`,
 		vscode.DiagnosticSeverity.Warning
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeMixedAliasModeWarning(occurrence) {
+	const range = new vscode.Range(occurrence.lineNumber, occurrence.start, occurrence.lineNumber, occurrence.end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Mixed KAIJU Alias mode: use either "${occurrence.alias}" aliases or "${occurrence.macro}" numeric macros consistently.`,
+		vscode.DiagnosticSeverity.Error
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeUndefinedAliasWarning(occurrence) {
+	const range = new vscode.Range(occurrence.lineNumber, occurrence.start, occurrence.lineNumber, occurrence.end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Undefined KAIJU Alias "${occurrence.text}". Add a matching alias definition before the first G/M block or use a numeric macro.`,
+		vscode.DiagnosticSeverity.Error
 	);
 
 	warning.source = DIAGNOSTIC_SOURCE;

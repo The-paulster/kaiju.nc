@@ -2,6 +2,11 @@
 // alias parsing and expression evaluation in MetaMacroEngine.js.
 const vscode = require("vscode");
 const { buildAliasEntries, makeMacroRegex } = require("../MetaMacroEngine");
+const {
+	getCommentRanges,
+	getAngleBracketRanges,
+	isInsideRange
+} = require("../MetaTextRanges");
 const { getAliasOptions } = require("./options");
 
 function registerKaijuAlias(context) {
@@ -65,21 +70,116 @@ async function toggleAliases(editor, entries, options = {}) {
 }
 
 function documentHasAliases(document, entries, options) {
+	return findAliasModeOccurrences(document, entries, options).aliasOccurrences.length > 0;
+}
+
+function getAliasModeState(document, options = {}) {
+	const entries = buildAliasEntries(document).filter(entry => entry.alias);
+	const occurrences = findAliasModeOccurrences(document, entries, options);
+	const hasAliases = occurrences.aliasOccurrences.length > 0;
+	const hasNumericMacros = occurrences.numericOccurrences.length > 0;
+	const mode = hasAliases && hasNumericMacros
+		? "mixed"
+		: hasAliases
+			? "on"
+			: "off";
+
+	return {
+		mode,
+		hasAliasDefinitions: entries.length > 0,
+		aliasOccurrences: occurrences.aliasOccurrences,
+		numericOccurrences: occurrences.numericOccurrences
+	};
+}
+
+function getUndefinedAliasOccurrences(document, options = {}) {
+	const entries = buildAliasEntries(document).filter(entry => entry.alias);
+	const definedAliases = new Set(entries.map(entry => normalizeAliasToken(`#${entry.alias}`, options)));
+	const occurrences = [];
+	const namedMacroRegex = /#[A-Za-z_][A-Za-z0-9_]*/g;
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const line = document.lineAt(lineNumber).text;
+		const protectedRanges = getProtectedRanges(line);
+		let match;
+
+		while ((match = namedMacroRegex.exec(line)) !== null) {
+			if (isInsideRange(match.index, protectedRanges)) {
+				continue;
+			}
+
+			if (definedAliases.has(normalizeAliasToken(match[0], options))) {
+				continue;
+			}
+
+			occurrences.push({
+				lineNumber,
+				start: match.index,
+				end: match.index + match[0].length,
+				text: match[0]
+			});
+		}
+	}
+
+	return occurrences;
+}
+
+function findAliasModeOccurrences(document, entries, options) {
+	const aliasOccurrences = [];
+	const numericOccurrences = [];
+
 	for (const entry of entries) {
 		const aliasRegex = makeMacroRegex(`#${entry.alias}`, options);
+		const numericRegex = makeMacroRegex(entry.macro, options);
 
 		for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 			if (lineNumber === entry.sourceLine) {
 				continue;
 			}
 
-			if (countMatches(document.lineAt(lineNumber).text, aliasRegex) > 0) {
-				return true;
-			}
+			const line = document.lineAt(lineNumber).text;
+			const protectedRanges = getProtectedRanges(line);
+			aliasOccurrences.push(...collectMacroOccurrences(line, lineNumber, aliasRegex, entry, protectedRanges));
+			numericOccurrences.push(...collectMacroOccurrences(line, lineNumber, numericRegex, entry, protectedRanges));
 		}
 	}
 
-	return false;
+	return { aliasOccurrences, numericOccurrences };
+}
+
+function collectMacroOccurrences(line, lineNumber, regex, entry, protectedRanges = []) {
+	const occurrences = [];
+	let match;
+
+	regex.lastIndex = 0;
+
+	while ((match = regex.exec(line)) !== null) {
+		if (isInsideRange(match.index, protectedRanges)) {
+			continue;
+		}
+
+		occurrences.push({
+			lineNumber,
+			start: match.index,
+			end: match.index + match[0].length,
+			text: match[0],
+			macro: entry.macro,
+			alias: `#${entry.alias}`
+		});
+	}
+
+	return occurrences;
+}
+
+function getProtectedRanges(line) {
+	return [
+		...getCommentRanges(line),
+		...getAngleBracketRanges(line)
+	];
+}
+
+function normalizeAliasToken(alias, options = {}) {
+	return options.caseSensitive ? String(alias) : String(alias).toUpperCase();
 }
 
 async function replaceAliases(editor, replacements, entries, options) {
@@ -162,12 +262,10 @@ function restoreSourceMacros(text, tokens) {
 	}, text);
 }
 
-function countMatches(text, regex) {
-	regex.lastIndex = 0;
-	return [...text.matchAll(regex)].length;
-}
-
 module.exports = {
 	registerKaijuAlias,
+	documentHasAliases,
+	getAliasModeState,
+	getUndefinedAliasOccurrences,
 	toggleAliases
 };

@@ -308,6 +308,22 @@ function renderChronobladeHtml(document, mode, options, result) {
 			min-width: 18ch;
 		}
 
+		th.tool-marker-header,
+		td.tool-marker-cell {
+			width: 4px;
+			min-width: 4px;
+			max-width: 4px;
+			padding: 0;
+		}
+
+		th.tool-marker-gap,
+		td.tool-marker-gap {
+			width: 6px;
+			min-width: 6px;
+			max-width: 6px;
+			padding: 0;
+		}
+
 		tr.label-row td {
 			background: var(--vscode-editor-inactiveSelectionBackground);
 			color: var(--vscode-descriptionForeground);
@@ -400,19 +416,26 @@ function renderRows(rows, humanFormat) {
 	const body = rows.map(row => {
 		if (row.type === "label") {
 			const comment = row.comment ? ` ${row.comment}` : "";
+			const total = Number.isFinite(row.labelTotalTimeSeconds)
+				? ` Total: ${formatTime(row.labelTotalTimeSeconds)}`
+				: "";
 
 			return `<tr class="label-row">
+				${renderToolMarkerCell(row)}
+				<td class="tool-marker-gap"></td>
 				<td>${escapeHtml(row.lineNumber)}</td>
-				<td colspan="9"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}</td>
+				<td colspan="9"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}${escapeHtml(total)}</td>
 			</tr>`;
 		}
 
 		return `<tr>
+			${renderToolMarkerCell(row)}
+			<td class="tool-marker-gap"></td>
 			<td>${escapeHtml(row.lineNumber)}</td>
 			<td><code>${escapeHtml(row.instruction)}</code></td>
 			<td>${escapeHtml(row.start || "-")}</td>
 			<td>${escapeHtml(row.end || "-")}</td>
-			<td>${escapeHtml(formatNumber(row.distance, humanFormat))}</td>
+			<td>${escapeHtml(formatDistance(row, humanFormat))}</td>
 			<td>${escapeHtml(formatFeed(row, humanFormat))}</td>
 			<td>${escapeHtml(row.spindle || "-")}</td>
 			<td>${escapeHtml(row.rpmUsed || "-")}</td>
@@ -425,6 +448,8 @@ function renderRows(rows, humanFormat) {
 		<table>
 			<thead>
 				<tr>
+					<th class="tool-marker-header"></th>
+					<th class="tool-marker-gap"></th>
 					<th>Line</th>
 					<th>Instruction</th>
 					<th>Start</th>
@@ -442,12 +467,34 @@ function renderRows(rows, humanFormat) {
 	</div>`;
 }
 
+function renderToolMarkerCell(row) {
+	const style = row.toolColor ? ` style="background:${escapeAttribute(row.toolColor)}"` : "";
+
+	return `<td class="tool-marker-cell"${style}></td>`;
+}
+
 function formatFeed(row, humanFormat) {
 	if (!Number.isFinite(row.feed)) {
 		return "-";
 	}
 
 	return `${formatNumber(row.feed, humanFormat)} ${row.feedMode === "perRev" ? "per rev" : "per min"}`;
+}
+
+function formatDistance(row, humanFormat) {
+	if (row.type === "tool") {
+		return "Tool change";
+	}
+
+	if (isZeroDistance(row)) {
+		return "0.00";
+	}
+
+	return formatNumber(row.distance, humanFormat);
+}
+
+function isZeroDistance(row) {
+	return Number.isFinite(row.distance) && Math.abs(row.distance) < 0.000000001;
 }
 
 function escapeHtml(text) {
@@ -457,6 +504,10 @@ function escapeHtml(text) {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#39;");
+}
+
+function escapeAttribute(text) {
+	return escapeHtml(text);
 }
 
 module.exports = {

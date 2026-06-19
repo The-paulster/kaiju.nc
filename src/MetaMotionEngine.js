@@ -1034,6 +1034,7 @@ function analyzeChronobladeRange(document, range, options) {
 	const state = makeInitialState(options);
 	const macroValues = new Map();
 	const macroAliases = buildMacroAliasMap(document);
+	const toolRanges = getToolRanges(document);
 	const rows = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
 	let previousTool;
@@ -1051,9 +1052,11 @@ function analyzeChronobladeRange(document, range, options) {
 		applyModalState(words, motionCode, state);
 
 		if (isLineInRange(lineNumber, targetRange)) {
+			const toolRange = getToolRangeAtLine(toolRanges, lineNumber);
 			const labelRow = makeLabelReportRow(lineNumber, line, codeLine);
 
 			if (labelRow) {
+				labelRow.toolColor = getToolColor(toolRange);
 				rows.push(labelRow);
 			}
 
@@ -1062,6 +1065,7 @@ function analyzeChronobladeRange(document, range, options) {
 					type: "tool",
 					lineNumber: lineNumber + 1,
 					instruction: toolChange.instruction,
+					toolColor: getToolColor(getToolRangeStartingAtLine(toolRanges, lineNumber) || toolRange),
 					start: "",
 					end: "",
 					distance: NaN,
@@ -1088,7 +1092,7 @@ function analyzeChronobladeRange(document, range, options) {
 			positionWasUpdated = true;
 
 			if (isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate, options));
+				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
 			}
 		}
 
@@ -1096,6 +1100,8 @@ function analyzeChronobladeRange(document, range, options) {
 			applyPositionUpdate(words, state, options);
 		}
 	}
+
+	annotateLabelSectionTotals(rows);
 
 	return {
 		rows,
@@ -1123,6 +1129,16 @@ function analyzeVisionRange(document, range, options) {
 		const motionCode = getMotionCode(words);
 
 		applyModalState(words, motionCode, state);
+
+		if (isLineInRange(lineNumber, targetRange)) {
+			const toolRange = getToolRangeAtLine(toolRanges, lineNumber);
+			const labelRow = makeLabelReportRow(lineNumber, line, codeLine);
+
+			if (labelRow) {
+				labelRow.toolColor = getToolColor(toolRange);
+				rows.push(labelRow);
+			}
+		}
 
 		const toolRange = getToolRangeStartingAtLine(toolRanges, lineNumber);
 
@@ -1164,6 +1180,10 @@ function getPreviousToolRange(toolRanges, toolRange) {
 
 function getToolRangeAtLine(toolRanges, lineNumber) {
 	return toolRanges.find(range => lineNumber >= range.startLine && lineNumber <= range.endLine);
+}
+
+function getToolColor(toolRange) {
+	return toolRange ? TOOL_COLORS[toolRange.colorIndex % TOOL_COLORS.length] : "";
 }
 
 function normalizeLineRange(range, lineCount) {
@@ -1218,6 +1238,8 @@ function makeLabelReportRow(lineNumber, line, codeLine) {
 		lineNumber: lineNumber + 1,
 		instruction: match[1].toUpperCase(),
 		comment: getLineComments(line).join(" "),
+		labelTotalTimeSeconds: 0,
+		labelUnknownTimeRows: 0,
 		start: "",
 		end: "",
 		distance: NaN,
@@ -1281,13 +1303,14 @@ function estimateToolChangeTime(previousTool, tool, options) {
 	return baseTime + extraStationSteps * extraStationTime;
 }
 
-function makeMotionReportRow(lineNumber, motionCode, estimate, options) {
+function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRange) {
 	const humanFormat = options && options.humanFormat;
 
 	return {
 		type: "motion",
 		lineNumber: lineNumber + 1,
 		instruction: `G${motionCode}`,
+		toolColor: getToolColor(toolRange),
 		start: formatPosition(estimate.start, humanFormat),
 		end: formatPosition(estimate.end, humanFormat),
 		distance: estimate.distance,
@@ -1301,9 +1324,10 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options) {
 }
 
 function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRange) {
-	const toolColor = toolRange ? TOOL_COLORS[toolRange.colorIndex % TOOL_COLORS.length] : "";
+	const toolColor = getToolColor(toolRange);
 
 	return {
+		type: "motion",
 		lineNumber: lineNumber + 1,
 		instruction: estimate.machineCoordinate ? `G53 G${motionCode}` : `G${motionCode}`,
 		motionCode,
@@ -1321,8 +1345,8 @@ function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRang
 }
 
 function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, position, options) {
-	const toolColor = TOOL_COLORS[toolRange.colorIndex % TOOL_COLORS.length];
-	const previousToolColor = previousToolRange ? TOOL_COLORS[previousToolRange.colorIndex % TOOL_COLORS.length] : "";
+	const toolColor = getToolColor(toolRange);
+	const previousToolColor = getToolColor(previousToolRange);
 	const previousTool = previousToolRange ? previousToolRange.tool : "";
 
 	return {
@@ -1351,13 +1375,50 @@ function toVisionPoint(point, options) {
 }
 
 function summarizeVisionRows(rows) {
-	const motionRows = rows.filter(row => row.type !== "tool");
+	const motionRows = rows.filter(row => row.type === "motion");
 
 	return {
 		moveCount: motionRows.length,
 		totalDistance: motionRows.reduce((total, row) => total + (Number.isFinite(row.distance) ? row.distance : 0), 0),
 		unknownRows: motionRows.filter(row => !Number.isFinite(row.distance) || !row.points.length).length
 	};
+}
+
+function annotateLabelSectionTotals(rows) {
+	let currentLabel;
+	let sectionTimeSeconds = 0;
+	let sectionUnknownTimeRows = 0;
+
+	const flush = () => {
+		if (!currentLabel) {
+			return;
+		}
+
+		currentLabel.labelTotalTimeSeconds = sectionTimeSeconds;
+		currentLabel.labelUnknownTimeRows = sectionUnknownTimeRows;
+	};
+
+	for (const row of rows) {
+		if (row.type === "label") {
+			flush();
+			currentLabel = row;
+			sectionTimeSeconds = 0;
+			sectionUnknownTimeRows = 0;
+			continue;
+		}
+
+		if (!currentLabel) {
+			continue;
+		}
+
+		if (Number.isFinite(row.timeSeconds)) {
+			sectionTimeSeconds += row.timeSeconds;
+		} else {
+			sectionUnknownTimeRows++;
+		}
+	}
+
+	flush();
 }
 
 function summarizeChronobladeRows(rows) {
