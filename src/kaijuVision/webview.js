@@ -433,8 +433,11 @@ function renderVisionHtml(document, mode, options, result) {
 	<section class="controls">
 		<label>Plane
 			<select id="plane">
-				<option value="xz"${options.plane === "xz" ? " selected" : ""}>X-Z</option>
 				<option value="xy"${options.plane === "xy" ? " selected" : ""}>X-Y</option>
+				<option value="yx"${options.plane === "yx" ? " selected" : ""}>Y-X</option>
+				<option value="xz"${options.plane === "xz" ? " selected" : ""}>X-Z</option>
+				<option value="zx"${options.plane === "zx" ? " selected" : ""}>Z-X</option>
+				<option value="yz"${options.plane === "yz" ? " selected" : ""}>Y-Z</option>
 				<option value="zy"${options.plane === "zy" ? " selected" : ""}>Z-Y</option>
 			</select>
 		</label>
@@ -481,10 +484,36 @@ function renderVisionHtml(document, mode, options, result) {
 		let currentBounds;
 		let dragState;
 		const planes = {
-			xy: makePlane("X-Y", data.options.xyOrientation || "xRightYUp", "x", "y"),
-			xz: makePlane("X-Z", data.options.xzOrientation || "zRightXUp", "x", "z"),
-			zy: makePlane("Z-Y", data.options.zyOrientation || "zRightYUp", "z", "y")
+			xy: makePlane("X-Y", getOrderedOrientation(data.options.xyOrientation, "xRightYUp", "x", "y"), "x", "y"),
+			yx: makePlane("Y-X", getRotatedOrientation(data.options.xyOrientation, "xRightYUp", "x", "y"), "y", "x"),
+			xz: makePlane("X-Z", getOrderedOrientation(data.options.xzOrientation, "xRightZUp", "x", "z"), "x", "z"),
+			zx: makePlane("Z-X", getRotatedOrientation(data.options.xzOrientation, "xRightZUp", "x", "z"), "z", "x"),
+			yz: makePlane("Y-Z", getOrderedOrientation(data.options.zyOrientation, "yRightZUp", "y", "z"), "y", "z"),
+			zy: makePlane("Z-Y", getRotatedOrientation(data.options.zyOrientation, "yRightZUp", "y", "z"), "z", "y")
 		};
+
+		function getOrderedOrientation(orientation, fallback, firstAxis, secondAxis) {
+			const match = String(orientation || "").match(/^([xyz])(Right|Left)([xyz])(Up|Down)$/i);
+
+			if (!match
+				|| match[1].toLowerCase() !== firstAxis
+				|| match[3].toLowerCase() !== secondAxis) {
+				return fallback;
+			}
+
+			return orientation;
+		}
+
+		function getRotatedOrientation(orientation, fallback, firstAxis, secondAxis) {
+			const orderedOrientation = getOrderedOrientation(orientation, fallback, firstAxis, secondAxis);
+			const match = String(orderedOrientation).match(/^([xyz])(Right|Left)([xyz])(Up|Down)$/i);
+			const hSign = match[2].toLowerCase() === "right" ? 1 : -1;
+			const vSign = match[4].toLowerCase() === "up" ? 1 : -1;
+			const rotatedHDirection = vSign === 1 ? "Left" : "Right";
+			const rotatedVDirection = hSign === 1 ? "Up" : "Down";
+
+			return secondAxis + rotatedHDirection + firstAxis.toUpperCase() + rotatedVDirection;
+		}
 
 		function makePlane(label, orientation, firstAxis, secondAxis) {
 			const match = String(orientation).match(/^([xyz])(Right|Left)([xyz])(Up|Down)$/i);
@@ -544,7 +573,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function getDrawableRows(plane) {
 			return data.rows.map(row => {
-				if (row.type === "tool") {
+				if (row.type === "tool" || row.type === "cycle") {
 					return Object.assign({}, row, { projectedPoints: [] });
 				}
 
@@ -557,17 +586,38 @@ function renderVisionHtml(document, mode, options, result) {
 			}).filter(row => row.projectedPoints.length >= 2);
 		}
 
+		function getDrawableCycleRows(plane) {
+			return data.rows.filter(row => row.type === "cycle")
+				.map(row => {
+					const points = (row.points || [])
+						.map(point => project(point, plane))
+						.filter(Boolean);
+					const projectedPoint = project(row.point || row.end || {}, plane) || points[points.length - 1];
+
+					return Object.assign({}, row, { projectedPoints: points, projectedPoint });
+				})
+				.filter(row => row.projectedPoint);
+		}
+
 		function getDrawableToolChanges(plane) {
 			return data.rows.filter(row => row.type === "tool")
 				.map(row => Object.assign({}, row, { projectedPoint: project(row.point || {}, plane) }))
 				.filter(row => row.projectedPoint);
 		}
 
-		function makeBounds(rows, toolChanges) {
+		function makeBounds(rows, cycles, toolChanges) {
 			const points = [];
 
 			for (const row of rows) {
 				points.push(...row.projectedPoints);
+			}
+
+			for (const cycle of cycles) {
+				if (cycle.projectedPoints && cycle.projectedPoints.length) {
+					points.push(...cycle.projectedPoints);
+				} else {
+					points.push(cycle.projectedPoint);
+				}
 			}
 
 			for (const toolChange of toolChanges) {
@@ -689,9 +739,10 @@ function renderVisionHtml(document, mode, options, result) {
 			sizeViewer();
 			const plane = planes[planeSelect.value] || planes.xz;
 			const rows = getDrawableRows(plane);
+			const cycles = getDrawableCycleRows(plane);
 			const toolChanges = getDrawableToolChanges(plane);
 			const viewerRect = viewer.getBoundingClientRect();
-			const fitBounds = makeBounds(rows, toolChanges);
+			const fitBounds = makeBounds(rows, cycles, toolChanges);
 			currentFitBounds = fitBounds;
 			const bounds = zoomBounds(fitBounds);
 			currentBounds = bounds;
@@ -708,6 +759,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const endpointSize = unitsPerPixel * data.options.endpointSize;
 			const startPointSize = unitsPerPixel * data.options.startPointSize;
 			const toolChangeSize = unitsPerPixel * 4;
+			const cyclePointSize = unitsPerPixel * 4;
 			const arrowSize = unitsPerPixel * 8 * data.options.arrowSize;
 			const endpointLabelOutline = unitsPerPixel * 1.5;
 			const labelHitboxPadding = unitsPerPixel * 8;
@@ -716,7 +768,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const endpointLabelAvoidance = data.options.endpointLabelAvoidance !== false;
 			const lineScale = data.options.lineThickness;
 
-			if (!rows.length && !toolChanges.length) {
+			if (!rows.length && !cycles.length && !toolChanges.length) {
 				viewer.innerHTML = '<p class="empty" style="padding: 16px;">No drawable moves found for the selected plane.</p>';
 				return;
 			}
@@ -728,6 +780,8 @@ function renderVisionHtml(document, mode, options, result) {
 				const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
 				return '<polyline class="' + cls + '"' + strokeStyle + ' marker-end="' + marker + '" points="' + formatPointList(row.projectedPoints) + '" />';
 			}).join("");
+			const cycleStrokes = cycles.map(cycle => renderCycleStroke(cycle, useToolColors)).join("");
+			const cycleTargets = cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, cyclePointSize, "cycle-point", "endpoint-label", showLabels ? "L" + cycle.lineNumber + " " + cycle.instruction : "", showLabels ? cycle.endLabel : ""));
 			const toolDots = toolChanges.map(toolChange => renderToolChangeDot(toolChange, toolChangeSize)).join("");
 			const toolLabels = toolChanges.map(toolChange => renderToolChangeLabel(toolChange, toolChangeSize, labelSize, labelOffset, showLabels)).join("");
 			const firstRow = rows[0];
@@ -737,6 +791,8 @@ function renderVisionHtml(document, mode, options, result) {
 			if (firstPoint) {
 				labelTargets.push(makePointLabelTarget(firstPoint, startPointSize, "start-point", "start-label", showLabels ? "START" : "", showLabels ? firstRow.startLabel : ""));
 			}
+
+			labelTargets.push(...cycleTargets);
 
 			for (const row of rows) {
 				const end = row.projectedEnd || row.projectedPoints[row.projectedPoints.length - 1];
@@ -760,7 +816,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
 			const svg = '<svg id="vision-svg" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.label-connector{stroke:#fff;stroke-width:0.85;stroke-linecap:round;opacity:0.9;vector-effect:non-scaling-stroke;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.label-connector{stroke:#fff;stroke-width:0.85;stroke-linecap:round;opacity:0.9;vector-effect:non-scaling-stroke;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cycle-stroke{fill:none;stroke:#4fc3ff;stroke-width:' + 1.45 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
 				'</style>' +
 				'<defs>' +
 					'<marker id="rapid-arrow" markerWidth="' + arrowSize + '" markerHeight="' + arrowSize + '" refX="' + arrowSize + '" refY="' + arrowSize / 2 + '" orient="auto" markerUnits="userSpaceOnUse"><path class="arrow-rapid" d="M0,0 L' + arrowSize + ',' + arrowSize / 2 + ' L0,' + arrowSize + ' Z" /></marker>' +
@@ -770,6 +826,7 @@ function renderVisionHtml(document, mode, options, result) {
 				compass +
 				toolDots +
 				paths +
+				cycleStrokes +
 				labelsAndMarkers +
 				toolLabels +
 				'</svg>';
@@ -792,10 +849,25 @@ function renderVisionHtml(document, mode, options, result) {
 			const pointObstacles = targets.map(target => makePointObstacle(target.point, target.pointSize, options.labelHitboxPadding));
 			const placedLabelBoxes = [];
 			const placedConnectors = [];
+			const duplicateCounts = countLabelTargetsByPoint(targets);
+			const stackedOffsets = new Map();
 
 			return targets.map(target => {
 				if (!target.labelLine && !target.coordinateLine) {
 					return target;
+				}
+
+				const stackKey = makePointKey(target.point);
+
+				if (duplicateCounts.get(stackKey) > 1) {
+					const stacked = makeStackedLabelPlacement(target, options, stackedOffsets.get(stackKey) || 0);
+					stackedOffsets.set(stackKey, stacked.nextOffset);
+					placedLabelBoxes.push(stacked.box);
+
+					return Object.assign({}, target, {
+						labelX: stacked.labelX,
+						firstBaselineY: stacked.firstBaselineY
+					});
 				}
 
 				const candidates = makeLabelCandidates(target, options);
@@ -834,6 +906,44 @@ function renderVisionHtml(document, mode, options, result) {
 			});
 		}
 
+		function countLabelTargetsByPoint(targets) {
+			const counts = new Map();
+
+			for (const target of targets) {
+				if (!target.labelLine && !target.coordinateLine) {
+					continue;
+				}
+
+				const key = makePointKey(target.point);
+				counts.set(key, (counts.get(key) || 0) + 1);
+			}
+
+			return counts;
+		}
+
+		function makePointKey(point) {
+			return round(point.x) + "," + round(point.y);
+		}
+
+		function makeStackedLabelPlacement(target, options, stackOffset) {
+			const metrics = measurePointLabel(target, options.labelSize, options.labelHitboxPadding);
+			const gap = Math.max(options.labelSize * 0.35, options.labelOffset);
+			const top = target.point.y + target.pointSize + options.labelOffset + stackOffset;
+			const left = target.point.x - metrics.width / 2;
+
+			return {
+				nextOffset: stackOffset + metrics.height + gap,
+				labelX: target.point.x,
+				firstBaselineY: top + metrics.firstBaselineOffset,
+				box: {
+					left,
+					top,
+					right: left + metrics.width,
+					bottom: top + metrics.height
+				}
+			};
+		}
+
 		function makePointObstacle(point, radius, padding) {
 			return {
 				left: point.x - radius - padding,
@@ -845,8 +955,8 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function makeLabelCandidates(target, options) {
 			const metrics = measurePointLabel(target, options.labelSize, options.labelHitboxPadding);
-			const xDistance = target.pointSize + options.labelOffset + metrics.width / 2 + options.labelSize * 0.75;
-			const yDistance = target.pointSize + options.labelOffset + metrics.height / 2 + options.labelSize * 0.75;
+			const xDistance = target.pointSize + options.labelOffset + metrics.width / 2 + options.labelSize * 0.3;
+			const yDistance = target.pointSize + options.labelOffset + metrics.height / 2 + options.labelSize * 0.3;
 			const offsets = [[0, yDistance]];
 			const rings = [1.15, 1.65, 2.25, 3.0];
 			const angles = [];
@@ -1008,6 +1118,17 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function renderToolChangeDot(toolChange, markerSize) {
 			return '<circle class="tool-change-dot" cx="' + round(toolChange.projectedPoint.x) + '" cy="' + round(toolChange.projectedPoint.y) + '" r="' + markerSize + '" />';
+		}
+
+		function renderCycleStroke(cycle, useToolColors) {
+			if (!cycle.projectedPoints || cycle.projectedPoints.length < 2) {
+				return "";
+			}
+
+			const toolColor = useToolColors && cycle.toolColor ? boostToolColor(cycle.toolColor) : "";
+			const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
+
+			return '<polyline class="cycle-stroke"' + strokeStyle + ' points="' + formatPointList(cycle.projectedPoints) + '" />';
 		}
 
 		function renderToolChangeLabel(toolChange, markerSize, labelSize, labelOffset, showLabels) {

@@ -6,6 +6,8 @@ const {
 	getMachineModeProfile
 } = require("../MetaMachineMode");
 
+const VISION_PLANES = new Set(["xy", "yx", "xz", "zx", "yz", "zy"]);
+
 function getVisionOptions(document, rawOptions = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.vision", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
@@ -13,7 +15,7 @@ function getVisionOptions(document, rawOptions = {}) {
 	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
 
 	return {
-		plane: ["xy", "xz", "zy"].includes(rawOptions.plane) ? rawOptions.plane : config.get("plane", "xz"),
+		plane: VISION_PLANES.has(rawOptions.plane) ? rawOptions.plane : normalizeVisionPlane(config.get("plane", "xz")),
 		useToolColors: rawOptions.useToolColors === true,
 		machineMode: profile.id,
 		defaultFeedMode: profile.defaultFeedMode,
@@ -32,7 +34,7 @@ function getVisionOptions(document, rawOptions = {}) {
 		endpointSize: clampNumber(config.get("endpointSize", 3), 1, 24),
 		startPointSize: clampNumber(config.get("startPointSize", 4), 1, 24),
 		labelFontSize: clampNumber(config.get("labelFontSize", 11), 5, 32),
-		labelOffset: clampNumber(config.get("labelOffset", 10), 0, 80),
+		labelOffset: clampNumber(config.get("labelOffset", 5), 0, 80),
 		endpointLabelAvoidance: config.get("endpointLabelAvoidance", false) === true,
 		compassSize: clampNumber(config.get("compassSize", 78), 24, 220),
 		compassOffsetX: clampNumber(config.get("compassOffsetX", 14), 0, 240),
@@ -47,6 +49,10 @@ function getVisionOptions(document, rawOptions = {}) {
 			z: Number(config.get("g53.z", 0))
 		}
 	};
+}
+
+function normalizeVisionPlane(value) {
+	return VISION_PLANES.has(value) ? value : "xz";
 }
 
 function clampNumber(value, min, max) {

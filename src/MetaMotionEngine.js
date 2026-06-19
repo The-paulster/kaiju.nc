@@ -25,6 +25,7 @@ const STATUS_MODAL_GROUPS = require("./MetaModalDefs.json");
 
 const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
 const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
+const CANNED_CYCLE_CODES = new Set([73, 74, 76, 81, 82, 83, 84, 85, 86, 87, 88, 89]);
 
 function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options) {
 	const state = makeInitialState(options);
@@ -93,6 +94,10 @@ function makeInitialState(options = {}) {
 	return {
 		position: {},
 		motionCode: undefined,
+		arcPlane: "xy",
+		distanceMode: "absolute",
+		cannedCycle: undefined,
+		cannedCycleRetractMode: "initial",
 		feed: undefined,
 		feedMode: options.defaultFeedMode === "perMinute" ? "perMinute" : "perRev",
 		spindleMode: "fixed",
@@ -250,6 +255,8 @@ function applyModalState(words, motionCode, state) {
 	const dWord = lastWord(words, "D");
 	const fWord = lastWord(words, "F");
 	let hasG50 = false;
+	let cycleCode;
+	let cancelCycle = false;
 
 	for (const word of words) {
 		if (word.letter !== "G" || !Number.isFinite(word.value)) {
@@ -258,10 +265,29 @@ function applyModalState(words, motionCode, state) {
 
 		const code = Math.trunc(word.value);
 
-		if (code === 94) {
+		if (word.value === 90) {
+			state.distanceMode = "absolute";
+		} else if (word.value === 91) {
+			state.distanceMode = "incremental";
+		} else if (code === 98) {
+			state.cannedCycleRetractMode = "initial";
+		} else if (code === 94) {
 			state.feedMode = "perMinute";
-		} else if (code === 95 || code === 99) {
+		} else if (code === 95) {
 			state.feedMode = "perRev";
+		} else if (code === 99) {
+			state.feedMode = "perRev";
+			state.cannedCycleRetractMode = "r";
+		} else if (code === 17) {
+			state.arcPlane = "xy";
+		} else if (code === 18) {
+			state.arcPlane = "xz";
+		} else if (code === 19) {
+			state.arcPlane = "yz";
+		} else if (code === 80) {
+			cancelCycle = true;
+		} else if (CANNED_CYCLE_CODES.has(code)) {
+			cycleCode = code;
 		} else if (code === 96) {
 			state.spindleMode = "css";
 		} else if (code === 97) {
@@ -290,6 +316,54 @@ function applyModalState(words, motionCode, state) {
 
 	if (REPORT_MOTION_CODES.has(motionCode)) {
 		state.motionCode = motionCode;
+	}
+
+	if (cancelCycle) {
+		state.cannedCycle = undefined;
+	} else if (cycleCode) {
+		state.cannedCycle = makeCannedCycleState(cycleCode, words, state);
+	} else if (state.cannedCycle) {
+		state.cannedCycle = updateCannedCycleState(state.cannedCycle, words, state);
+	}
+}
+
+function makeCannedCycleState(cycleCode, words, state) {
+	const existing = state.cannedCycle || {};
+	const cycle = Object.assign({}, existing, {
+		code: cycleCode,
+		initialZ: state.position.z,
+		retractMode: state.cannedCycleRetractMode
+	});
+
+	return updateCannedCycleState(cycle, words, state);
+}
+
+function updateCannedCycleState(cycle, words, state) {
+	const next = Object.assign({}, cycle, {
+		retractMode: state.cannedCycleRetractMode
+	});
+
+	setCycleAxisValue(next, "z", lastWord(words, "Z"), state.position.z, state.distanceMode);
+	setCycleAxisValue(next, "r", lastWord(words, "R"), state.position.z, state.distanceMode);
+	setCycleValue(next, "q", lastWord(words, "Q"));
+	setCycleValue(next, "p", lastWord(words, "P"));
+
+	return next;
+}
+
+function setCycleAxisValue(cycle, key, word, baseValue, distanceMode) {
+	if (!word || !Number.isFinite(word.value)) {
+		return;
+	}
+
+	cycle[key] = distanceMode === "incremental" && Number.isFinite(baseValue)
+		? baseValue + word.value
+		: word.value;
+}
+
+function setCycleValue(cycle, key, word) {
+	if (word && Number.isFinite(word.value)) {
+		cycle[key] = word.value;
 	}
 }
 
@@ -393,14 +467,14 @@ function lastWord(words, letter) {
 
 function estimateMotion(words, motionCode, state, options) {
 	const start = clonePosition(state.position);
-	const end = makeEndPosition(start, words, options);
+	const end = makeEndPosition(start, words, state.distanceMode, options);
 
 	if (!hasKnownPosition(start) || !hasKnownPosition(end)) {
 		applyPositionUpdate(words, state, options);
 		return makeUnavailableEstimate(motionCode, start, end, "Start or end position is incomplete.");
 	}
 
-	const path = buildPathPoints(motionCode, start, end, words, options);
+	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options);
 	const distance = sumPathDistance(path, options);
 	const geometry = makeMotionGeometry(motionCode, start, end, path, options);
 	const timing = motionCode === 0
@@ -473,7 +547,7 @@ function applyPositionUpdate(words, state, options) {
 		return;
 	}
 
-	state.position = makeEndPosition(state.position, words, options);
+	state.position = makeEndPosition(state.position, words, state.distanceMode, options);
 }
 
 function collectUnresolvedWordWarnings(words, letters) {
@@ -490,23 +564,27 @@ function collectUnresolvedWordWarnings(words, letters) {
 	return warnings;
 }
 
-function makeEndPosition(start, words, options = {}) {
+function makeEndPosition(start, words, distanceMode = "absolute", options = {}) {
 	const end = clonePosition(start);
 	const axisWords = [
-		{ absolute: "X", incremental: "U", key: "x" },
-		{ absolute: "Y", incremental: "V", key: "y" },
-		{ absolute: "Z", incremental: "W", key: "z" }
+		{ position: "X", incremental: "U", key: "x" },
+		{ position: "Y", incremental: "V", key: "y" },
+		{ position: "Z", incremental: "W", key: "z" }
 	];
 	const g53Position = hasGCode(words, 53) ? options.g53Position : undefined;
 
 	for (const axis of axisWords) {
-		const absoluteWord = lastWord(words, axis.absolute);
+		const positionWord = lastWord(words, axis.position);
 		const incrementalWord = lastWord(words, axis.incremental);
 
-		if (absoluteWord && Number.isFinite(absoluteWord.value)) {
-			end[axis.key] = g53Position && Number.isFinite(g53Position[axis.key])
-				? g53Position[axis.key]
-				: absoluteWord.value;
+		if (positionWord && Number.isFinite(positionWord.value)) {
+			if (g53Position && Number.isFinite(g53Position[axis.key])) {
+				end[axis.key] = g53Position[axis.key];
+			} else if (distanceMode === "incremental" && Number.isFinite(end[axis.key])) {
+				end[axis.key] += positionWord.value;
+			} else {
+				end[axis.key] = positionWord.value;
+			}
 		}
 
 		if (incrementalWord && Number.isFinite(incrementalWord.value) && Number.isFinite(end[axis.key])) {
@@ -521,12 +599,12 @@ function hasGCode(words, targetCode) {
 	return words.some(word => word.letter === "G" && Number.isFinite(word.value) && Math.trunc(word.value) === targetCode);
 }
 
-function buildPathPoints(motionCode, start, end, words, options) {
+function buildPathPoints(motionCode, start, end, words, arcPlane, options) {
 	if (motionCode === 0 || motionCode === 1) {
 		return buildLinearPathPoints(start, end, options);
 	}
 
-	return buildArcPathPoints(motionCode, start, end, words, options);
+	return buildArcPathPoints(motionCode, start, end, words, arcPlane, options);
 }
 
 function buildLinearPathPoints(start, end, options) {
@@ -549,98 +627,56 @@ function buildLinearPathPoints(start, end, options) {
 	};
 }
 
-function buildArcPathPoints(motionCode, start, end, words, options) {
+function buildArcPathPoints(motionCode, start, end, words, arcPlane, options) {
 	const iWord = lastWord(words, "I");
 	const jWord = lastWord(words, "J");
 	const kWord = lastWord(words, "K");
 	const rWord = lastWord(words, "R");
-	const useXzPlane = Number.isFinite(start.x)
-		&& Number.isFinite(start.z)
-		&& Number.isFinite(end.x)
-		&& Number.isFinite(end.z)
-		&& iWord
-		&& kWord
-		&& Number.isFinite(iWord.value)
-		&& Number.isFinite(kWord.value);
+	const plane = getArcPlaneAxes(arcPlane);
 
-	if (useXzPlane) {
-		return buildPlanarArcPath(
-			motionCode,
-			start,
-			end,
-			"x",
-			"z",
-			iWord.value,
-			kWord.value,
-			options
-		);
-	}
+	if (plane) {
+		const primaryWord = getArcOffsetWord(words, plane.primaryAxis);
+		const secondaryWord = getArcOffsetWord(words, plane.secondaryAxis);
 
-	const useXzRadius = Number.isFinite(start.x)
-		&& Number.isFinite(start.z)
-		&& Number.isFinite(end.x)
-		&& Number.isFinite(end.z)
-		&& rWord
-		&& Number.isFinite(rWord.value);
-
-	if (useXzRadius) {
-		const path = buildRadiusArcPath(
-			motionCode,
-			start,
-			end,
-			"x",
-			"z",
-			rWord.value,
-			options
-		);
-
-		if (path) {
-			return path;
+		if (Number.isFinite(start[plane.primaryAxis])
+			&& Number.isFinite(start[plane.secondaryAxis])
+			&& Number.isFinite(end[plane.primaryAxis])
+			&& Number.isFinite(end[plane.secondaryAxis])
+			&& primaryWord
+			&& secondaryWord
+			&& Number.isFinite(primaryWord.value)
+			&& Number.isFinite(secondaryWord.value)) {
+			return buildPlanarArcPath(
+				motionCode,
+				start,
+				end,
+				plane.primaryAxis,
+				plane.secondaryAxis,
+				primaryWord.value,
+				secondaryWord.value,
+				options
+			);
 		}
-	}
 
-	const useXyPlane = Number.isFinite(start.x)
-		&& Number.isFinite(start.y)
-		&& Number.isFinite(end.x)
-		&& Number.isFinite(end.y)
-		&& iWord
-		&& jWord
-		&& Number.isFinite(iWord.value)
-		&& Number.isFinite(jWord.value);
+		if (Number.isFinite(start[plane.primaryAxis])
+			&& Number.isFinite(start[plane.secondaryAxis])
+			&& Number.isFinite(end[plane.primaryAxis])
+			&& Number.isFinite(end[plane.secondaryAxis])
+			&& rWord
+			&& Number.isFinite(rWord.value)) {
+			const path = buildRadiusArcPath(
+				motionCode,
+				start,
+				end,
+				plane.primaryAxis,
+				plane.secondaryAxis,
+				rWord.value,
+				options
+			);
 
-	if (useXyPlane) {
-		return buildPlanarArcPath(
-			motionCode,
-			start,
-			end,
-			"x",
-			"y",
-			iWord.value,
-			jWord.value,
-			options
-		);
-	}
-
-	const useXyRadius = Number.isFinite(start.x)
-		&& Number.isFinite(start.y)
-		&& Number.isFinite(end.x)
-		&& Number.isFinite(end.y)
-		&& rWord
-		&& Number.isFinite(rWord.value);
-
-	if (useXyRadius) {
-		const path = buildRadiusArcPath(
-			motionCode,
-			start,
-			end,
-			"x",
-			"y",
-			rWord.value,
-			options
-		);
-
-		if (path) {
-			return path;
+			if (path) {
+				return path;
+			}
 		}
 	}
 
@@ -649,6 +685,30 @@ function buildArcPathPoints(motionCode, start, end, words, options) {
 		kind: "arc",
 		usedArcFallback: true
 	};
+}
+
+function getArcPlaneAxes(arcPlane) {
+	if (arcPlane === "xz") {
+		return { primaryAxis: "x", secondaryAxis: "z" };
+	}
+
+	if (arcPlane === "yz") {
+		return { primaryAxis: "y", secondaryAxis: "z" };
+	}
+
+	return { primaryAxis: "x", secondaryAxis: "y" };
+}
+
+function getArcOffsetWord(words, axis) {
+	if (axis === "x") {
+		return lastWord(words, "I");
+	}
+
+	if (axis === "y") {
+		return lastWord(words, "J");
+	}
+
+	return lastWord(words, "K");
 }
 
 function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, primaryOffset, secondaryOffset, options) {
@@ -1147,8 +1207,19 @@ function analyzeVisionRange(document, range, options) {
 		}
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
+		const activeCycleCode = getCannedCycleCode(words);
+		const hasCycleOperation = hasActiveCannedCycleOperation(words, state, activeCycleCode);
 
-		if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
+		if (hasCycleOperation) {
+			const cycleRow = makeVisionCycleRow(lineNumber, state, words, options, getToolRangeAtLine(toolRanges, lineNumber));
+			positionWasUpdated = true;
+
+			if (isLineInRange(lineNumber, targetRange)) {
+				rows.push(cycleRow);
+			}
+
+			applyCannedCyclePositionUpdate(words, state);
+		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
@@ -1202,6 +1273,36 @@ function normalizeLineRange(range, lineCount) {
 
 function isLineInRange(lineNumber, range) {
 	return lineNumber >= range.startLine && lineNumber <= range.endLine;
+}
+
+function getCannedCycleCode(words) {
+	let cycleCode;
+
+	for (const word of words) {
+		if (word.letter !== "G" || !Number.isFinite(word.value)) {
+			continue;
+		}
+
+		const code = Math.trunc(word.value);
+
+		if (CANNED_CYCLE_CODES.has(code)) {
+			cycleCode = code;
+		}
+	}
+
+	return cycleCode;
+}
+
+function hasActiveCannedCycleOperation(words, state, cycleCode) {
+	if (!state.cannedCycle || hasGCode(words, 80)) {
+		return false;
+	}
+
+	return Number.isFinite(cycleCode) || hasCycleSiteAxisWords(words);
+}
+
+function hasCycleSiteAxisWords(words) {
+	return !isCoordinateSettingLine(words) && words.some(word => ["X", "Y", "U", "V"].includes(word.letter));
 }
 
 function hasMotionAxisWords(words) {
@@ -1344,6 +1445,51 @@ function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRang
 	};
 }
 
+function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
+	const cycle = state.cannedCycle || {};
+	const site = makeCycleSitePosition(state.position, words, state.distanceMode);
+	const top = clonePosition(site);
+	const bottom = clonePosition(site);
+	const warnings = collectUnresolvedWordWarnings(words, ["X", "Y", "Z", "R", "Q", "P", "U", "V", "F"]);
+	const topZ = getCannedCycleTopZ(cycle, state.position);
+
+	if (Number.isFinite(topZ)) {
+		top.z = topZ;
+	}
+
+	if (Number.isFinite(cycle.z)) {
+		bottom.z = cycle.z;
+	} else {
+		warnings.push(`G${cycle.code} cycle has no Z depth.`);
+	}
+
+	const hasDrawableDepth = Number.isFinite(top.x)
+		&& Number.isFinite(top.y)
+		&& Number.isFinite(top.z)
+		&& Number.isFinite(bottom.z);
+	const points = hasDrawableDepth
+		? [toVisionPoint(top, options), toVisionPoint(bottom, options)]
+		: [];
+
+	return {
+		type: "cycle",
+		lineNumber: lineNumber + 1,
+		instruction: `G${cycle.code}`,
+		cycleCode: cycle.code,
+		tool: toolRange ? toolRange.tool : "",
+		toolColor: getToolColor(toolRange),
+		point: toVisionPoint(bottom, options),
+		start: clonePosition(top),
+		end: clonePosition(bottom),
+		startLabel: formatPosition(top, options.humanFormat),
+		endLabel: formatPosition(bottom, options.humanFormat),
+		distance: hasDrawableDepth ? getPhysicalDistance(top, bottom, options) : NaN,
+		timeSeconds: NaN,
+		points,
+		warnings
+	};
+}
+
 function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, position, options) {
 	const toolColor = getToolColor(toolRange);
 	const previousToolColor = getToolColor(previousToolRange);
@@ -1362,6 +1508,53 @@ function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, posit
 		points: [],
 		warnings: []
 	};
+}
+
+function makeCycleSitePosition(position, words, distanceMode) {
+	const site = clonePosition(position);
+	const axes = [
+		{ position: "X", incremental: "U", key: "x" },
+		{ position: "Y", incremental: "V", key: "y" }
+	];
+
+	for (const axis of axes) {
+		const positionWord = lastWord(words, axis.position);
+		const incrementalWord = lastWord(words, axis.incremental);
+
+		if (positionWord && Number.isFinite(positionWord.value)) {
+			if (distanceMode === "incremental" && Number.isFinite(site[axis.key])) {
+				site[axis.key] += positionWord.value;
+			} else {
+				site[axis.key] = positionWord.value;
+			}
+		}
+
+		if (incrementalWord && Number.isFinite(incrementalWord.value) && Number.isFinite(site[axis.key])) {
+			site[axis.key] += incrementalWord.value;
+		}
+	}
+
+	return site;
+}
+
+function applyCannedCyclePositionUpdate(words, state) {
+	const site = makeCycleSitePosition(state.position, words, state.distanceMode);
+	const cycle = state.cannedCycle || {};
+	const retractZ = cycle.retractMode === "r" && Number.isFinite(cycle.r)
+		? cycle.r
+		: cycle.initialZ;
+
+	state.position = Object.assign(site, {
+		z: Number.isFinite(retractZ) ? retractZ : site.z
+	});
+}
+
+function getCannedCycleTopZ(cycle, position) {
+	if (Number.isFinite(cycle.r)) {
+		return cycle.r;
+	}
+
+	return position.z;
 }
 
 function toVisionPoint(point, options) {

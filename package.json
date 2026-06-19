@@ -612,8 +612,11 @@
           "kaijuNC.vision.plane": {
             "type": "string",
             "enum": [
-              "xz",
               "xy",
+              "yx",
+              "xz",
+              "zx",
+              "yz",
               "zy"
             ],
             "default": "xz",
@@ -762,7 +765,7 @@
           },
           "kaijuNC.vision.labelOffset": {
             "type": "number",
-            "default": 10,
+            "default": 5,
             "minimum": 0,
             "maximum": 80,
             "description": "Distance between KAIJU Vision point markers and their labels, in screen pixels."
