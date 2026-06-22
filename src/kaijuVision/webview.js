@@ -359,6 +359,44 @@ function renderVisionHtml(document, mode, options, result) {
 			height: 100%;
 		}
 
+		.vision-tooltip {
+			position: absolute;
+			display: none;
+			z-index: 10;
+			max-width: min(520px, 78vw);
+			padding: 8px 10px;
+			border: 1px solid var(--vscode-panel-border,#3c3c3c);
+			background: var(--vscode-editorHoverWidget-background,#252526);
+			color: var(--vscode-editorHoverWidget-foreground,#d4d4d4);
+			box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+			font-family: Consolas, monospace;
+			font-size: 12px;
+			line-height: 1.35;
+			pointer-events: none;
+		}
+
+		.tooltip-items {
+			display: flex;
+			gap: 14px;
+		}
+
+		.tooltip-item {
+			min-width: 74px;
+		}
+
+		.tooltip-row + .tooltip-row {
+			margin-top: 6px;
+			padding-top: 6px;
+			border-top: 1px solid var(--vscode-panel-border,#3c3c3c);
+		}
+
+		.tooltip-line {
+			white-space: nowrap;
+		}
+
+		.axis-x { color: #D65D5D; }
+		.axis-y { color: #6A9955; }
+		.axis-z { color: #4A90E2; }
 		.table-wrap {
 			flex: 0 0 calc(var(--vision-row-height) * 9);
 			overflow: auto;
@@ -460,8 +498,9 @@ function renderVisionHtml(document, mode, options, result) {
 		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span></span>
 	</section>
 
-	<div id="viewerSlot" class="viewer-slot">
+	<div id="viewerSlot" class="viewer-slot" style="position: relative;">
 		<div id="viewer" class="viewer"></div>
+		<div id="visionTooltip" class="vision-tooltip"></div>
 	</div>
 	${renderRows(result.rows, options.humanFormat)}
 
@@ -475,6 +514,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const toolColorsInput = document.getElementById("toolColors");
 		const viewerSlot = document.getElementById("viewerSlot");
 		const viewer = document.getElementById("viewer");
+		const tooltip = document.getElementById("visionTooltip");
 		const zoomLabel = document.getElementById("zoomLabel");
 		const zoomStep = Math.max(1.01, Number(data.options.zoomStep) || 1.75);
 		const wheelZoomStep = Math.max(1.01, Number(data.options.wheelZoomStep) || 1.36);
@@ -485,11 +525,11 @@ function renderVisionHtml(document, mode, options, result) {
 		let dragState;
 		const planes = {
 			xy: makePlane("X-Y", getOrderedOrientation(data.options.xyOrientation, "xRightYUp", "x", "y"), "x", "y"),
-			yx: makePlane("Y-X", getRotatedOrientation(data.options.xyOrientation, "xRightYUp", "x", "y"), "y", "x"),
+			yx: makePlane("Y-X", getOrderedOrientation(data.options.xyOrientation, "yRightXUp", "y", "x"), "y", "x"),
 			xz: makePlane("X-Z", getOrderedOrientation(data.options.xzOrientation, "xRightZUp", "x", "z"), "x", "z"),
-			zx: makePlane("Z-X", getRotatedOrientation(data.options.xzOrientation, "xRightZUp", "x", "z"), "z", "x"),
+			zx: makePlane("Z-X", getOrderedOrientation(data.options.xzOrientation, "zRightXUp", "z", "x"), "z", "x"),
 			yz: makePlane("Y-Z", getOrderedOrientation(data.options.zyOrientation, "yRightZUp", "y", "z"), "y", "z"),
-			zy: makePlane("Z-Y", getRotatedOrientation(data.options.zyOrientation, "yRightZUp", "y", "z"), "z", "y")
+			zy: makePlane("Z-Y", getOrderedOrientation(data.options.zyOrientation, "zRightYUp", "z", "y"), "z", "y")
 		};
 
 		function getOrderedOrientation(orientation, fallback, firstAxis, secondAxis) {
@@ -504,16 +544,6 @@ function renderVisionHtml(document, mode, options, result) {
 			return orientation;
 		}
 
-		function getRotatedOrientation(orientation, fallback, firstAxis, secondAxis) {
-			const orderedOrientation = getOrderedOrientation(orientation, fallback, firstAxis, secondAxis);
-			const match = String(orderedOrientation).match(/^([xyz])(Right|Left)([xyz])(Up|Down)$/i);
-			const hSign = match[2].toLowerCase() === "right" ? 1 : -1;
-			const vSign = match[4].toLowerCase() === "up" ? 1 : -1;
-			const rotatedHDirection = vSign === 1 ? "Left" : "Right";
-			const rotatedVDirection = hSign === 1 ? "Up" : "Down";
-
-			return secondAxis + rotatedHDirection + firstAxis.toUpperCase() + rotatedVDirection;
-		}
 
 		function makePlane(label, orientation, firstAxis, secondAxis) {
 			const match = String(orientation).match(/^([xyz])(Right|Left)([xyz])(Up|Down)$/i);
@@ -719,6 +749,30 @@ function renderVisionHtml(document, mode, options, result) {
 			return Math.round(value * 10000) / 10000;
 		}
 
+		function formatAxisNumber(value, humanFormat, trimTrailingZeros = false) {
+			const maximum = Math.max(0, Math.min(9, Number(humanFormat && humanFormat.maximumDecimalPlaces) || 3));
+			const configuredMinimum = Math.max(0, Math.min(maximum, Number(humanFormat && humanFormat.minimumDecimalPlaces) || 0));
+			const minimum = trimTrailingZeros ? 0 : configuredMinimum;
+			let text = Number(value).toFixed(maximum);
+
+			if (maximum > minimum) {
+				while (text.includes(".") && text.endsWith("0") && countDecimalPlaces(text) > minimum) {
+					text = text.slice(0, -1);
+				}
+
+				if (text.endsWith(".") && minimum === 0 && !trimTrailingZeros) {
+					text = text.slice(0, -1);
+				}
+			}
+
+			return text;
+		}
+
+		function countDecimalPlaces(text) {
+			const decimalIndex = text.indexOf(".");
+
+			return decimalIndex === -1 ? 0 : text.length - decimalIndex - 1;
+		}
 		function svgEscape(value) {
 			return String(value)
 				.replace(/&/g, "&amp;")
@@ -773,26 +827,21 @@ function renderVisionHtml(document, mode, options, result) {
 				return;
 			}
 
-			const paths = rows.map(row => {
-				const cls = row.motionCode === 0 ? "rapid" : "cut";
-				const marker = row.motionCode === 0 ? "url(#rapid-arrow)" : "url(#cut-arrow)";
-				const toolColor = useToolColors && row.toolColor ? boostToolColor(row.toolColor) : "";
-				const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
-				return '<polyline class="' + cls + '"' + strokeStyle + ' marker-end="' + marker + '" points="' + formatPointList(row.projectedPoints) + '" />';
-			}).join("");
+			const paths = rows.map(row => renderMotionPath(row, useToolColors)).join("");
+			const directionArrows = rows.map(row => renderDirectionArrow(row, useToolColors, endpointSize, arrowSize, unitsPerPixel)).join("");
 			const cycleStrokes = cycles.map(cycle => renderCycleStroke(cycle, useToolColors)).join("");
-			const cycleTargets = cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, cyclePointSize, "cycle-point", "endpoint-label", showLabels ? "L" + cycle.lineNumber + " " + cycle.instruction : "", showLabels ? cycle.endLabel : ""));
-			const toolDots = toolChanges.map(toolChange => renderToolChangeDot(toolChange, toolChangeSize)).join("");
-			const toolLabels = toolChanges.map(toolChange => renderToolChangeLabel(toolChange, toolChangeSize, labelSize, labelOffset, showLabels)).join("");
+			const cycleTargets = cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, cyclePointSize, "cycle-point", "endpoint-label", showLabels ? "L" + cycle.lineNumber + " " + cycle.instruction : "", showLabels ? makeVisiblePositionLine(cycle.end, data.options.humanFormat) : "", makePointLabelDetails(cycle.end, cycle, "cycle")));
+			const toolTargets = toolChanges.map(toolChange => makeToolChangeLabelTarget(toolChange, showLabels, plane, data.options.humanFormat, toolChangeSize));
 			const firstRow = rows[0];
 			const firstPoint = firstRow && firstRow.projectedPoints[0];
 			const labelTargets = [];
 
 			if (firstPoint) {
-				labelTargets.push(makePointLabelTarget(firstPoint, startPointSize, "start-point", "start-label", showLabels ? "START" : "", showLabels ? firstRow.startLabel : ""));
+				labelTargets.push(makePointLabelTarget(firstPoint, startPointSize, "start-point", "start-label", showLabels ? "START" : "", showLabels ? makeVisiblePositionLine(firstRow.start, data.options.humanFormat) : "", makePointLabelDetails(firstRow.start, Object.assign({}, firstRow, { instruction: "START" }), "start")));
 			}
 
 			labelTargets.push(...cycleTargets);
+			labelTargets.push(...toolTargets);
 
 			for (const row of rows) {
 				const end = row.projectedEnd || row.projectedPoints[row.projectedPoints.length - 1];
@@ -801,10 +850,12 @@ function renderVisionHtml(document, mode, options, result) {
 					continue;
 				}
 
-				labelTargets.push(makePointLabelTarget(end, endpointSize, "endpoint", "endpoint-label", showLabels ? "L" + row.lineNumber : "", showLabels ? row.endLabel : ""));
+				labelTargets.push(makePointLabelTarget(end, endpointSize, "endpoint", "endpoint-label", showLabels ? "L" + row.lineNumber : "", showLabels ? makeVisiblePositionLine(row.end, data.options.humanFormat) : "", makePointLabelDetails(row.end, row, "endpoint")));
 			}
 
-			const labelsAndMarkers = layoutPointLabels(labelTargets, {
+			const pointMergeDistance = unitsPerPixel * data.options.pointMergeDistance;
+			const collapsedLabelTargets = collapseCoincidentLabelTargets(labelTargets, plane, data.options.humanFormat, pointMergeDistance);
+			const labelsAndMarkers = layoutPointLabels(collapsedLabelTargets, {
 				labelSize,
 				labelOffset,
 				labelHitboxPadding,
@@ -816,7 +867,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
 			const svg = '<svg id="vision-svg" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.label-connector{stroke:#fff;stroke-width:0.85;stroke-linecap:round;opacity:0.9;vector-effect:non-scaling-stroke;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cycle-stroke{fill:none;stroke:#4fc3ff;stroke-width:' + 1.45 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.label-connector{stroke:#fff;stroke-width:0.85;stroke-linecap:round;opacity:0.9;vector-effect:non-scaling-stroke;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.direction-arrow{fill:none;stroke-width:' + 1.35 * lineScale + ';stroke-linecap:round;vector-effect:non-scaling-stroke;}.rapid-direction{stroke:#ff8800;}.cut-direction{stroke:#ffd500;}.cycle-stroke{fill:none;stroke:#4fc3ff;stroke-width:' + 1.45 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
 				'</style>' +
 				'<defs>' +
 					'<marker id="rapid-arrow" markerWidth="' + arrowSize + '" markerHeight="' + arrowSize + '" refX="' + arrowSize + '" refY="' + arrowSize / 2 + '" orient="auto" markerUnits="userSpaceOnUse"><path class="arrow-rapid" d="M0,0 L' + arrowSize + ',' + arrowSize / 2 + ' L0,' + arrowSize + ' Z" /></marker>' +
@@ -824,29 +875,184 @@ function renderVisionHtml(document, mode, options, result) {
 				'</defs>' +
 				zeroAxes +
 				compass +
-				toolDots +
 				paths +
+				directionArrows +
 				cycleStrokes +
 				labelsAndMarkers +
-				toolLabels +
 				'</svg>';
 
+			hideTooltip();
 			viewer.innerHTML = svg;
 		}
 
-		function makePointLabelTarget(point, pointSize, pointClass, labelClass, labelLine, coordinateLine) {
+		function makePointLabelTarget(point, pointSize, pointClass, labelClass, labelLine, coordinateLine, details = {}) {
 			return {
 				point,
 				pointSize,
 				pointClass,
 				labelClass,
 				labelLine,
-				coordinateLine
+				coordinateLine,
+				kind: details.kind || "endpoint",
+				sourcePosition: details.position,
+				hoverHtml: details.hoverHtml || ""
 			};
 		}
 
+		function makePointLabelDetails(position, row, kind) {
+			return {
+				kind,
+				position,
+				hoverHtml: makePointHoverHtml(position, row)
+			};
+		}
+
+		function makeToolChangeLabelTarget(toolChange, showLabels, plane, humanFormat, toolChangeSize) {
+			return makePointLabelTarget(
+				toolChange.projectedPoint,
+				toolChangeSize,
+				"tool-change-dot",
+				"endpoint-label",
+				showLabels ? "T[1]" : "",
+				showLabels ? makePlaneCoordinateLine(toolChange.point, plane, humanFormat, data.options.trimLabelTrailingZeros !== false) : "",
+				{ kind: "tool", position: toolChange.point, hoverHtml: makeToolChangeHoverHtml(toolChange) }
+			);
+		}
+
+		function makePointHoverHtml(position, row) {
+			const lineLabel = row && Number.isFinite(row.lineNumber) ? "L" + row.lineNumber : "";
+			const instruction = row && row.instruction ? row.instruction : "";
+			const lines = ['<div class="tooltip-line">' + svgEscape((lineLabel + " " + instruction).trim()) + '</div>'];
+
+			for (const axis of ["x", "y", "z"]) {
+				const value = position && position[axis];
+
+				if (Number.isFinite(value)) {
+					lines.push('<div class="tooltip-line axis-' + axis + '">' + axis.toUpperCase() + formatAxisNumber(value, data.options.humanFormat) + '</div>');
+				}
+			}
+
+			return '<div class="tooltip-row">' + lines.filter(Boolean).join("") + '</div>';
+		}
+
+		function makeToolChangeHoverHtml(toolChange) {
+			const lineLabel = Number.isFinite(toolChange.lineNumber) ? "L" + toolChange.lineNumber : "";
+			const previousTool = toolChange.previousTool || "";
+			const currentTool = toolChange.tool || toolChange.instruction || "";
+			const previousColor = toolChange.previousToolColor || "var(--vscode-foreground,#d4d4d4)";
+			const currentColor = toolChange.toolColor || "var(--vscode-foreground,#d4d4d4)";
+			const toolText = previousTool
+				? '<span style="color:' + escapeAttribute(previousColor) + '">' + svgEscape(previousTool) + '</span> -> <span style="color:' + escapeAttribute(currentColor) + '">' + svgEscape(currentTool) + '</span>'
+				: '<span style="color:' + escapeAttribute(currentColor) + '">' + svgEscape(currentTool) + '</span>';
+			const lines = ['<div class="tooltip-line">' + svgEscape(lineLabel + (lineLabel ? " " : "")) + toolText + '</div>'];
+
+			for (const axis of ["x", "y", "z"]) {
+				const value = toolChange.point && toolChange.point[axis];
+
+				if (Number.isFinite(value)) {
+					lines.push('<div class="tooltip-line axis-' + axis + '">' + axis.toUpperCase() + formatAxisNumber(value, data.options.humanFormat) + '</div>');
+				}
+			}
+
+			return '<div class="tooltip-row">' + lines.join("") + '</div>';
+		}
+		function collapseCoincidentLabelTargets(targets, plane, humanFormat, mergeDistance) {
+			const tolerance = Math.max(0, Number(mergeDistance) || 0);
+			const groups = [];
+
+			for (const target of targets) {
+				let group = tolerance > 0
+					? groups.find(candidate => candidate.some(existing => getPointDistance(existing.point, target.point) <= tolerance))
+					: groups.find(candidate => makePointKey(candidate[0].point) === makePointKey(target.point));
+
+				if (!group) {
+					group = [];
+					groups.push(group);
+				}
+
+				group.push(target);
+			}
+
+			return groups.flatMap(group => group.length > 1 ? makeCollapsedLabelTargets(group, plane, humanFormat) : group[0]);
+		}
+
+		function makeCollapsedLabelTargets(group, plane, humanFormat) {
+			const representative = chooseRepresentativeTarget(group);
+			const sourcePosition = representative.sourcePosition || (group.find(target => target.sourcePosition) || {}).sourcePosition;
+			const toolCount = group.filter(target => target.kind === "tool").length;
+			const hoverHtml = '<div class="tooltip-item">' + group.map(target => target.hoverHtml || '<div class="tooltip-row"><div class="tooltip-line">' + svgEscape([target.labelLine, target.coordinateLine].filter(Boolean).join(" ")) + '</div></div>').join("") + '</div>';
+
+			const collapsedTarget = Object.assign({}, representative, {
+				pointSize: Math.max(...group.map(target => target.pointSize || 0)),
+				labelLine: makeCollapsedLabelText(group.length, toolCount, sourcePosition, plane, humanFormat, data.options.trimLabelTrailingZeros !== false),
+				coordinateLine: "",
+				hoverHtml
+			});
+			const markerTargets = group
+				.filter(target => target !== representative)
+				.map(target => Object.assign({}, target, {
+					labelLine: "",
+					coordinateLine: "",
+					connector: undefined,
+					hoverHtml
+				}));
+
+			return [collapsedTarget, ...markerTargets];
+		}
+
+		function chooseRepresentativeTarget(group) {
+			const priority = { start: 4, tool: 3, cycle: 2, endpoint: 1 };
+
+			return group.slice().sort((a, b) => (priority[b.kind] || 0) - (priority[a.kind] || 0))[0] || group[0];
+		}
+
+		function makeCollapsedLabelText(count, toolCount, position, plane, humanFormat, trimTrailingZeros) {
+			const parts = ["[" + count + "]"];
+
+			if (toolCount > 0) {
+				parts.push("T[" + toolCount + "]");
+			}
+
+			for (const axis of [plane.h, plane.v]) {
+				const value = position && position[axis];
+
+				if (Number.isFinite(value)) {
+					parts.push(axis.toUpperCase() + formatAxisNumber(value, humanFormat, trimTrailingZeros));
+				}
+			}
+
+			return parts.join(" ");
+		}
+
+		function makePlaneCoordinateLine(position, plane, humanFormat, trimTrailingZeros) {
+			const parts = [];
+
+			for (const axis of [plane.h, plane.v]) {
+				const value = position && position[axis];
+
+				if (Number.isFinite(value)) {
+					parts.push(axis.toUpperCase() + formatAxisNumber(value, humanFormat, trimTrailingZeros));
+				}
+			}
+
+			return parts.join(" ");
+		}
+
+		function makeVisiblePositionLine(position, humanFormat) {
+			const parts = [];
+
+			for (const axis of ["x", "y", "z"]) {
+				const value = position && position[axis];
+
+				if (Number.isFinite(value)) {
+					parts.push(axis.toUpperCase() + formatAxisNumber(value, humanFormat, data.options.trimLabelTrailingZeros !== false));
+				}
+			}
+
+			return parts.join(" ");
+		}
 		function layoutPointLabels(targets, options) {
-			const pointObstacles = targets.map(target => makePointObstacle(target.point, target.pointSize, options.labelHitboxPadding));
+			const pointObstacles = targets.map(target => makePointObstacle(target.point, target.pointSize, options.labelHitboxPadding, makePointKey(target.point)));
 			const placedLabelBoxes = [];
 			const placedConnectors = [];
 			const duplicateCounts = countLabelTargetsByPoint(targets);
@@ -878,7 +1084,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 					for (const candidate of candidates) {
 						const connector = candidate.index === 0 ? undefined : makeLabelConnector(target.point, target.pointSize, candidate.box, options.connectorPointGap, options.connectorLabelGap);
-						const collisionScore = scoreLabelCandidate(candidate.box, connector, pointObstacles, placedLabelBoxes, placedConnectors);
+						const collisionScore = scoreLabelCandidate(candidate.box, connector, pointObstacles, placedLabelBoxes, placedConnectors, stackKey);
 						const score = collisionScore + candidate.priority;
 
 						if (score < bestScore) {
@@ -925,6 +1131,10 @@ function renderVisionHtml(document, mode, options, result) {
 			return round(point.x) + "," + round(point.y);
 		}
 
+		function getPointDistance(a, b) {
+			return Math.hypot(a.x - b.x, a.y - b.y);
+		}
+
 		function makeStackedLabelPlacement(target, options, stackOffset) {
 			const metrics = measurePointLabel(target, options.labelSize, options.labelHitboxPadding);
 			const gap = Math.max(options.labelSize * 0.35, options.labelOffset);
@@ -944,8 +1154,9 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function makePointObstacle(point, radius, padding) {
+		function makePointObstacle(point, radius, padding, key) {
 			return {
+				key,
 				left: point.x - radius - padding,
 				top: point.y - radius - padding,
 				right: point.x + radius + padding,
@@ -955,8 +1166,8 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function makeLabelCandidates(target, options) {
 			const metrics = measurePointLabel(target, options.labelSize, options.labelHitboxPadding);
-			const xDistance = target.pointSize + options.labelOffset + metrics.width / 2 + options.labelSize * 0.3;
-			const yDistance = target.pointSize + options.labelOffset + metrics.height / 2 + options.labelSize * 0.3;
+			const xDistance = target.pointSize + options.labelOffset + metrics.width / 2;
+			const yDistance = target.pointSize + options.labelOffset + metrics.height / 2;
 			const offsets = [[0, yDistance]];
 			const rings = [1.15, 1.65, 2.25, 3.0];
 			const angles = [];
@@ -1015,10 +1226,14 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function scoreLabelCandidate(box, connector, pointObstacles, placedLabelBoxes, placedConnectors) {
+		function scoreLabelCandidate(box, connector, pointObstacles, placedLabelBoxes, placedConnectors, targetKey) {
 			let score = 0;
 
 			for (const obstacle of pointObstacles) {
+				if (obstacle.key === targetKey) {
+					continue;
+				}
+
 				score += getIntersectionArea(box, obstacle) * 1000;
 			}
 
@@ -1098,28 +1313,111 @@ function renderVisionHtml(document, mode, options, result) {
 		function renderPointLabel(target) {
 			const x = round(target.point.x);
 			const y = round(target.point.y);
+			const tooltipAttribute = target.hoverHtml ? ' data-tooltip="' + escapeAttribute(target.hoverHtml) + '"' : "";
 			const marker = '<circle class="' + target.pointClass + '" cx="' + x + '" cy="' + y + '" r="' + target.pointSize + '" />';
 
 			if (!target.labelLine && !target.coordinateLine) {
-				return marker;
+				return '<g class="point-label-hit"' + tooltipAttribute + '>' + marker + '</g>';
 			}
 
 			const connector = target.connector
 				? '<line class="label-connector" x1="' + round(target.connector.x1) + '" y1="' + round(target.connector.y1) + '" x2="' + round(target.connector.x2) + '" y2="' + round(target.connector.y2) + '" />'
 				: "";
 
-			return marker +
+			return '<g class="point-label-hit"' + tooltipAttribute + '>' + marker +
 				connector +
 				'<text class="point-label ' + target.labelClass + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
 					'<tspan x="' + round(target.labelX) + '">' + svgEscape(target.labelLine) + '</tspan>' +
 					(target.coordinateLine ? '<tspan x="' + round(target.labelX) + '" dy="1.15em">' + svgEscape(target.coordinateLine) + '</tspan>' : "") +
-				'</text>';
+				'</text>' +
+				'</g>';
 		}
 
-		function renderToolChangeDot(toolChange, markerSize) {
-			return '<circle class="tool-change-dot" cx="' + round(toolChange.projectedPoint.x) + '" cy="' + round(toolChange.projectedPoint.y) + '" r="' + markerSize + '" />';
+
+		function renderMotionPath(row, useToolColors) {
+			const cls = row.motionCode === 0 ? "rapid" : "cut";
+			const toolColor = useToolColors && row.toolColor ? boostToolColor(row.toolColor) : "";
+			const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
+
+			return '<polyline class="' + cls + '"' + strokeStyle + ' points="' + formatPointList(row.projectedPoints) + '" />';
 		}
 
+		function renderDirectionArrow(row, useToolColors, endpointSize, arrowSize, unitsPerPixel) {
+			const arrowSegment = makeDirectionArrowSegment(row.projectedPoints, endpointSize, arrowSize, unitsPerPixel);
+
+			if (!arrowSegment) {
+				return "";
+			}
+
+			const cls = row.motionCode === 0 ? "rapid-direction" : "cut-direction";
+			const marker = row.motionCode === 0 ? "url(#rapid-arrow)" : "url(#cut-arrow)";
+			const toolColor = useToolColors && row.toolColor ? boostToolColor(row.toolColor) : "";
+			const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
+
+			return '<line class="direction-arrow ' + cls + '"' + strokeStyle + ' marker-end="' + marker + '" x1="' + round(arrowSegment.start.x) + '" y1="' + round(arrowSegment.start.y) + '" x2="' + round(arrowSegment.end.x) + '" y2="' + round(arrowSegment.end.y) + '" />';
+		}
+
+		function makeDirectionArrowSegment(points, endpointSize, arrowSize, unitsPerPixel) {
+			if (!points || points.length < 2) {
+				return undefined;
+			}
+
+			const endpointInset = endpointSize + unitsPerPixel * 0.5;
+			const arrowLength = Math.max(arrowSize * 0.5, unitsPerPixel * 4);
+			const minimumLength = endpointInset + arrowLength;
+
+			if (getPolylineLength(points) < minimumLength) {
+				return undefined;
+			}
+
+			const arrowEnd = getPointBeforePolylineEnd(points, endpointInset);
+			const arrowStart = getPointBeforePolylineEnd(points, endpointInset + arrowLength);
+
+			return arrowStart && arrowEnd ? { start: arrowStart, end: arrowEnd } : undefined;
+		}
+
+		function getPointBeforePolylineEnd(points, distanceFromEnd) {
+			let remaining = distanceFromEnd;
+
+			for (let index = points.length - 1; index > 0; index--) {
+				const end = points[index];
+				const start = points[index - 1];
+				const dx = end.x - start.x;
+				const dy = end.y - start.y;
+				const length = Math.hypot(dx, dy);
+
+				if (!Number.isFinite(length) || length <= 0) {
+					continue;
+				}
+
+				if (remaining <= length) {
+					return interpolateSegmentPoint(start, end, length - remaining, length);
+				}
+
+				remaining -= length;
+			}
+
+			return undefined;
+		}
+
+		function interpolateSegmentPoint(start, end, distanceFromStart, length) {
+			const fraction = Math.max(0, Math.min(1, distanceFromStart / length));
+
+			return {
+				x: start.x + (end.x - start.x) * fraction,
+				y: start.y + (end.y - start.y) * fraction
+			};
+		}
+
+		function getPolylineLength(points) {
+			let length = 0;
+
+			for (let index = 1; index < points.length; index++) {
+				length += Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
+			}
+
+			return length;
+		}
 		function renderCycleStroke(cycle, useToolColors) {
 			if (!cycle.projectedPoints || cycle.projectedPoints.length < 2) {
 				return "";
@@ -1131,25 +1429,6 @@ function renderVisionHtml(document, mode, options, result) {
 			return '<polyline class="cycle-stroke"' + strokeStyle + ' points="' + formatPointList(cycle.projectedPoints) + '" />';
 		}
 
-		function renderToolChangeLabel(toolChange, markerSize, labelSize, labelOffset, showLabels) {
-			if (!showLabels) {
-				return "";
-			}
-
-			const x = toolChange.projectedPoint.x + markerSize + labelOffset;
-			const y = toolChange.projectedPoint.y - markerSize - labelOffset;
-			const previousTool = toolChange.previousTool || "";
-			const currentTool = toolChange.tool || "";
-			const previousColor = toolChange.previousToolColor || "var(--vscode-foreground,#d4d4d4)";
-			const currentColor = toolChange.toolColor || "var(--vscode-foreground,#d4d4d4)";
-			const lineLabel = "L" + toolChange.lineNumber + " ";
-
-			return '<text class="tool-change-label" x="' + round(x) + '" y="' + round(y) + '">' +
-				'<tspan fill="var(--vscode-foreground,#d4d4d4)">' + svgEscape(lineLabel) + '</tspan>' +
-				(previousTool ? '<tspan fill="' + escapeAttribute(previousColor) + '">' + svgEscape(previousTool) + '</tspan><tspan fill="var(--vscode-foreground,#d4d4d4)"> -> </tspan>' : "") +
-				'<tspan fill="' + escapeAttribute(currentColor) + '">' + svgEscape(currentTool) + '</tspan>' +
-				'</text>';
-		}
 
 		function renderCompass(bounds, plane, compassSize, offsetX, offsetY) {
 			const x = bounds.minX + offsetX + compassSize * 0.55;
@@ -1241,6 +1520,48 @@ function renderVisionHtml(document, mode, options, result) {
 		labelsInput.addEventListener("change", render);
 		zeroLinesInput.addEventListener("change", render);
 		toolColorsInput.addEventListener("change", render);
+		function updateTooltip(event) {
+			if (!tooltip || dragState) {
+				hideTooltip();
+				return;
+			}
+
+			const target = event.target && event.target.closest ? event.target.closest(".point-label-hit") : undefined;
+			const html = target && target.getAttribute("data-tooltip");
+
+			if (!html) {
+				hideTooltip();
+				return;
+			}
+
+			tooltip.innerHTML = html;
+			tooltip.style.display = "block";
+			positionTooltip(event);
+		}
+
+		function positionTooltip(event) {
+			const slotRect = viewerSlot.getBoundingClientRect();
+			const tooltipRect = tooltip.getBoundingClientRect();
+			let left = event.clientX - slotRect.left + 12;
+			let top = event.clientY - slotRect.top + 12;
+
+			if (left + tooltipRect.width > slotRect.width) {
+				left = event.clientX - slotRect.left - tooltipRect.width - 12;
+			}
+
+			if (top + tooltipRect.height > slotRect.height) {
+				top = event.clientY - slotRect.top - tooltipRect.height - 12;
+			}
+
+			tooltip.style.left = Math.max(4, left) + "px";
+			tooltip.style.top = Math.max(4, top) + "px";
+		}
+
+		function hideTooltip() {
+			if (tooltip) {
+				tooltip.style.display = "none";
+			}
+		}
 		document.getElementById("fit").addEventListener("click", () => {
 			resetView();
 		});
@@ -1250,6 +1571,8 @@ function renderVisionHtml(document, mode, options, result) {
 		document.getElementById("zoomIn").addEventListener("click", () => {
 			setZoom(zoom * zoomStep);
 		});
+		viewer.addEventListener("mousemove", updateTooltip);
+		viewer.addEventListener("mouseleave", hideTooltip);
 		viewer.addEventListener("wheel", event => {
 			event.preventDefault();
 			setZoom(zoom * (event.deltaY < 0 ? wheelZoomStep : 1 / wheelZoomStep), event);
@@ -1260,6 +1583,7 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			viewer.setPointerCapture(event.pointerId);
+			hideTooltip();
 			viewer.classList.add("dragging");
 			dragState = {
 				pointerId: event.pointerId,

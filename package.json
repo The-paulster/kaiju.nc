@@ -619,8 +619,8 @@
               "yz",
               "zy"
             ],
-            "default": "xz",
-            "description": "Default 2D plane used by KAIJU Vision."
+            "default": "zx",
+            "description": "Default 2D plane used by KAIJU Vision when explicitly configured. If unset, Vision uses X-Y for mill mode and Z-X for lathe modes."
           },
           "kaijuNC.vision.xAxisMode": {
             "type": "string",
@@ -769,6 +769,18 @@
             "minimum": 0,
             "maximum": 80,
             "description": "Distance between KAIJU Vision point markers and their labels, in screen pixels."
+          },
+          "kaijuNC.vision.trimLabelTrailingZeros": {
+            "type": "boolean",
+            "default": true,
+            "description": "Trim insignificant trailing zeros from visible KAIJU Vision coordinate labels. Hover details keep the configured display precision."
+          },
+          "kaijuNC.vision.pointMergeDistance": {
+            "type": "number",
+            "default": 20,
+            "minimum": 0,
+            "maximum": 80,
+            "description": "Screen-pixel distance used by KAIJU Vision to merge endpoint and tool-change markers into one visual point. Use 0 for exact-coordinate merging only; zooming in can split near-overlapping points."
           },
           "kaijuNC.vision.endpointLabelAvoidance": {
             "type": "boolean",

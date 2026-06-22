@@ -13,9 +13,12 @@ function getVisionOptions(document, rawOptions = {}) {
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
 	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
 	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
+	const defaultPlane = getDefaultVisionPlane(profile);
 
 	return {
-		plane: VISION_PLANES.has(rawOptions.plane) ? rawOptions.plane : normalizeVisionPlane(config.get("plane", "xz")),
+		plane: VISION_PLANES.has(rawOptions.plane)
+			? rawOptions.plane
+			: normalizeVisionPlane(getConfiguredValue(config, "plane", defaultPlane), defaultPlane),
 		useToolColors: rawOptions.useToolColors === true,
 		machineMode: profile.id,
 		defaultFeedMode: profile.defaultFeedMode,
@@ -35,6 +38,8 @@ function getVisionOptions(document, rawOptions = {}) {
 		startPointSize: clampNumber(config.get("startPointSize", 4), 1, 24),
 		labelFontSize: clampNumber(config.get("labelFontSize", 11), 5, 32),
 		labelOffset: clampNumber(config.get("labelOffset", 5), 0, 80),
+		trimLabelTrailingZeros: config.get("trimLabelTrailingZeros", true) !== false,
+		pointMergeDistance: clampNumber(config.get("pointMergeDistance", 20), 0, 80),
 		endpointLabelAvoidance: config.get("endpointLabelAvoidance", false) === true,
 		compassSize: clampNumber(config.get("compassSize", 78), 24, 220),
 		compassOffsetX: clampNumber(config.get("compassOffsetX", 14), 0, 240),
@@ -51,8 +56,12 @@ function getVisionOptions(document, rawOptions = {}) {
 	};
 }
 
-function normalizeVisionPlane(value) {
-	return VISION_PLANES.has(value) ? value : "xz";
+function getDefaultVisionPlane(profile) {
+	return profile && profile.id === "mill" ? "xy" : "zx";
+}
+
+function normalizeVisionPlane(value, fallback = "zx") {
+	return VISION_PLANES.has(value) ? value : fallback;
 }
 
 function clampNumber(value, min, max) {
