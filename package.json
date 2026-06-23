@@ -612,6 +612,7 @@
           "kaijuNC.vision.plane": {
             "type": "string",
             "enum": [
+              "auto",
               "xy",
               "yx",
               "xz",
@@ -619,8 +620,8 @@
               "yz",
               "zy"
             ],
-            "default": "zx",
-            "description": "Default 2D plane used by KAIJU Vision when explicitly configured. If unset, Vision uses X-Y for mill mode and Z-X for lathe modes."
+            "default": "auto",
+            "description": "Default 2D plane used by KAIJU Vision. Auto uses X-Y for mill mode and Z-X for lathe modes."
           },
           "kaijuNC.vision.xAxisMode": {
             "type": "string",

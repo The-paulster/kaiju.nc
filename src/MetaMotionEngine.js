@@ -96,6 +96,7 @@ function makeInitialState(options = {}) {
 		motionCode: undefined,
 		arcPlane: "xy",
 		distanceMode: "absolute",
+		coordinateSystem: "G54",
 		cannedCycle: undefined,
 		cannedCycleRetractMode: "initial",
 		feed: undefined,
@@ -284,6 +285,8 @@ function applyModalState(words, motionCode, state) {
 			state.arcPlane = "xz";
 		} else if (code === 19) {
 			state.arcPlane = "yz";
+		} else if (code >= 54 && code <= 59) {
+			state.coordinateSystem = "G" + code;
 		} else if (code === 80) {
 			cancelCycle = true;
 		} else if (CANNED_CYCLE_CODES.has(code)) {
@@ -513,6 +516,7 @@ function estimateMotion(words, motionCode, state, options) {
 		machineCoordinate: hasGCode(words, 53),
 		start,
 		end,
+		coordinateSystem: state.coordinateSystem,
 		distance,
 		timeSeconds: timing.timeSeconds,
 		minRpm: timing.minRpm,
@@ -1098,6 +1102,7 @@ function analyzeChronobladeRange(document, range, options) {
 	const rows = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
 	let previousTool;
+	let hasSeenProgramMotion = false;
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -1151,7 +1156,9 @@ function analyzeChronobladeRange(document, range, options) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
-			if (isLineInRange(lineNumber, targetRange)) {
+			const isFirstProgramMotion = !hasSeenProgramMotion;
+			hasSeenProgramMotion = true;
+			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
 				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
 			}
 		}
@@ -1177,6 +1184,7 @@ function analyzeVisionRange(document, range, options) {
 	const toolRanges = getToolRanges(document);
 	const rows = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
+	let hasSeenProgramMotion = false;
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -1203,7 +1211,7 @@ function analyzeVisionRange(document, range, options) {
 		const toolRange = getToolRangeStartingAtLine(toolRanges, lineNumber);
 
 		if (toolRange && isLineInRange(lineNumber, targetRange)) {
-			rows.push(makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, options));
+			rows.push(makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, state.coordinateSystem, options));
 		}
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
@@ -1214,7 +1222,9 @@ function analyzeVisionRange(document, range, options) {
 			const cycleRow = makeVisionCycleRow(lineNumber, state, words, options, getToolRangeAtLine(toolRanges, lineNumber));
 			positionWasUpdated = true;
 
-			if (isLineInRange(lineNumber, targetRange)) {
+			const isFirstProgramMotion = !hasSeenProgramMotion;
+			hasSeenProgramMotion = true;
+			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
 				rows.push(cycleRow);
 			}
 
@@ -1223,7 +1233,9 @@ function analyzeVisionRange(document, range, options) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
-			if (isLineInRange(lineNumber, targetRange)) {
+			const isFirstProgramMotion = !hasSeenProgramMotion;
+			hasSeenProgramMotion = true;
+			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
 				rows.push(makeVisionMotionRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
 			}
 		}
@@ -1426,6 +1438,9 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRang
 
 function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRange) {
 	const toolColor = getToolColor(toolRange);
+	const coordinateSystem = estimate.machineCoordinate ? "G53" : estimate.coordinateSystem || "";
+	const start = shiftVisionPosition(estimate.start, estimate.coordinateSystem, options, estimate.machineCoordinate);
+	const end = shiftVisionPosition(estimate.end, estimate.coordinateSystem, options, estimate.machineCoordinate);
 
 	return {
 		type: "motion",
@@ -1434,13 +1449,14 @@ function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRang
 		motionCode,
 		tool: toolRange ? toolRange.tool : "",
 		toolColor,
-		start: clonePosition(estimate.start),
-		end: clonePosition(estimate.end),
-		startLabel: formatPosition(estimate.start, options.humanFormat),
-		endLabel: formatPosition(estimate.end, options.humanFormat),
+		coordinateSystem,
+		start,
+		end,
+		startLabel: formatPosition(start, options.humanFormat),
+		endLabel: formatPosition(end, options.humanFormat),
 		distance: estimate.distance,
 		timeSeconds: estimate.timeSeconds,
-		points: (estimate.pathPoints || []).map(point => toVisionPoint(point, options)),
+		points: (estimate.pathPoints || []).map(point => toVisionPoint(point, options, estimate.coordinateSystem, estimate.machineCoordinate)),
 		warnings: estimate.warnings || []
 	};
 }
@@ -1463,12 +1479,15 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 		warnings.push(`G${cycle.code} cycle has no Z depth.`);
 	}
 
+	const shiftedTop = shiftVisionPosition(top, state.coordinateSystem, options);
+	const shiftedBottom = shiftVisionPosition(bottom, state.coordinateSystem, options);
+
 	const hasDrawableDepth = Number.isFinite(top.x)
 		&& Number.isFinite(top.y)
 		&& Number.isFinite(top.z)
 		&& Number.isFinite(bottom.z);
 	const points = hasDrawableDepth
-		? [toVisionPoint(top, options), toVisionPoint(bottom, options)]
+		? [toVisionPoint(top, options, state.coordinateSystem), toVisionPoint(bottom, options, state.coordinateSystem)]
 		: [];
 
 	return {
@@ -1478,11 +1497,12 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 		cycleCode: cycle.code,
 		tool: toolRange ? toolRange.tool : "",
 		toolColor: getToolColor(toolRange),
-		point: toVisionPoint(bottom, options),
-		start: clonePosition(top),
-		end: clonePosition(bottom),
-		startLabel: formatPosition(top, options.humanFormat),
-		endLabel: formatPosition(bottom, options.humanFormat),
+		coordinateSystem: state.coordinateSystem || "",
+		point: toVisionPoint(bottom, options, state.coordinateSystem),
+		start: shiftedTop,
+		end: shiftedBottom,
+		startLabel: formatPosition(shiftedTop, options.humanFormat),
+		endLabel: formatPosition(shiftedBottom, options.humanFormat),
 		distance: hasDrawableDepth ? getPhysicalDistance(top, bottom, options) : NaN,
 		timeSeconds: NaN,
 		points,
@@ -1490,7 +1510,7 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 	};
 }
 
-function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, position, options) {
+function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, position, coordinateSystem, options) {
 	const toolColor = getToolColor(toolRange);
 	const previousToolColor = getToolColor(previousToolRange);
 	const previousTool = previousToolRange ? previousToolRange.tool : "";
@@ -1503,7 +1523,8 @@ function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, posit
 		tool: toolRange.tool,
 		previousToolColor,
 		toolColor,
-		point: toVisionPoint(position, options),
+		coordinateSystem: coordinateSystem || "",
+		point: toVisionPoint(position, options, coordinateSystem),
 		distance: NaN,
 		points: [],
 		warnings: []
@@ -1557,8 +1578,9 @@ function getCannedCycleTopZ(cycle, position) {
 	return position.z;
 }
 
-function toVisionPoint(point, options) {
-	const physicalPoint = toPhysicalPoint(point, options);
+function toVisionPoint(point, options, coordinateSystem, machineCoordinate = false) {
+	const displayPoint = shiftVisionPosition(point, coordinateSystem, options, machineCoordinate);
+	const physicalPoint = toPhysicalPoint(displayPoint, options);
 
 	return {
 		x: physicalPoint.x,
@@ -1567,6 +1589,33 @@ function toVisionPoint(point, options) {
 	};
 }
 
+function shiftVisionPosition(point, coordinateSystem, options = {}, machineCoordinate = false) {
+	const shifted = clonePosition(point || {});
+	const offset = machineCoordinate ? undefined : getVisionWorkOffset(coordinateSystem, options);
+
+	if (!offset) {
+		return shifted;
+	}
+
+	for (const axis of ["x", "y", "z"]) {
+		if (Number.isFinite(shifted[axis]) && Number.isFinite(offset[axis])) {
+			shifted[axis] += offset[axis];
+		}
+	}
+
+	return shifted;
+}
+
+function getVisionWorkOffset(coordinateSystem, options = {}) {
+	const offsets = options.workOffsets || {};
+	const offset = offsets[coordinateSystem];
+
+	if (!offset || offset.enabled !== true) {
+		return undefined;
+	}
+
+	return offset;
+}
 function summarizeVisionRows(rows) {
 	const motionRows = rows.filter(row => row.type === "motion");
 

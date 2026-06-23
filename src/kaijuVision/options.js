@@ -7,6 +7,7 @@ const {
 } = require("../MetaMachineMode");
 
 const VISION_PLANES = new Set(["xy", "yx", "xz", "zx", "yz", "zy"]);
+const AUTO_VISION_PLANE = "auto";
 
 function getVisionOptions(document, rawOptions = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.vision", document.uri);
@@ -18,8 +19,9 @@ function getVisionOptions(document, rawOptions = {}) {
 	return {
 		plane: VISION_PLANES.has(rawOptions.plane)
 			? rawOptions.plane
-			: normalizeVisionPlane(getConfiguredValue(config, "plane", defaultPlane), defaultPlane),
+			: normalizeVisionPlane(getConfiguredValue(config, "plane", AUTO_VISION_PLANE), defaultPlane),
 		useToolColors: rawOptions.useToolColors === true,
+		workOffsets: normalizeVisionWorkOffsets(rawOptions.workOffsets),
 		machineMode: profile.id,
 		defaultFeedMode: profile.defaultFeedMode,
 		xAxisMode: getConfiguredValue(config, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
@@ -56,11 +58,39 @@ function getVisionOptions(document, rawOptions = {}) {
 	};
 }
 
+const VISION_WORK_OFFSET_CODES = ["G54", "G55", "G56", "G57", "G58", "G59"];
+
+function normalizeVisionWorkOffsets(rawOffsets = {}) {
+	const offsets = {};
+
+	for (const code of VISION_WORK_OFFSET_CODES) {
+		const raw = rawOffsets && rawOffsets[code] ? rawOffsets[code] : {};
+		offsets[code] = {
+			enabled: raw.enabled === true,
+			x: normalizeOffsetAxis(raw.x),
+			y: normalizeOffsetAxis(raw.y),
+			z: normalizeOffsetAxis(raw.z),
+			note: typeof raw.note === "string" ? raw.note : ""
+		};
+	}
+
+	return offsets;
+}
+
+function normalizeOffsetAxis(value) {
+	const number = Number(value);
+
+	return Number.isFinite(number) ? number : 0;
+}
 function getDefaultVisionPlane(profile) {
 	return profile && profile.id === "mill" ? "xy" : "zx";
 }
 
 function normalizeVisionPlane(value, fallback = "zx") {
+	if (value === AUTO_VISION_PLANE) {
+		return fallback;
+	}
+
 	return VISION_PLANES.has(value) ? value : fallback;
 }
 
@@ -75,5 +105,7 @@ function clampNumber(value, min, max) {
 }
 
 module.exports = {
-	getVisionOptions
+	getVisionOptions,
+	normalizeVisionWorkOffsets,
+	VISION_WORK_OFFSET_CODES
 };
