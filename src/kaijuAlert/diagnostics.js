@@ -74,6 +74,9 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	if (includeUndefinedAliases && options.warnUndefinedAliases) {
 		warnings.push(...makeUndefinedAliasWarnings(document));
 	}
+	if (options.warnUnmatchedLoops) {
+		warnings.push(...makeUnmatchedLoopWarnings(document));
+	}
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
@@ -372,6 +375,75 @@ function makeUndefinedAliasWarnings(document) {
 		.map(makeUndefinedAliasWarning);
 }
 
+function makeUnmatchedLoopWarnings(document) {
+	const warnings = [];
+	const openLoops = [];
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
+		const whileStart = findWhileStart(codeLine);
+		const loopEnd = findLoopEnd(codeLine);
+
+		if (whileStart && (!loopEnd || whileStart.start <= loopEnd.start)) {
+			openLoops.push({ ...whileStart, lineNumber });
+		}
+
+		if (loopEnd) {
+			const openIndex = findOpenLoopIndex(openLoops, loopEnd.doNumber);
+
+			if (openIndex === -1) {
+				warnings.push(makeUnmatchedLoopEndWarning(lineNumber, loopEnd.start, loopEnd.end, loopEnd.doNumber));
+			} else {
+				openLoops.splice(openIndex, 1);
+			}
+		}
+
+		if (whileStart && loopEnd && loopEnd.start < whileStart.start) {
+			openLoops.push({ ...whileStart, lineNumber });
+		}
+	}
+
+	for (const loop of openLoops) {
+		warnings.push(makeUnmatchedWhileWarning(loop.lineNumber, loop.start, loop.end, loop.doNumber));
+	}
+
+	return warnings;
+}
+
+function findWhileStart(codeLine) {
+	const match = codeLine.match(/\bWHILE\b.*?\bDO\s*(\d+)\b/i);
+
+	return match
+		? {
+			doNumber: match[1],
+			start: match.index,
+			end: match.index + match[0].length
+		}
+		: undefined;
+}
+
+function findLoopEnd(codeLine) {
+	const match = codeLine.match(/\bEND\s*(\d+)\b/i);
+
+	return match
+		? {
+			doNumber: match[1],
+			start: match.index,
+			end: match.index + match[0].length
+		}
+		: undefined;
+}
+
+function findOpenLoopIndex(openLoops, doNumber) {
+	for (let index = openLoops.length - 1; index >= 0; index--) {
+		if (openLoops[index].doNumber === doNumber) {
+			return index;
+		}
+	}
+
+	return -1;
+}
+
 function makeMultipleCommentParenthesisWarnings(line, lineNumber) {
 	const warnings = [];
 	let insideComment = false;
@@ -598,6 +670,32 @@ function makeUnresolvedGotoTargetWarning(lineNumber, start, end, target) {
 	const warning = new vscode.Diagnostic(
 		range,
 		`GOTO target "${target}" has no matching N label.`,
+		vscode.DiagnosticSeverity.Error
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeUnmatchedLoopEndWarning(lineNumber, start, end, doNumber) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`END${doNumber} has no matching WHILE DO${doNumber} before it.`,
+		vscode.DiagnosticSeverity.Error
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeUnmatchedWhileWarning(lineNumber, start, end, doNumber) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`WHILE DO${doNumber} has no matching END${doNumber}.`,
 		vscode.DiagnosticSeverity.Error
 	);
 

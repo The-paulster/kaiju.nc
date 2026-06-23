@@ -133,6 +133,11 @@ async function decomposeDocument(document) {
 				outputLines.push(...controlResult.comments);
 			}
 
+			if (controlResult.terminal) {
+				outputLines.push(makeFlowComment(lineNumber, "#3000 alarm, stopped execution"));
+				break;
+			}
+
 			if (controlResult.nextLine !== undefined) {
 				lineNumber = controlResult.nextLine;
 				continue;
@@ -140,12 +145,22 @@ async function decomposeDocument(document) {
 
 			outputLines.push(...await variableTracker(codeLine, lineNumber, context));
 
+			if (isMacroAlarmLine(codeLine)) {
+				outputLines.push(makeFlowComment(lineNumber, "#3000 alarm, stopped execution"));
+				break;
+			}
+
 			if (isOutputLine(codeLine)) {
 				const decomposedLine = await decomposeLine(line, lineNumber, context);
 
 				if (decomposedLine !== undefined && decomposedLine.trim()) {
 					outputLines.push(decomposedLine);
 				}
+			}
+
+			if (isProgramEndLine(codeLine)) {
+				outputLines.push(makeFlowComment(lineNumber, "Program end, stopped execution"));
+				break;
 			}
 
 			lineNumber++;
@@ -204,6 +219,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 		return {
 			comment: makeFlowComment(lineNumber, `IF ${condition.value ? "true" : "false"}, ${condition.value ? "applied" : "skipped"} THEN ${ifThen.body}`),
 			comments: assignmentComments,
+			terminal: condition.value && isMacroAlarmLine(ifThen.body),
 			nextLine: lineNumber + 1
 		};
 	}
@@ -584,6 +600,14 @@ function isOutputLine(codeLine) {
 	}
 
 	return /[A-Za-z]/.test(withoutLabel);
+}
+
+function isMacroAlarmLine(codeLine) {
+	return /#\s*3000\s*=/.test(codeLine);
+}
+
+function isProgramEndLine(codeLine) {
+	return /\bM\s*(?:0?2|30)(?![.\d])/i.test(codeLine);
 }
 
 function findIfGoto(codeLine) {

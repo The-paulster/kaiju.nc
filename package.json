@@ -412,6 +412,11 @@
             "default": true,
             "description": "Show an error when N sequence numbers decrease instead of staying in order."
           },
+          "kaijuNC.alerts.unmatchedLoops.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when WHILE DO / END loop markers are not matched."
+          },
           "kaijuNC.alerts.mixedAliasMode.enabled": {
             "type": "boolean",
             "default": true,
