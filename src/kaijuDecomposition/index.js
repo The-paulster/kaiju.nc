@@ -8,6 +8,7 @@ const {
 } = require("../MetaTextRanges");
 const {
 	MACRO_REGEX,
+	buildAliasEntries,
 	buildMacroAliasMap,
 	evaluateNumericExpression,
 	normalizeMacro,
@@ -74,6 +75,7 @@ async function decomposeDocument(document) {
 		macroValues: new Map(),
 		assignedMacros: new Set(),
 		macroAliases: buildMacroAliasMap(document),
+		macroAliasLabels: buildMacroAliasLabelMap(document),
 		manualInputs: new Map(),
 		warnings: [],
 		labels: buildLabelMap(document),
@@ -409,7 +411,7 @@ async function promptForUnknownMacros(expression, lineNumber, context) {
 
 		const entered = await vscode.window.showInputBox({
 			title: "KAIJU Decomposition",
-			prompt: `Line ${lineNumber + 1}: enter a numeric value for ${macro}`,
+			prompt: `Line ${lineNumber + 1}: enter a numeric value for ${formatMacroPromptTarget(macro, resolvedMacro, context)}`,
 			placeHolder: "Example: 12.5",
 			validateInput: value => Number.isFinite(Number(value.trim()))
 				? undefined
@@ -426,6 +428,46 @@ async function promptForUnknownMacros(expression, lineNumber, context) {
 	}
 
 	return {};
+}
+
+function buildMacroAliasLabelMap(document) {
+	const labels = new Map();
+
+	for (const entry of buildAliasEntries(document)) {
+		const label = entry.phrase || entry.alias;
+
+		if (!label) {
+			continue;
+		}
+
+		const numericMacro = normalizeMacro(entry.macro);
+		labels.set(numericMacro, label);
+
+		if (entry.alias) {
+			labels.set(normalizeMacro(`#${entry.alias}`), label);
+		}
+	}
+
+	return labels;
+}
+
+function getMacroAliasLabel(macro, resolvedMacro, context) {
+	const labels = context.macroAliasLabels || new Map();
+	const normalizedMacro = normalizeMacro(macro);
+	const normalizedResolvedMacro = normalizeMacro(resolvedMacro);
+
+	return labels.get(normalizedMacro) || labels.get(normalizedResolvedMacro) || '';
+}
+
+function formatMacroPromptTarget(macro, resolvedMacro, context) {
+	const normalizedMacro = normalizeMacro(macro);
+	const normalizedResolvedMacro = normalizeMacro(resolvedMacro);
+	const label = getMacroAliasLabel(normalizedMacro, normalizedResolvedMacro, context);
+	const target = normalizedMacro === normalizedResolvedMacro
+		? normalizedMacro
+		: `${normalizedMacro} (${normalizedResolvedMacro})`;
+
+	return label ? `${target} - ${label}` : target;
 }
 
 function markMacroAssigned(context, macro) {
@@ -645,8 +687,12 @@ function buildLabelMap(document) {
 		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
 		const match = codeLine.match(/^\s*N(\d+)/i);
 
-		if (match && !labels.has(match[1])) {
-			labels.set(match[1], lineNumber);
+		if (match) {
+			const label = normalizeSequenceNumber(match[1]);
+
+			if (!labels.has(label)) {
+				labels.set(label, lineNumber);
+			}
 		}
 	}
 
@@ -674,8 +720,12 @@ function makeFirstVisitLabelLine(line, codeLine, lineNumber, context) {
 	return [label, ...comments].join(" ");
 }
 
+function normalizeSequenceNumber(text) {
+	return String(Number.parseInt(text, 10));
+}
+
 function resolveTargetLabel(target, lineNumber, context) {
-	const targetLine = context.labels.get(String(target));
+	const targetLine = context.labels.get(normalizeSequenceNumber(target));
 
 	if (targetLine === undefined) {
 		addWarning(context, lineNumber, `Could not find target N${target}.`);
