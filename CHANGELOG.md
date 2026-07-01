@@ -4,6 +4,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.3.0]
 
+- Made KAIJU Decomposition traces close without prompting to save their temporary contents.
 - Added Ctrl+Click navigation and a small hover hint for `GOTO` label targets.
 - Removed duplicate decoration text from `GOTO` target hovers so they only show the target information.
 - Tightened GOTO label-reference hover highlights so they clear sooner without changing VS Code's normal hover appearance delay.

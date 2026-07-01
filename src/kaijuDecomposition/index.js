@@ -26,11 +26,23 @@ const {
 
 const MAX_EXECUTION_STEPS = 20000;
 const MAX_OUTPUT_LINES = 50000;
+const DECOMPOSITION_SCHEME = "kaiju-decomposition";
+const decompositionDocuments = new Map();
 
 class DecompositionCancelled extends Error {}
 
 function registerKaijuDecomposition(context) {
 	context.subscriptions.push(
+		vscode.workspace.registerTextDocumentContentProvider(DECOMPOSITION_SCHEME, {
+			provideTextDocumentContent(uri) {
+				return decompositionDocuments.get(uri.toString()) || "";
+			}
+		}),
+		vscode.workspace.onDidCloseTextDocument((document) => {
+			if (document.uri.scheme === DECOMPOSITION_SCHEME) {
+				decompositionDocuments.delete(document.uri.toString());
+			}
+		}),
 		vscode.commands.registerCommand("kaijuNC.decompose", async () => {
 			await runKaijuDecompositionCommand();
 		})
@@ -51,10 +63,15 @@ async function runKaijuDecompositionCommand() {
 		return;
 	}
 
-	const decomposedDocument = await vscode.workspace.openTextDocument({
-		language: "gcode",
-		content: result.text
+	const sourceName = editor.document.fileName.split(/[\\/]/).pop() || "decomposition";
+	const decomposedUri = vscode.Uri.from({
+		scheme: DECOMPOSITION_SCHEME,
+		path: `/${sourceName}.decomposition.gcode`,
+		query: `${Date.now()}-${Math.random().toString(36).slice(2)}`
 	});
+	decompositionDocuments.set(decomposedUri.toString(), result.text);
+
+	const decomposedDocument = await vscode.workspace.openTextDocument(decomposedUri);
 
 	await vscode.window.showTextDocument(decomposedDocument, {
 		preview: false,
