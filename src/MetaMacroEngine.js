@@ -268,7 +268,7 @@ function hasUnsupportedIdentifier(expression) {
 }
 
 function normalizeNumericLiterals(expression) {
-	const numberRegex = /(^|[^#A-Za-z0-9_.])([-+]?(?:\d+(?:\.\d*)?|\.\d+))(?![.\dA-Za-z_])/g;
+	const numberRegex = /(^|[^#A-Za-z0-9_.])((?:\d+(?:\.\d*)?|\.\d+))(?![.\dA-Za-z_])/g;
 
 	return expression.replace(numberRegex, (fullMatch, prefix, numberText) => {
 		const value = Number(numberText);

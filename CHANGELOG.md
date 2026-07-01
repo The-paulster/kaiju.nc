@@ -11,6 +11,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Fixed KAIJU Decomposition so later uses of a macro assigned by the program do not prompt for manual input just because the assigned expression could not be reduced.
 - Fixed KAIJU Decomposition `GOTO` resolution so leading-zero labels and targets like `GOTO 091` and `N91` match consistently.
 - Fixed KAIJU Decomposition macro-expression evaluation so CNC-style leading-zero numbers like `00.50` work inside larger expressions.
+- Fixed macro-expression evaluation so compact binary operators like `32.500 +32.0` remain intact during numeric normalization.
 - Added a KAIJU Syntax error for `GOTO` targets that do not have a matching `N` label.
 - Added inline reference decorations after `N` labels targeted by `GOTO` statements.
 - Added KAIJU Sense hover details and amber line highlighting for `GOTO` label references.
