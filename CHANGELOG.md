@@ -4,6 +4,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.3.0]
 
+- Fixed syntax highlighting for compact CNC blocks without spaces, such as `N10G00X200.000Y200.00S3000M03`, using the same letter-plus-value boundaries recognized by KAIJU Reconstructor.
 - Made KAIJU Decomposition traces close without prompting to save their temporary contents.
 - Added Ctrl+Click navigation and a small hover hint for `GOTO` label targets.
 - Removed duplicate decoration text from `GOTO` target hovers so they only show the target information.

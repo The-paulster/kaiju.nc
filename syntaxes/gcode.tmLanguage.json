@@ -210,7 +210,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.mcode.gcode",
-					"match": "\\b[Mm]\\d+\\b"
+					"match": "(?<![A-Za-z])[Mm]\\d+(?!\\d)"
 				}
 			]
 		},
@@ -218,7 +218,7 @@
 			"patterns": [
 				{
 					"name": "entity.block.number.gcode",
-					"match": "\\b[Nn]\\d+\\b"
+					"match": "(?<![A-Za-z])[Nn]\\d+(?!\\d)"
 				}
 			]
 		},
@@ -226,7 +226,7 @@
 			"patterns": [
 				{
 					"name": "keyword.motion.rapid.gcode",
-					"match": "\\b[Gg]0+\\b"
+					"match": "(?<![A-Za-z])[Gg]0+(?!\\d)"
 				}
 			]
 		},
@@ -234,7 +234,7 @@
 			"patterns": [
 				{
 					"name": "keyword.motion.cut.gcode",
-					"match": "\\b[Gg]0*[123]\\b"
+					"match": "(?<![A-Za-z])[Gg]0*[123](?!\\d)"
 				}
 			]
 		},
@@ -242,7 +242,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.gcode",
-					"match": "\\b[Gg](?!0+\\b|0*[123]\\b)\\d+\\b"
+					"match": "(?<![A-Za-z])[Gg](?!0+(?!\\d)|0*[123](?!\\d))\\d+(?!\\d)"
 				}
 			]
 		},
@@ -254,7 +254,7 @@
 				},
 				{
 					"name": "keyword.operator.math.word.gcode",
-					"match": "\\b(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD|SIN|COS|TAN|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)\\b"
+					"match": "(?:\\b(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD|SIN|COS|TAN|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)\\b|(?<=[\\d\\]])(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD)(?=[-+]?(?:\\d|#|\\[|\\.)))"
 				}
 			]
 		},
@@ -262,7 +262,7 @@
 			"patterns": [
 				{
 					"name": "keyword.operator.math.word.gcode",
-					"match": "\\b(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD|SIN|COS|TAN|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)\\b"
+					"match": "(?:\\b(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD|SIN|COS|TAN|ATAN|SQRT|ABS|ROUND|FIX|FUP|LN|EXP)\\b|(?<=[\\d\\]])(?:EQ|NE|GT|GE|LT|LE|AND|OR|XOR|MOD)(?=[-+]?(?:\\d|#|\\[|\\.)))"
 				}
 			]
 		},
@@ -270,7 +270,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.x.gcode",
-					"match": "\\b[Xx](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Xx](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -278,7 +278,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.y.gcode",
-					"match": "\\b[Yy](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Yy](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -286,7 +286,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.z.gcode",
-					"match": "\\b[Zz](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Zz](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -294,7 +294,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.u.gcode",
-					"match": "\\b[Uu](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Uu](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -302,7 +302,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.v.gcode",
-					"match": "\\b[Vv](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Vv](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -310,7 +310,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.w.gcode",
-					"match": "\\b[Ww](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Ww](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -318,7 +318,7 @@
 			"patterns": [
 				{
 					"name": "support.radius.r.gcode",
-					"match": "\\b[Rr](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Rr](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -326,7 +326,7 @@
 			"patterns": [
 				{
 					"name": "support.feed.f.gcode",
-					"match": "\\b[Ff](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Ff](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -334,7 +334,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.a.gcode",
-					"match": "\\b[Aa](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Aa](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -342,7 +342,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.b.gcode",
-					"match": "\\b[Bb](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Bb](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -350,7 +350,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.c.gcode",
-					"match": "\\b[Cc](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Cc](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -358,7 +358,7 @@
 			"patterns": [
 				{
 					"name": "support.arc.i.gcode",
-					"match": "\\b[Ii](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Ii](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -366,7 +366,7 @@
 			"patterns": [
 				{
 					"name": "support.arc.j.gcode",
-					"match": "\\b[Jj](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Jj](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -374,7 +374,7 @@
 			"patterns": [
 				{
 					"name": "support.arc.k.gcode",
-					"match": "\\b[Kk](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Kk](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -382,7 +382,7 @@
 			"patterns": [
 				{
 					"name": "support.code.l.gcode",
-					"match": "\\b[Ll](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Ll](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -390,7 +390,7 @@
 			"patterns": [
 				{
 					"name": "support.code.p.gcode",
-					"match": "\\b[Pp](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Pp](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -398,7 +398,7 @@
 			"patterns": [
 				{
 					"name": "support.code.q.gcode",
-					"match": "\\b[Qq](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Qq](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -406,7 +406,7 @@
 			"patterns": [
 				{
 					"name": "support.code.t.gcode",
-					"match": "\\b[Tt](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Tt](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -414,7 +414,7 @@
 			"patterns": [
 				{
 					"name": "support.code.h.gcode",
-					"match": "\\b[Hh](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Hh](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -422,7 +422,7 @@
 			"patterns": [
 				{
 					"name": "support.code.s.gcode",
-					"match": "\\b[Ss](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Ss](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},
@@ -430,7 +430,7 @@
 			"patterns": [
 				{
 					"name": "entity.name.program.gcode",
-					"match": "\\b[Oo]\\d+\\b"
+					"match": "(?<![A-Za-z])[Oo]\\d+(?!\\d)"
 				}
 			]
 		},
@@ -438,7 +438,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.logic.gcode",
-					"match": "\\b(?:IF|THEN|WHILE|DO|END|ELSE|GOTO)\\b"
+					"match": "(?:\\b(?:IF|THEN|WHILE|DO|END|ELSE|GOTO)\\b|(?<![A-Za-z])(?:IF|WHILE)(?=\\s*\\[)|(?<![A-Za-z])(?:DO|END)(?=\\s*\\d)|(?<![A-Za-z])GOTO(?=\\s*(?:[-+]?\\d|#|\\[)))"
 				}
 			]
 		},
@@ -446,7 +446,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.x.gcode",
-					"begin": "\\b[Xx]\\[",
+					"begin": "(?<![A-Za-z])[Xx]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -463,7 +463,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.y.gcode",
-					"begin": "\\b[Yy]\\[",
+					"begin": "(?<![A-Za-z])[Yy]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -480,7 +480,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.z.gcode",
-					"begin": "\\b[Zz]\\[",
+					"begin": "(?<![A-Za-z])[Zz]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -497,7 +497,7 @@
 			"patterns": [
 				{
 					"name": "support.code.t.gcode",
-					"begin": "\\b[Tt]\\[",
+					"begin": "(?<![A-Za-z])[Tt]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -514,7 +514,7 @@
 			"patterns": [
 				{
 					"name": "support.code.h.gcode",
-					"begin": "\\b[Hh]\\[",
+					"begin": "(?<![A-Za-z])[Hh]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -531,7 +531,7 @@
 			"patterns": [
 				{
 					"name": "support.code.s.gcode",
-					"begin": "\\b[Ss]\\[",
+					"begin": "(?<![A-Za-z])[Ss]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -548,7 +548,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.u.gcode",
-					"begin": "\\b[Uu]\\[",
+					"begin": "(?<![A-Za-z])[Uu]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -565,7 +565,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.v.gcode",
-					"begin": "\\b[Vv]\\[",
+					"begin": "(?<![A-Za-z])[Vv]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -582,7 +582,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.w.gcode",
-					"begin": "\\b[Ww]\\[",
+					"begin": "(?<![A-Za-z])[Ww]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -599,7 +599,7 @@
 			"patterns": [
 				{
 					"name": "support.radius.r.gcode",
-					"begin": "\\b[Rr]\\[",
+					"begin": "(?<![A-Za-z])[Rr]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -616,7 +616,7 @@
 			"patterns": [
 				{
 					"name": "support.feed.f.gcode",
-					"begin": "\\b[Ff]\\[",
+					"begin": "(?<![A-Za-z])[Ff]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -633,7 +633,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.a.gcode",
-					"begin": "\\b[Aa]\\[",
+					"begin": "(?<![A-Za-z])[Aa]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -650,7 +650,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.b.gcode",
-					"begin": "\\b[Bb]\\[",
+					"begin": "(?<![A-Za-z])[Bb]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -667,7 +667,7 @@
 			"patterns": [
 				{
 					"name": "support.axis.c.gcode",
-					"begin": "\\b[Cc]\\[",
+					"begin": "(?<![A-Za-z])[Cc]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -684,7 +684,7 @@
 			"patterns": [
 				{
 					"name": "support.arc.i.gcode",
-					"begin": "\\b[Ii]\\[",
+					"begin": "(?<![A-Za-z])[Ii]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -701,7 +701,7 @@
 			"patterns": [
 				{
 					"name": "support.arc.j.gcode",
-					"begin": "\\b[Jj]\\[",
+					"begin": "(?<![A-Za-z])[Jj]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
@@ -718,7 +718,7 @@
 			"patterns": [
 				{
 					"name": "support.arc.k.gcode",
-					"begin": "\\b[Kk]\\[",
+					"begin": "(?<![A-Za-z])[Kk]\\[",
 					"end": "\\]",
 					"patterns": [
 						{
