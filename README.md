@@ -6,6 +6,18 @@ KAIJU.NC is the world’s first kaiju-themed Visual Studio Code extension for nu
 
 Developed for Fanuc-style G-code and macro-heavy machining, it turns Visual Studio Code into a command center for machining development. Syntax highlighting, diagnostics, visualization, motion analysis, and macro inspection tools designed for engineering beast mode programs.
 
+## KAIJU Machine Mode
+
+`KAIJU Machine Mode` sets the active document's machine profile so KAIJU.NC can interpret motion using the correct defaults.
+
+Choose the machine mode from the editor's right-click menu:
+
+* Mill
+* Lathe - Radius
+* Lathe - Diameter
+
+Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned. It synchronizes their X-axis interpretation and selects the appropriate default feed behavior: feed per minute for mills or feed per revolution for lathes. Explicit program codes such as `G94` and `G95` still take precedence.
+
 ## KAIJU Highlighting
 
 KAIJU.NC highlights common CNC program elements to help you lock on to your target:
@@ -93,6 +105,20 @@ G01 X1.000 Z-2.500 F0.200
 T09
 T0606
 ```
+
+## KAIJU Rangefinder
+
+`KAIJU Rangefinder` quickly selects useful sections of the active NC program without changing the code.
+
+* Command: `KAIJU Rangefinder`
+* Shortcut: `Ctrl+Alt+F` / `Cmd+Alt+F`
+
+Rangefinder can select:
+
+* The current tool range
+* A tool range chosen from the program
+* The span between two `N` labels
+* The current `N` block
 
 ## KAIJU Vision
 
@@ -188,6 +214,10 @@ Sense also includes macro-assist features for advanced NC workflows:
 * Alias-aware macro inspection
 * Bracket expression highlighting
 * Address-aware macro expression parsing
+* Hover details and amber line highlighting for `GOTO` label references
+* Ctrl+Click navigation from a `GOTO` reference to its matching `N` label
+
+KAIJU Sense also provides a cursor-state status bar readout showing the active modal codes at the current line, such as motion mode and coolant state. It can display descriptive labels like `G00 (Rapid)` and `M08 (Coolant on)`, or compact codes such as `G00 M08`.
 
 Example:
 
@@ -241,6 +271,14 @@ The inspection system can detect:
 * Missing macro-expression brackets
 * Misplaced address words inside expressions
 * Suspicious motion values without decimal points
+* `GOTO` targets without a matching `N` label
+* Duplicate `N` sequence numbers
+* Out-of-order `N` sequence numbers
+* Mixed KAIJU Alias mode, where aliases and their original numbered macros are both used
+* Undefined KAIJU Alias names
+* Nested or separate parenthesis-comment pairs
+
+Every KAIJU Alert check can be toggled on or off individually in the KAIJU.NC settings.
 
 Example:
 
