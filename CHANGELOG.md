@@ -2,6 +2,10 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.4.0]
+
+- Added `AND` support to KAIJU Decomposition compound conditions such as `IF[[#105 NE 1.000] AND [#105 NE 2.000]] THEN #3000 = 1.000`.
+
 ## [0.3.0]
 
 - Fixed syntax highlighting for compact CNC blocks without spaces, such as `N10G00X200.000Y200.00S3000M03`, using the same letter-plus-value boundaries recognized by KAIJU Reconstructor.

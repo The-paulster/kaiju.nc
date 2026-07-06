@@ -395,8 +395,23 @@ async function decomposeCodeSegment(segment, lineNumber, context) {
 
 async function evaluateCondition(conditionText, lineNumber, context) {
 	await promptForUnknownMacros(conditionText, lineNumber, context);
+	return evaluateConditionExpression(conditionText, lineNumber, context);
+}
 
+function evaluateConditionExpression(conditionText, lineNumber, context) {
 	const expression = stripOuterBrackets(conditionText);
+	const andParts = splitTopLevelLogicalAnd(expression);
+
+	if (andParts) {
+		for (const part of andParts) {
+			if (!evaluateConditionExpression(part, lineNumber, context).value) {
+				return { value: false };
+			}
+		}
+
+		return { value: true };
+	}
+
 	const comparison = splitComparison(expression);
 
 	if (!comparison) {
@@ -787,6 +802,46 @@ function splitComparison(expression) {
 		operator: match[2].toUpperCase(),
 		right: match[3].trim()
 	};
+}
+
+function splitTopLevelLogicalAnd(expression) {
+	const parts = [];
+	let depth = 0;
+	let partStart = 0;
+
+	for (let index = 0; index < expression.length; index++) {
+		if (expression[index] === "[") {
+			depth++;
+			continue;
+		}
+
+		if (expression[index] === "]") {
+			depth--;
+			continue;
+		}
+
+		if (depth !== 0 || expression.slice(index, index + 3).toUpperCase() !== "AND") {
+			continue;
+		}
+
+		const before = expression[index - 1];
+		const after = expression[index + 3];
+
+		if ((before && /[A-Za-z0-9_]/.test(before)) || (after && /[A-Za-z0-9_]/.test(after))) {
+			continue;
+		}
+
+		parts.push(expression.slice(partStart, index).trim());
+		partStart = index + 3;
+		index += 2;
+	}
+
+	if (!parts.length) {
+		return undefined;
+	}
+
+	parts.push(expression.slice(partStart).trim());
+	return parts;
 }
 
 function compareValues(left, right, operator, tolerance = DEFAULT_COMPARISON_TOLERANCE) {
