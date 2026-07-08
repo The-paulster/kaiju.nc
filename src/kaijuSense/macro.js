@@ -6,6 +6,7 @@ const {
 	isInsideRange
 } = require("../MetaTextRanges");
 const {
+	buildAliasEntries,
 	buildMacroAliasMap,
 	evaluateNumericExpression,
 	normalizeMacro,
@@ -103,6 +104,32 @@ function buildMacroDefinitionTable(document, macroAliases) {
 	const definitions = new Map();
 	const macroValues = new Map();
 
+	for (const entry of buildAliasEntries(document)) {
+		const normalizedMacro = normalizeMacro(entry.macro);
+		const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
+		const lineNumber = entry.sourceLine;
+		const lineText = lineNumber >= 0 && lineNumber < document.lineCount
+			? document.lineAt(lineNumber).text
+			: "";
+		const definition = {
+			value: "",
+			numericValue: NaN,
+			comment: entry.comment || entry.phrase || entry.alias,
+			definedLabel: lineNumber >= 0 ? `Line ${lineNumber + 1}` : "Alias comment",
+			lineNumber,
+			lineText,
+			aliasOnly: true
+		};
+
+		if (!definitions.has(normalizedMacro)) {
+			definitions.set(normalizedMacro, definition);
+		}
+
+		if (!definitions.has(resolvedMacro)) {
+			definitions.set(resolvedMacro, definition);
+		}
+	}
+
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
 		const commentRanges = getCommentRanges(line);
@@ -121,7 +148,10 @@ function buildMacroDefinitionTable(document, macroAliases) {
 			const valueStart = match.index + match[0].length;
 			const value = extractValueAfterEquals(line, valueStart);
 			const numericValue = evaluateNumericExpression(value, macroValues, macroAliases);
-			const comment = extractFirstComment(line);
+			const previousDefinition = definitions.get(normalizedMacro) || definitions.get(resolvedMacro);
+			const comment = previousDefinition && previousDefinition.comment
+				? previousDefinition.comment
+				: extractFirstComment(line);
 			const blockNumber = extractBlockNumber(line);
 
 			const definedLabel = blockNumber
@@ -134,14 +164,15 @@ function buildMacroDefinitionTable(document, macroAliases) {
 				comment,
 				definedLabel,
 				lineNumber,
-				lineText: line
+				lineText: line,
+				aliasOnly: false
 			};
 
-			if (!definitions.has(normalizedMacro)) {
+			if (!definitions.has(normalizedMacro) || definitions.get(normalizedMacro).aliasOnly) {
 				definitions.set(normalizedMacro, definition);
 			}
 
-			if (!definitions.has(resolvedMacro)) {
+			if (!definitions.has(resolvedMacro) || definitions.get(resolvedMacro).aliasOnly) {
 				definitions.set(resolvedMacro, definition);
 			}
 

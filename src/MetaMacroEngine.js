@@ -66,6 +66,7 @@ function buildAliasEntries(document) {
 			return {
 				macro,
 				alias: alias ? alias.alias : "",
+				comment: alias ? alias.comment : "",
 				phrase: alias ? alias.phrase : "",
 				sourceLine: alias ? alias.lineNumber : -1
 			};
@@ -163,6 +164,7 @@ function makeAliasCandidate(macro, phrase, lineNumber) {
 	return {
 		macro,
 		alias,
+		comment: cleanAliasComment(phrase),
 		phrase: cleanAliasPhrase(phrase),
 		lineNumber
 	};
@@ -191,6 +193,12 @@ function makeAliasName(phrase) {
 function cleanAliasPhrase(phrase) {
 	return phrase
 		.split("[")[0]
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function cleanAliasComment(phrase) {
+	return phrase
 		.replace(/\s+/g, " ")
 		.trim();
 }

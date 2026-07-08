@@ -5,6 +5,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 ## [0.4.0]
 
 - Added `AND` support to KAIJU Decomposition compound conditions such as `IF[[#105 NE 1.000] AND [#105 NE 2.000]] THEN #3000 = 1.000`.
+- Fixed KAIJU Sense macro hovers so comment-only macro names like `(#105 = previous removed depth [mm])` or `(#105 previous removed depth [mm])` still appear when the macro value is unresolved.
 
 ## [0.3.0]
 
