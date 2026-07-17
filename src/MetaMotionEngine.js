@@ -612,20 +612,8 @@ function buildPathPoints(motionCode, start, end, words, arcPlane, options) {
 }
 
 function buildLinearPathPoints(start, end, options) {
-	const points = [];
-
-	for (let step = 0; step <= options.samples; step++) {
-		const fraction = step / options.samples;
-
-		points.push({
-			x: interpolateAxis(start.x, end.x, fraction),
-			y: interpolateAxis(start.y, end.y, fraction),
-			z: interpolateAxis(start.z, end.z, fraction)
-		});
-	}
-
 	return {
-		points,
+		points: [clonePosition(start), clonePosition(end)],
 		kind: "linear",
 		usedArcFallback: false
 	};
@@ -1224,6 +1212,10 @@ function analyzeVisionRange(document, range, options) {
 			rows.push(makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, state.coordinateSystem, options));
 		}
 
+		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words) && isLineInRange(lineNumber, targetRange)) {
+			rows.push(makeVisionEventMarkerRow(lineNumber, words, state.position, state.coordinateSystem, options));
+		}
+
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
 		const activeCycleCode = getCannedCycleCode(words);
 		const hasCycleOperation = hasActiveCannedCycleOperation(words, state, activeCycleCode);
@@ -1248,7 +1240,7 @@ function analyzeVisionRange(document, range, options) {
 			const isFirstProgramMotion = !hasSeenProgramMotion;
 			hasSeenProgramMotion = true;
 			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeVisionMotionRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
+				rows.push(makeVisionMotionRow(lineNumber, words, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
 			}
 		}
 
@@ -1331,6 +1323,38 @@ function hasCycleSiteAxisWords(words) {
 
 function hasMotionAxisWords(words) {
 	return !isCoordinateSettingLine(words) && words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+}
+
+function hasMCode(words, targetCode) {
+	return words.some(word => word.letter === "M" && Number.isFinite(word.value) && Math.trunc(word.value) === targetCode);
+}
+
+function isProgramStopLine(words) {
+	return [0, 1, 30].some(code => hasMCode(words, code));
+}
+
+function isProgramEndLine(words) {
+	return hasMCode(words, 30);
+}
+
+function isOptionalStopLine(words) {
+	return hasMCode(words, 0) || hasMCode(words, 1);
+}
+
+function isCompensationLine(words) {
+	return hasAnyGCode(words, [40, 41, 42, 43, 44, 46, 49]);
+}
+
+function isCompensationCancelLine(words) {
+	return hasAnyGCode(words, [40, 49]);
+}
+
+function isSpeedChangeLine(words) {
+	return hasWord(words, "S");
+}
+
+function hasWord(words, letter) {
+	return words.some(word => word.letter === letter && Number.isFinite(word.value));
 }
 
 function isDwellLine(words) {
@@ -1489,11 +1513,12 @@ function makeDwellReportRow(lineNumber, words, toolRange) {
 	};
 }
 
-function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRange) {
+function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, toolRange) {
 	const toolColor = getToolColor(toolRange);
 	const coordinateSystem = estimate.machineCoordinate ? "G53" : estimate.coordinateSystem || "";
 	const start = shiftVisionPosition(estimate.start, estimate.coordinateSystem, options, estimate.machineCoordinate);
 	const end = shiftVisionPosition(estimate.end, estimate.coordinateSystem, options, estimate.machineCoordinate);
+	const marker = makeVisionEndpointMarker(words);
 
 	return {
 		type: "motion",
@@ -1510,6 +1535,8 @@ function makeVisionMotionRow(lineNumber, motionCode, estimate, options, toolRang
 		distance: estimate.distance,
 		timeSeconds: estimate.timeSeconds,
 		points: (estimate.pathPoints || []).map(point => toVisionPoint(point, options, estimate.coordinateSystem, estimate.machineCoordinate)),
+		markerClass: marker.className,
+		markerKind: marker.kind,
 		warnings: estimate.warnings || []
 	};
 }
@@ -1563,6 +1590,24 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 	};
 }
 
+function makeVisionEventMarkerRow(lineNumber, words, position, coordinateSystem, options) {
+	const marker = makeVisionEndpointMarker(words);
+
+	return {
+		type: "event",
+		lineNumber: lineNumber + 1,
+		instruction: marker.label || "Event",
+		coordinateSystem: coordinateSystem || "",
+		point: toVisionPoint(position, options, coordinateSystem),
+		position: shiftVisionPosition(position, coordinateSystem, options),
+		markerClass: marker.className,
+		markerKind: marker.kind,
+		distance: NaN,
+		points: [],
+		warnings: []
+	};
+}
+
 function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, position, coordinateSystem, options) {
 	const toolColor = getToolColor(toolRange);
 	const previousToolColor = getToolColor(previousToolRange);
@@ -1582,6 +1627,64 @@ function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, posit
 		points: [],
 		warnings: []
 	};
+}
+
+function makeVisionEndpointMarker(words) {
+	if (isProgramEndLine(words)) {
+		return { className: "endpoint endpoint-program-end", kind: "programEnd", label: getProgramStopLabel(words) };
+	}
+
+	if (isOptionalStopLine(words)) {
+		return { className: "endpoint endpoint-optional-stop", kind: "optionalStop", label: getProgramStopLabel(words) };
+	}
+
+	if (isSpeedChangeLine(words)) {
+		return { className: "endpoint endpoint-speed-change", kind: "speedChange", label: getSpeedChangeLabel(words) };
+	}
+
+	if (isCompensationCancelLine(words)) {
+		return { className: "endpoint endpoint-compensation-cancel", kind: "compensationCancel", label: getCompensationLabel(words) };
+	}
+
+	if (isCompensationLine(words)) {
+		return { className: "endpoint endpoint-compensation", kind: "compensation", label: getCompensationLabel(words) };
+	}
+
+	return { className: "endpoint", kind: "endpoint", label: "" };
+}
+
+function hasAnyGCode(words, codes) {
+	return codes.some(code => hasGCode(words, code));
+}
+
+function getCompensationLabel(words) {
+	for (const code of [40, 41, 42, 43, 44, 46, 49]) {
+		if (hasGCode(words, code)) {
+			return `G${code}`;
+		}
+	}
+
+	return "Compensation";
+}
+
+function getSpeedChangeLabel(words) {
+	return hasWord(words, "S") ? "S" : "Speed";
+}
+
+function getProgramStopLabel(words) {
+	if (hasMCode(words, 0)) {
+		return "M00";
+	}
+
+	if (hasMCode(words, 1)) {
+		return "M01";
+	}
+
+	if (hasMCode(words, 30)) {
+		return "M30";
+	}
+
+	return "Stop";
 }
 
 function makeCycleSitePosition(position, words, distanceMode) {

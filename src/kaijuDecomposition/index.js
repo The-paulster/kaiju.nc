@@ -20,12 +20,9 @@ const {
 	formatDocumentText
 } = require("../kaijuReconstructor/formatter");
 const {
-	DEFAULT_COMPARISON_TOLERANCE,
 	getDecompositionOptions
 } = require("./options");
 
-const MAX_EXECUTION_STEPS = 20000;
-const MAX_OUTPUT_LINES = 50000;
 const DECOMPOSITION_SCHEME = "kaiju-decomposition";
 const decompositionDocuments = new Map();
 
@@ -107,13 +104,13 @@ async function decomposeDocument(document) {
 
 	try {
 		while (lineNumber < document.lineCount) {
-			if (++steps > MAX_EXECUTION_STEPS) {
-				addWarning(context, lineNumber, `Stopped after ${MAX_EXECUTION_STEPS} execution steps. Check for an unresolved loop or jump.`);
+			if (++steps > context.options.maxExecutionSteps) {
+				addWarning(context, lineNumber, `Stopped after ${context.options.maxExecutionSteps} execution steps. Check for an unresolved loop or jump.`);
 				break;
 			}
 
-			if (outputLines.length > MAX_OUTPUT_LINES) {
-				addWarning(context, lineNumber, `Stopped after ${MAX_OUTPUT_LINES} output lines.`);
+			if (outputLines.length > context.options.maxOutputLines) {
+				addWarning(context, lineNumber, `Stopped after ${context.options.maxOutputLines} output lines.`);
 				break;
 			}
 

@@ -1,7 +1,6 @@
 // Role: render and run KAIJU Vision motion-table reports. Keep shared motion
 // interpretation in MetaMotionEngine.js and machine defaults in
 // MetaMachineMode.js.
-const path = require("path");
 const vscode = require("vscode");
 const {
 	analyzeVisionRange,
@@ -66,11 +65,6 @@ async function showVisionPanel(editor, mode, options) {
 
 		visionPanel.webview.onDidReceiveMessage(async message => {
 			if (!message) {
-				return;
-			}
-
-			if (message.type === "saveSvg") {
-				await saveVisionSvg(message.svg, message.plane);
 				return;
 			}
 
@@ -247,47 +241,6 @@ function isSimpleSideBySideLayout(layout) {
 		&& Array.isArray(layout.groups)
 		&& layout.groups.length === 2
 		&& layout.groups.every(group => !Array.isArray(group.groups));
-}
-
-async function saveVisionSvg(svg, plane) {
-	if (!svg || typeof svg !== "string") {
-		vscode.window.showWarningMessage("KAIJU Vision has no SVG to save.");
-		return;
-	}
-
-	const editor = getVisionSourceEditor();
-	const sourceName = editor && editor.document && editor.document.fileName
-		? path.basename(editor.document.fileName, path.extname(editor.document.fileName))
-		: "kaiju-vision";
-	const suggestedName = `${sanitizeFileName(sourceName)}_kaiju-vision_${plane || "xz"}.svg`;
-	const defaultUri = editor && editor.document && editor.document.uri && editor.document.uri.scheme === "file"
-		? vscode.Uri.file(path.join(path.dirname(editor.document.fileName), suggestedName))
-		: undefined;
-	const targetUri = await vscode.window.showSaveDialog({
-		defaultUri,
-		filters: {
-			"SVG image": ["svg"]
-		}
-	});
-
-	if (!targetUri) {
-		return;
-	}
-
-	const svgText = svg.trim().startsWith("<?xml")
-		? svg
-		: `<?xml version="1.0" encoding="UTF-8"?>\n${svg}`;
-
-	await vscode.workspace.fs.writeFile(targetUri, Buffer.from(svgText, "utf8"));
-	vscode.window.showInformationMessage(`KAIJU Vision saved ${path.basename(targetUri.fsPath || targetUri.path)}.`);
-}
-
-function sanitizeFileName(name) {
-	return String(name || "kaiju-vision")
-		.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
-		.replace(/\s+/g, "-")
-		.replace(/-+/g, "-")
-		.replace(/^-|-$/g, "") || "kaiju-vision";
 }
 
 function renderVisionHtml(document, mode, options, result) {
@@ -477,6 +430,7 @@ function renderVisionHtml(document, mode, options, result) {
 			height: 100%;
 			background: transparent;
 			overflow: hidden;
+			position: relative;
 			cursor: grab;
 			user-select: none;
 			touch-action: none;
@@ -485,9 +439,7 @@ function renderVisionHtml(document, mode, options, result) {
 		.viewer-slot {
 			flex: 1 1 auto;
 			min-height: 0;
-			display: flex;
-			align-items: center;
-			justify-content: center;
+			position: relative;
 			overflow: hidden;
 		}
 
@@ -495,10 +447,25 @@ function renderVisionHtml(document, mode, options, result) {
 			cursor: grabbing;
 		}
 
+		.viewer canvas,
 		.viewer svg {
 			display: block;
 			width: 100%;
 			height: 100%;
+		}
+
+		.viewer canvas,
+		.viewer svg {
+			position: absolute;
+			inset: 0;
+		}
+
+		.viewer canvas {
+			pointer-events: none;
+		}
+
+		.viewer svg {
+			pointer-events: auto;
 		}
 
 		.vision-tooltip {
@@ -515,6 +482,42 @@ function renderVisionHtml(document, mode, options, result) {
 			font-size: 12px;
 			line-height: 1.35;
 			pointer-events: none;
+		}
+
+		.vision-marker-legend {
+			position: absolute;
+			display: none;
+			right: 10px;
+			bottom: 10px;
+			z-index: 9;
+			min-width: 170px;
+			padding: 8px 10px;
+			border: 1px solid var(--vscode-panel-border,#3c3c3c);
+			background: var(--vscode-editorHoverWidget-background,#252526);
+			color: var(--vscode-editorHoverWidget-foreground,#d4d4d4);
+			box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+			font-size: 12px;
+			line-height: 1.4;
+			pointer-events: none;
+		}
+
+		.marker-legend-row {
+			display: flex;
+			align-items: center;
+			gap: 7px;
+			white-space: nowrap;
+		}
+
+		.marker-legend-row + .marker-legend-row {
+			margin-top: 4px;
+		}
+
+		.marker-legend-swatch {
+			width: 10px;
+			height: 10px;
+			border-radius: 50%;
+			border: 1px solid var(--vscode-editor-background,#1e1e1e);
+			flex: 0 0 auto;
 		}
 
 		.tooltip-items {
@@ -545,6 +548,7 @@ function renderVisionHtml(document, mode, options, result) {
 			max-height: calc(var(--vision-row-height) * 9);
 			border-top: 1px solid var(--vscode-panel-border);
 			margin-top: 10px;
+			position: relative;
 		}
 
 		table {
@@ -601,6 +605,13 @@ function renderVisionHtml(document, mode, options, result) {
 			font-weight: 600;
 		}
 
+		tr.table-spacer td {
+			border-bottom: 0;
+			height: 0;
+			line-height: 0;
+			padding: 0;
+		}
+
 		code {
 			font-family: var(--vscode-editor-font-family);
 			background: var(--vscode-textCodeBlock-background);
@@ -621,14 +632,14 @@ function renderVisionHtml(document, mode, options, result) {
 				<option value="zy"${options.plane === "zy" ? " selected" : ""}>Z-Y</option>
 			</select>
 		</label>
-		<label class="checkbox"><input id="labels" type="checkbox" checked> Endpoint labels</label>
+		<label class="checkbox"><input id="labels" type="checkbox" checked> Labels</label>
+		<label class="checkbox"><input id="endpoints" type="checkbox" checked> Endpoints</label>
 		<label class="checkbox"><input id="zeroLines" type="checkbox"> Zero lines</label>
 		<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
 		<button id="fit">Fit View</button>
 		<button id="zoomOut">Zoom -</button>
 		<button id="zoomIn">Zoom +</button>
 		<span id="zoomLabel" class="note">100%</span>
-		<button id="save">Save SVG</button>
 		<button id="offsetsToggle">Offsets</button>
 		<button id="visibilityToggle">Visibility</button>
 		<button id="whole">Send Whole Program</button>
@@ -644,9 +655,10 @@ function renderVisionHtml(document, mode, options, result) {
 		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span></span>
 	</section>
 
-	<div id="viewerSlot" class="viewer-slot" style="position: relative;">
+	<div id="viewerSlot" class="viewer-slot">
 		<div id="viewer" class="viewer"></div>
 		<div id="visionTooltip" class="vision-tooltip"></div>
+		<div id="markerLegend" class="vision-marker-legend"></div>
 	</div>
 	${renderRows(result.rows, options.humanFormat)}
 
@@ -656,6 +668,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const data = JSON.parse(document.getElementById("vision-data").textContent);
 		const planeSelect = document.getElementById("plane");
 		const labelsInput = document.getElementById("labels");
+		const endpointsInput = document.getElementById("endpoints");
 		const zeroLinesInput = document.getElementById("zeroLines");
 		const toolColorsInput = document.getElementById("toolColors");
 		const offsetsToggle = document.getElementById("offsetsToggle");
@@ -665,13 +678,26 @@ function renderVisionHtml(document, mode, options, result) {
 		const viewerSlot = document.getElementById("viewerSlot");
 		const viewer = document.getElementById("viewer");
 		const tooltip = document.getElementById("visionTooltip");
+		const markerLegend = document.getElementById("markerLegend");
+		const tableWrap = document.getElementById("visionTableWrap");
+		const tableBody = document.getElementById("visionTableBody");
 		const zoomLabel = document.getElementById("zoomLabel");
 		const zoomStep = Math.max(1.01, Number(data.options.zoomStep) || 1.75);
 		const wheelZoomStep = Math.max(1.01, Number(data.options.wheelZoomStep) || 1.36);
+		const tableRowHeight = 26;
+		const labelCacheLimitBytes = Math.max(0, Number(data.options.labelCacheMB) || 0) * 1024 * 1024;
+		const labelCache = new Map();
+		let labelCacheBytes = 0;
+		let labelCacheRunId = 0;
+		let lastPrewarmKey = "";
 		let zoom = 1;
 		let pan = { x: 0, y: 0 };
 		let currentFitBounds;
 		let currentBounds;
+		let currentTableRows = [];
+		let currentTableVisibilityKey = "";
+		let currentLabelEntry;
+		const projectedPlaneCache = new Map();
 		let dragState;
 		const planes = {
 			xy: makePlane("X-Y", getOrderedOrientation(data.options.xyOrientation, "xRightYUp", "x", "y"), "x", "y"),
@@ -723,6 +749,10 @@ function renderVisionHtml(document, mode, options, result) {
 			return visibility.tools.has(getRowToolKey(row)) && visibility.wcs.has(getRowWcsKey(row));
 		}
 
+		function getVisibilityKey(visibility) {
+			return [...visibility.tools].sort().join("|") + "::" + [...visibility.wcs].sort().join("|");
+		}
+
 		function getRowToolKey(row) {
 			return row && row.tool ? row.tool : "__none";
 		}
@@ -739,13 +769,6 @@ function renderVisionHtml(document, mode, options, result) {
 			return "__none";
 		}
 
-		function applyTableVisibility(visibility) {
-			document.querySelectorAll("[data-vision-row]").forEach(rowElement => {
-				const toolKey = rowElement.getAttribute("data-tool-key") || "__none";
-				const wcsKey = rowElement.getAttribute("data-wcs-key") || "__none";
-				rowElement.style.display = visibility.tools.has(toolKey) && visibility.wcs.has(wcsKey) ? "" : "none";
-			});
-		}
 		function getOrderedOrientation(orientation, fallback, firstAxis, secondAxis) {
 			const match = String(orientation || "").match(/^([xyz])(Right|Left)([xyz])(Up|Down)$/i);
 
@@ -815,69 +838,176 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function getDrawableRows(plane, visibility) {
-			return data.rows.filter(row => isRowVisible(row, visibility)).map(row => {
-				if (row.type === "tool" || row.type === "cycle") {
-					return Object.assign({}, row, { projectedPoints: [] });
-				}
+		function getProjectedPlaneData(planeKey, plane) {
+			if (projectedPlaneCache.has(planeKey)) {
+				return projectedPlaneCache.get(planeKey);
+			}
 
-				const points = (row.points || [])
-					.map(point => project(point, plane))
-					.filter(Boolean);
-				const end = points[points.length - 1];
+			const projected = {
+				rows: [],
+				cycles: [],
+				toolChanges: [],
+				events: []
+			};
 
-				return Object.assign({}, row, { projectedPoints: points, projectedEnd: end });
-			}).filter(row => row.projectedPoints.length >= 2);
-		}
-
-		function getDrawableCycleRows(plane, visibility) {
-			return data.rows.filter(row => row.type === "cycle" && isRowVisible(row, visibility))
-				.map(row => {
+			for (const row of data.rows) {
+				if (row.type === "cycle") {
 					const points = (row.points || [])
 						.map(point => project(point, plane))
 						.filter(Boolean);
 					const projectedPoint = project(row.point || row.end || {}, plane) || points[points.length - 1];
 
-					return Object.assign({}, row, { projectedPoints: points, projectedPoint });
-				})
-				.filter(row => row.projectedPoint);
+					if (projectedPoint) {
+						projected.cycles.push(Object.assign({}, row, {
+							projectedPoints: points,
+							projectedPoint,
+							projectedBounds: makePointSetBounds(points.length ? points : [projectedPoint]),
+							labelCoordinateLine: makeVisiblePositionLine(row.end, data.options.humanFormat),
+							labelHoverHtml: makePointHoverHtml(row.end, row)
+						}));
+					}
+				} else if (row.type === "tool") {
+					const projectedPoint = project(row.point || {}, plane);
+
+					if (projectedPoint) {
+						projected.toolChanges.push(Object.assign({}, row, {
+							projectedPoint,
+							labelCoordinateLine: makePlaneCoordinateLine(row.point, plane, data.options.humanFormat, data.options.trimLabelTrailingZeros !== false),
+							labelHoverHtml: makeToolChangeHoverHtml(row)
+						}));
+					}
+				} else if (row.type === "event") {
+					const projectedPoint = project(row.point || {}, plane);
+
+					if (projectedPoint) {
+						projected.events.push(Object.assign({}, row, {
+							projectedPoint,
+							labelCoordinateLine: makePlaneCoordinateLine(row.position || row.point, plane, data.options.humanFormat, data.options.trimLabelTrailingZeros !== false),
+							labelHoverHtml: makePointHoverHtml(row.position || row.point, row)
+						}));
+					}
+				} else if (row.type !== "label") {
+					const points = (row.points || [])
+						.map(point => project(point, plane))
+						.filter(Boolean);
+					const end = points[points.length - 1];
+
+					if (points.length >= 2) {
+						projected.rows.push(Object.assign({}, row, {
+							projectedPoints: points,
+							projectedEnd: end,
+							projectedBounds: makePointSetBounds(points),
+							startCoordinateLine: makeVisiblePositionLine(row.start, data.options.humanFormat),
+							startHoverHtml: makePointHoverHtml(row.start, Object.assign({}, row, { instruction: "START" })),
+							endCoordinateLine: makeVisiblePositionLine(row.end, data.options.humanFormat),
+							endHoverHtml: makePointHoverHtml(row.end, row)
+						}));
+					}
+				}
+			}
+
+			projectedPlaneCache.set(planeKey, projected);
+			return projected;
 		}
 
-		function getDrawableToolChanges(plane, visibility) {
-			return data.rows.filter(row => row.type === "tool" && isRowVisible(row, visibility))
-				.map(row => Object.assign({}, row, { projectedPoint: project(row.point || {}, plane) }))
-				.filter(row => row.projectedPoint);
+		function getVisibleProjectedData(projected, visibility) {
+			return {
+				rows: projected.rows.filter(row => isRowVisible(row, visibility)),
+				cycles: projected.cycles.filter(row => isRowVisible(row, visibility)),
+				toolChanges: projected.toolChanges.filter(row => isRowVisible(row, visibility)),
+				events: projected.events.filter(row => isRowVisible(row, visibility))
+			};
 		}
 
-		function makeBounds(rows, cycles, toolChanges) {
-			const points = [];
+		function makePointSetBounds(points) {
+			let minX = Infinity;
+			let maxX = -Infinity;
+			let minY = Infinity;
+			let maxY = -Infinity;
+
+			for (const point of points || []) {
+				if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+					continue;
+				}
+
+				minX = Math.min(minX, point.x);
+				maxX = Math.max(maxX, point.x);
+				minY = Math.min(minY, point.y);
+				maxY = Math.max(maxY, point.y);
+			}
+
+			return minX === Infinity
+				? undefined
+				: { minX, maxX, minY, maxY };
+		}
+
+		function expandBounds(bounds, padding) {
+			return {
+				minX: bounds.minX - padding,
+				minY: bounds.minY - padding,
+				width: bounds.width + padding * 2,
+				height: bounds.height + padding * 2
+			};
+		}
+
+		function rowBoundsIntersect(rowBounds, bounds) {
+			if (!rowBounds) {
+				return true;
+			}
+
+			return rowBounds.maxX >= bounds.minX
+				&& rowBounds.minX <= bounds.minX + bounds.width
+				&& rowBounds.maxY >= bounds.minY
+				&& rowBounds.minY <= bounds.minY + bounds.height;
+		}
+
+		function makeBounds(rows, cycles, toolChanges, events) {
+			let minX = Infinity;
+			let maxX = -Infinity;
+			let minY = Infinity;
+			let maxY = -Infinity;
+			let hasPoint = false;
+
+			const includePoint = point => {
+				if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+					return;
+				}
+
+				hasPoint = true;
+				minX = Math.min(minX, point.x);
+				maxX = Math.max(maxX, point.x);
+				minY = Math.min(minY, point.y);
+				maxY = Math.max(maxY, point.y);
+			};
 
 			for (const row of rows) {
-				points.push(...row.projectedPoints);
+				for (const point of row.projectedPoints) {
+					includePoint(point);
+				}
 			}
 
 			for (const cycle of cycles) {
 				if (cycle.projectedPoints && cycle.projectedPoints.length) {
-					points.push(...cycle.projectedPoints);
+					for (const point of cycle.projectedPoints) {
+						includePoint(point);
+					}
 				} else {
-					points.push(cycle.projectedPoint);
+					includePoint(cycle.projectedPoint);
 				}
 			}
 
 			for (const toolChange of toolChanges) {
-				points.push(toolChange.projectedPoint);
+				includePoint(toolChange.projectedPoint);
 			}
 
-			if (!points.length) {
+			for (const event of events) {
+				includePoint(event.projectedPoint);
+			}
+
+			if (!hasPoint) {
 				return { minX: -10, minY: -10, width: 20, height: 20 };
 			}
 
-			const xs = points.map(point => point.x);
-			const ys = points.map(point => point.y);
-			let minX = Math.min(...xs);
-			let maxX = Math.max(...xs);
-			let minY = Math.min(...ys);
-			let maxY = Math.max(...ys);
 			const spanX = Math.max(0.001, maxX - minX);
 			const spanY = Math.max(0.001, maxY - minY);
 			const pad = Math.max(spanX, spanY) * 0.08 || 1;
@@ -889,21 +1019,23 @@ function renderVisionHtml(document, mode, options, result) {
 
 			const centerX = minX + (maxX - minX) / 2;
 			const centerY = minY + (maxY - minY) / 2;
-			const side = Math.max(1, maxX - minX, maxY - minY);
 
 			return {
-				minX: centerX - side / 2,
-				minY: centerY - side / 2,
-				width: side,
-				height: side
+				minX: centerX - Math.max(1, maxX - minX) / 2,
+				minY: centerY - Math.max(1, maxY - minY) / 2,
+				width: Math.max(1, maxX - minX),
+				height: Math.max(1, maxY - minY)
 			};
 		}
 
-		function zoomBounds(bounds) {
+		function zoomBounds(bounds, viewportAspect = 1) {
 			const centerX = bounds.minX + bounds.width / 2;
 			const centerY = bounds.minY + bounds.height / 2;
-			const width = bounds.width / zoom;
-			const height = bounds.height / zoom;
+			const aspect = Math.max(0.000001, Number(viewportAspect) || 1);
+			const fitHeight = Math.max(bounds.height, bounds.width / aspect);
+			const fitWidth = fitHeight * aspect;
+			const width = fitWidth / zoom;
+			const height = fitHeight / zoom;
 
 			return {
 				minX: centerX + pan.x - width / 2,
@@ -911,6 +1043,14 @@ function renderVisionHtml(document, mode, options, result) {
 				width,
 				height
 			};
+		}
+
+		function isPointNearBounds(point, bounds, padding) {
+			return point
+				&& point.x >= bounds.minX - padding
+				&& point.x <= bounds.minX + bounds.width + padding
+				&& point.y >= bounds.minY - padding
+				&& point.y <= bounds.minY + bounds.height + padding;
 		}
 
 		function setZoom(nextZoom, event) {
@@ -921,18 +1061,21 @@ function renderVisionHtml(document, mode, options, result) {
 				return;
 			}
 
-			const oldBounds = currentBounds || zoomBounds(currentFitBounds);
+			const rect = viewer.getBoundingClientRect();
+			const viewportAspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+			const oldBounds = currentBounds || zoomBounds(currentFitBounds, viewportAspect);
 			const oldZoom = zoom;
 			zoom = Math.max(1, nextZoom);
 
 			if (event && oldZoom !== zoom) {
-				const rect = viewer.getBoundingClientRect();
 				const ratioX = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
 				const ratioY = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
 				const anchorX = oldBounds.minX + ratioX * oldBounds.width;
 				const anchorY = oldBounds.minY + ratioY * oldBounds.height;
-				const newWidth = currentFitBounds.width / zoom;
-				const newHeight = currentFitBounds.height / zoom;
+				const fitHeight = Math.max(currentFitBounds.height, currentFitBounds.width / viewportAspect);
+				const fitWidth = fitHeight * viewportAspect;
+				const newWidth = fitWidth / zoom;
+				const newHeight = fitHeight / zoom;
 				const newMinX = anchorX - ratioX * newWidth;
 				const newMinY = anchorY - ratioY * newHeight;
 				const fitCenterX = currentFitBounds.minX + currentFitBounds.width / 2;
@@ -953,10 +1096,6 @@ function renderVisionHtml(document, mode, options, result) {
 			pan = { x: 0, y: 0 };
 			zoomLabel.textContent = "100%";
 			render();
-		}
-
-		function formatPointList(points) {
-			return points.map(point => round(point.x) + "," + round(point.y)).join(" ");
 		}
 
 		function round(value) {
@@ -997,108 +1136,493 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function sizeViewer() {
 			const rect = viewerSlot.getBoundingClientRect();
-			const size = Math.max(1, Math.floor(Math.min(rect.width, rect.height)));
 
-			viewer.style.width = size + "px";
-			viewer.style.height = size + "px";
+			viewer.style.width = Math.max(1, Math.floor(rect.width)) + "px";
+			viewer.style.height = Math.max(1, Math.floor(rect.height)) + "px";
 		}
 
 		function render() {
 			sizeViewer();
-			const plane = planes[planeSelect.value] || planes.xz;
+			const planeKey = planeSelect.value;
+			const plane = planes[planeKey] || planes.xz;
 			const visibility = getVisibilityState();
-			applyTableVisibility(visibility);
-			const rows = getDrawableRows(plane, visibility);
-			const cycles = getDrawableCycleRows(plane, visibility);
-			const toolChanges = getDrawableToolChanges(plane, visibility);
+			const visibilityKey = getVisibilityKey(visibility);
+			const projected = getProjectedPlaneData(planeKey, plane);
+			const visible = getVisibleProjectedData(projected, visibility);
+			const rows = visible.rows;
+			const cycles = visible.cycles;
+			const toolChanges = visible.toolChanges;
+			const events = visible.events;
 			const viewerRect = viewer.getBoundingClientRect();
-			const fitBounds = makeBounds(rows, cycles, toolChanges);
+			const fitBounds = makeBounds(rows, cycles, toolChanges, events);
 			currentFitBounds = fitBounds;
-			const bounds = zoomBounds(fitBounds);
+			const viewportAspect = Math.max(1, viewerRect.width) / Math.max(1, viewerRect.height);
+			const bounds = zoomBounds(fitBounds, viewportAspect);
 			currentBounds = bounds;
 			const showLabels = labelsInput.checked;
+			const showEndpoints = endpointsInput.checked;
 			const showZeroLines = zeroLinesInput.checked;
 			const useToolColors = toolColorsInput.checked;
-			const unitsPerPixel = bounds.width / Math.max(1, Math.min(viewerRect.width, viewerRect.height));
+			const unitsPerPixel = bounds.height / Math.max(1, viewerRect.height);
 			const labelSize = unitsPerPixel * data.options.labelFontSize;
-			const labelOffset = unitsPerPixel * data.options.labelOffset;
 			const compassSize = unitsPerPixel * data.options.compassSize;
 			const compassOffsetX = unitsPerPixel * data.options.compassOffsetX;
 			const compassOffsetY = unitsPerPixel * data.options.compassOffsetY;
 			const compassTextSize = compassSize * 0.16;
 			const endpointSize = unitsPerPixel * data.options.endpointSize;
-			const startPointSize = unitsPerPixel * data.options.startPointSize;
-			const toolChangeSize = unitsPerPixel * 4;
-			const cyclePointSize = unitsPerPixel * 4;
 			const arrowSize = unitsPerPixel * 8 * data.options.arrowSize;
 			const endpointLabelOutline = unitsPerPixel * 1.5;
-			const labelHitboxPadding = unitsPerPixel * 8;
-			const connectorPointGap = unitsPerPixel * 2;
-			const connectorLabelGap = unitsPerPixel * 0.35;
-			const endpointLabelAvoidance = data.options.endpointLabelAvoidance !== false;
 			const lineScale = data.options.lineThickness;
 
-			if (!rows.length && !cycles.length && !toolChanges.length) {
+			if (visibilityKey !== currentTableVisibilityKey) {
+				currentTableVisibilityKey = visibilityKey;
+				currentTableRows = data.rows.filter(row => row.type === "label" || isRowVisible(row, visibility));
+				updateVirtualTable(true);
+			}
+
+			if (!rows.length && !cycles.length && !toolChanges.length && !events.length) {
 				viewer.innerHTML = '<p class="empty" style="padding: 16px;">No drawable moves found for the selected plane.</p>';
 				return;
 			}
 
-			const paths = rows.map(row => renderMotionPath(row, useToolColors)).join("");
-			const directionArrows = rows.map(row => renderDirectionArrow(row, useToolColors, endpointSize, arrowSize, unitsPerPixel)).join("");
-			const cycleStrokes = cycles.map(cycle => renderCycleStroke(cycle, useToolColors)).join("");
-			const cycleTargets = cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, cyclePointSize, "cycle-point", "endpoint-label", showLabels ? "L" + cycle.lineNumber + " " + cycle.instruction : "", showLabels ? makeVisiblePositionLine(cycle.end, data.options.humanFormat) : "", makePointLabelDetails(cycle.end, cycle, "cycle")));
-			const toolTargets = toolChanges.map(toolChange => makeToolChangeLabelTarget(toolChange, showLabels, plane, data.options.humanFormat, toolChangeSize));
-			const firstRow = rows[0];
-			const firstPoint = firstRow && firstRow.projectedPoints[0];
-			const labelTargets = [];
+			const zoomBucket = getZoomBucket(zoom);
+			const labelEntry = getLabelCacheEntry({
+				planeKey,
+				plane,
+				visibilityKey,
+				showLabels,
+				showEndpoints,
+				zoomBucket,
+				viewportAspect,
+				fitBounds,
+				viewerSize: Math.max(1, viewerRect.height),
+				rows,
+				cycles,
+				toolChanges,
+				events
+			});
+			currentLabelEntry = labelEntry;
+			scheduleLabelCachePrewarm({
+				planeKey,
+				plane,
+				visibilityKey,
+				showLabels,
+				showEndpoints,
+				zoomBucket,
+				viewportAspect,
+				fitBounds,
+				viewerSize: Math.max(1, viewerRect.height),
+				rows,
+				cycles,
+				toolChanges,
+				events
+			});
+			const visibleLabelTargets = queryLabelCacheEntry(labelEntry, bounds, Math.max(labelEntry.mergeDistance, labelEntry.labelSize * 8));
+			const drawBounds = expandBounds(bounds, Math.max(unitsPerPixel * 48, labelEntry.mergeDistance));
+			const canvasRows = rows.filter(row => rowBoundsIntersect(row.projectedBounds, drawBounds));
+			const canvasCycles = cycles.filter(cycle => rowBoundsIntersect(cycle.projectedBounds, drawBounds));
+			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, {
+				labelSize: labelEntry.labelSize,
+				labelOffset: labelEntry.labelOffset,
+				labelHitboxPadding: labelEntry.labelHitboxPadding
+			}).map(renderPointLabel).join("");
+			const zeroAxes = showZeroLines ? renderZeroAxes(bounds) : "";
+			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
+			const overlaySvg = '<svg id="vision-svg" class="vision-overlay" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="none" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
+				'<style>' +
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+				'</style>' +
+				zeroAxes +
+				compass +
+				labelsAndMarkers +
+				'</svg>';
 
-			if (firstPoint) {
-				labelTargets.push(makePointLabelTarget(firstPoint, startPointSize, "start-point", "start-label", showLabels ? "START" : "", showLabels ? makeVisiblePositionLine(firstRow.start, data.options.humanFormat) : "", makePointLabelDetails(firstRow.start, Object.assign({}, firstRow, { instruction: "START" }), "start")));
+			hideTooltip();
+			viewer.innerHTML = '<canvas id="vision-canvas" class="vision-canvas"></canvas>' + overlaySvg;
+			drawCanvasLayer({
+				rows: canvasRows,
+				cycles: canvasCycles,
+				bounds,
+				useToolColors,
+				endpointSize,
+				arrowSize,
+				unitsPerPixel,
+				lineScale
+			});
+		}
+
+		function getZoomBucket(value) {
+			const base = Math.max(1.01, wheelZoomStep);
+
+			return Math.round(Math.log(Math.max(1, value)) / Math.log(base));
+		}
+
+		function getZoomForBucket(bucket) {
+			return Math.pow(Math.max(1.01, wheelZoomStep), bucket);
+		}
+
+		function getLabelCacheEntry(context) {
+			const key = makeLabelCacheKey(context);
+
+			if (labelCacheLimitBytes > 0 && labelCache.has(key)) {
+				const cached = labelCache.get(key);
+				cached.lastUsed = Date.now();
+				cached.currentDistance = Math.abs(cached.zoomBucket - getZoomBucket(zoom));
+				return cached;
 			}
 
-			labelTargets.push(...cycleTargets);
-			labelTargets.push(...toolTargets);
+			const entry = buildLabelCacheEntry(context, key);
 
-			for (const row of rows) {
+			if (labelCacheLimitBytes > 0) {
+				labelCache.set(key, entry);
+				labelCacheBytes += entry.bytes;
+				evictLabelCache(context.zoomBucket);
+			}
+
+			return entry;
+		}
+
+		function makeLabelCacheKey(context) {
+			return [
+				context.planeKey,
+				context.visibilityKey,
+				context.showLabels ? "labels" : "markers",
+				context.showEndpoints ? "endpoints" : "no-endpoints",
+				Math.round((Number(context.viewportAspect) || 1) * 1000) / 1000,
+				context.zoomBucket
+			].join("::");
+		}
+
+		function buildLabelCacheEntry(context, key) {
+			const bucketZoom = getZoomForBucket(context.zoomBucket);
+			const aspect = Math.max(0.000001, Number(context.viewportAspect) || 1);
+			const fitHeight = Math.max(context.fitBounds.height, context.fitBounds.width / aspect);
+			const bucketUnitsPerPixel = fitHeight / Math.max(1, bucketZoom) / Math.max(1, context.viewerSize);
+			const metrics = makeLabelMetrics(bucketUnitsPerPixel);
+			const entry = {
+				key,
+				zoomBucket: context.zoomBucket,
+				lastUsed: Date.now(),
+				currentDistance: Math.abs(context.zoomBucket - getZoomBucket(zoom)),
+				labelSize: metrics.labelSize,
+				labelOffset: metrics.labelOffset,
+				labelHitboxPadding: metrics.labelHitboxPadding,
+				mergeDistance: bucketUnitsPerPixel * data.options.pointMergeDistance,
+				targets: [],
+				spatialCells: new Map(),
+				hoverItemsById: new Map(),
+				hoverHtmlById: new Map(),
+				bytes: 0
+			};
+			const targets = makeLabelTargetsForCache(context, metrics);
+			const collapsedTargets = collapseCoincidentLabelTargets(targets, context.plane, data.options.humanFormat, entry.mergeDistance, context.showLabels);
+
+			assignHoverIds(entry, collapsedTargets);
+			entry.targets = collapsedTargets;
+			entry.spatialCellSize = Math.max(entry.mergeDistance, entry.labelSize * 8, 0.000001);
+			indexLabelTargets(entry);
+			entry.bytes = estimateLabelCacheEntryBytes(entry);
+			return entry;
+		}
+
+		function makeLabelMetrics(unitsPerPixel) {
+			return {
+				labelSize: unitsPerPixel * data.options.labelFontSize,
+				labelOffset: unitsPerPixel * data.options.labelOffset,
+				labelHitboxPadding: unitsPerPixel * 8,
+				endpointSize: unitsPerPixel * data.options.endpointSize,
+				startPointSize: unitsPerPixel * data.options.startPointSize,
+				toolChangeSize: unitsPerPixel * 4,
+				cyclePointSize: unitsPerPixel * 4
+			};
+		}
+
+		function makeLabelTargetsForCache(context, metrics) {
+			const targets = [];
+			const cycleTargets = context.cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, metrics.cyclePointSize, "cycle-point", "endpoint-label", context.showLabels ? "L" + cycle.lineNumber + " " + cycle.instruction : "", context.showLabels ? cycle.labelCoordinateLine : "", { kind: "cycle", position: cycle.end, hoverItems: [cycle.labelHoverHtml], showMarker: context.showEndpoints }));
+			const toolTargets = context.toolChanges.map(toolChange => makeToolChangeLabelTarget(toolChange, context.showLabels, metrics.toolChangeSize, context.showEndpoints));
+			const eventTargets = context.events.map(event => makePointLabelTarget(event.projectedPoint, metrics.endpointSize, event.markerClass || "endpoint endpoint-stop", "endpoint-label", context.showLabels ? event.instruction : "", context.showLabels ? event.labelCoordinateLine : "", { kind: event.markerKind || "event", position: event.position, hoverItems: [event.labelHoverHtml], showMarker: context.showEndpoints }));
+			const firstRow = context.rows[0];
+			const firstPoint = firstRow && firstRow.projectedPoints[0];
+
+			if (firstPoint) {
+				targets.push(makePointLabelTarget(firstPoint, metrics.startPointSize, "start-point", "start-label", context.showLabels ? "START" : "", context.showLabels ? firstRow.startCoordinateLine : "", { kind: "start", position: firstRow.start, hoverItems: [firstRow.startHoverHtml], showMarker: context.showEndpoints }));
+			}
+
+			targets.push(...cycleTargets);
+			targets.push(...toolTargets);
+			targets.push(...eventTargets);
+
+			for (const row of context.rows) {
 				const end = row.projectedEnd || row.projectedPoints[row.projectedPoints.length - 1];
 
 				if (!end) {
 					continue;
 				}
 
-				labelTargets.push(makePointLabelTarget(end, endpointSize, "endpoint", "endpoint-label", showLabels ? "L" + row.lineNumber : "", showLabels ? makeVisiblePositionLine(row.end, data.options.humanFormat) : "", makePointLabelDetails(row.end, row, "endpoint")));
+				targets.push(makePointLabelTarget(end, metrics.endpointSize, row.markerClass || "endpoint", "endpoint-label", context.showLabels ? "L" + row.lineNumber : "", context.showLabels ? row.endCoordinateLine : "", { kind: row.markerKind || "endpoint", position: row.end, hoverItems: [row.endHoverHtml], showMarker: context.showEndpoints }));
 			}
 
-			const pointMergeDistance = unitsPerPixel * data.options.pointMergeDistance;
-			const collapsedLabelTargets = collapseCoincidentLabelTargets(labelTargets, plane, data.options.humanFormat, pointMergeDistance);
-			const labelsAndMarkers = layoutPointLabels(collapsedLabelTargets, {
-				labelSize,
-				labelOffset,
-				labelHitboxPadding,
-				connectorPointGap,
-				connectorLabelGap,
-				endpointLabelAvoidance
-			}).map(renderPointLabel).join("");
-			const zeroAxes = showZeroLines ? renderZeroAxes(bounds) : "";
-			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
-			const svg = '<svg id="vision-svg" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
-				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.label-connector{stroke:#fff;stroke-width:0.85;stroke-linecap:round;opacity:0.9;vector-effect:non-scaling-stroke;}.rapid{fill:none;stroke:#ff8800;stroke-width:' + 1.1 * lineScale + ';stroke-dasharray:8 6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cut{fill:none;stroke:#ffd500;stroke-width:' + 1.4 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.direction-arrow{fill:none;stroke-width:' + 1.35 * lineScale + ';stroke-linecap:round;vector-effect:non-scaling-stroke;}.rapid-direction{stroke:#ff8800;}.cut-direction{stroke:#ffd500;}.cycle-stroke{fill:none;stroke:#4fc3ff;stroke-width:' + 1.45 * lineScale + ';stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
-				'</style>' +
-				'<defs>' +
-					'<marker id="rapid-arrow" markerWidth="' + arrowSize + '" markerHeight="' + arrowSize + '" refX="' + arrowSize + '" refY="' + arrowSize / 2 + '" orient="auto" markerUnits="userSpaceOnUse"><path class="arrow-rapid" d="M0,0 L' + arrowSize + ',' + arrowSize / 2 + ' L0,' + arrowSize + ' Z" /></marker>' +
-					'<marker id="cut-arrow" markerWidth="' + arrowSize + '" markerHeight="' + arrowSize + '" refX="' + arrowSize + '" refY="' + arrowSize / 2 + '" orient="auto" markerUnits="userSpaceOnUse"><path class="arrow-cut" d="M0,0 L' + arrowSize + ',' + arrowSize / 2 + ' L0,' + arrowSize + ' Z" /></marker>' +
-				'</defs>' +
-				zeroAxes +
-				compass +
-				paths +
-				directionArrows +
-				cycleStrokes +
-				labelsAndMarkers +
-				'</svg>';
+			return targets;
+		}
 
-			hideTooltip();
-			viewer.innerHTML = svg;
+		function assignHoverIds(entry, targets) {
+			let nextId = 1;
+			const idsByItems = new WeakMap();
+
+			for (const target of targets) {
+				if (!target.hoverItems || !target.hoverItems.length) {
+					continue;
+				}
+
+				let hoverId = idsByItems.get(target.hoverItems);
+
+				if (!hoverId) {
+					hoverId = String(nextId++);
+					idsByItems.set(target.hoverItems, hoverId);
+					entry.hoverItemsById.set(hoverId, target.hoverItems);
+				}
+
+				target.hoverId = hoverId;
+				delete target.hoverItems;
+			}
+		}
+
+		function indexLabelTargets(entry) {
+			for (const target of entry.targets) {
+				const cell = makeLabelCacheCell(target.point, entry.spatialCellSize);
+				const key = cell.x + "," + cell.y;
+				const targets = entry.spatialCells.get(key) || [];
+				targets.push(target);
+				entry.spatialCells.set(key, targets);
+			}
+		}
+
+		function queryLabelCacheEntry(entry, bounds, padding) {
+			if (!entry) {
+				return [];
+			}
+
+			const queryBounds = expandBounds(bounds, padding);
+			const minCell = makeLabelCacheCell({ x: queryBounds.minX, y: queryBounds.minY }, entry.spatialCellSize);
+			const maxCell = makeLabelCacheCell({ x: queryBounds.minX + queryBounds.width, y: queryBounds.minY + queryBounds.height }, entry.spatialCellSize);
+			const targets = [];
+			const seen = new Set();
+
+			for (let x = minCell.x; x <= maxCell.x; x++) {
+				for (let y = minCell.y; y <= maxCell.y; y++) {
+					const cellTargets = entry.spatialCells.get(x + "," + y);
+
+					if (!cellTargets) {
+						continue;
+					}
+
+					for (const target of cellTargets) {
+						if (seen.has(target)) {
+							continue;
+						}
+
+						seen.add(target);
+
+						if (isPointNearBounds(target.point, bounds, padding)) {
+							targets.push(target);
+						}
+					}
+				}
+			}
+
+			return targets;
+		}
+
+		function makeLabelCacheCell(point, cellSize) {
+			const size = Math.max(cellSize, 0.000001);
+
+			return {
+				x: Math.floor(point.x / size),
+				y: Math.floor(point.y / size)
+			};
+		}
+
+		function getCachedTooltipHtml(entry, hoverId) {
+			if (!entry || !hoverId) {
+				return "";
+			}
+
+			if (entry.hoverHtmlById.has(hoverId)) {
+				return entry.hoverHtmlById.get(hoverId);
+			}
+
+			const items = entry.hoverItemsById.get(hoverId) || [];
+			const html = '<div class="tooltip-item">' + items.join("") + '</div>';
+			entry.hoverHtmlById.set(hoverId, html);
+			return html;
+		}
+
+		function estimateLabelCacheEntryBytes(entry) {
+			let bytes = 2048 + entry.targets.length * 180 + entry.spatialCells.size * 80;
+
+			for (const target of entry.targets) {
+				bytes += String(target.labelLine || "").length * 2;
+				bytes += String(target.coordinateLine || "").length * 2;
+				bytes += String(target.hoverId || "").length * 2;
+			}
+
+			for (const items of entry.hoverItemsById.values()) {
+				bytes += 64;
+				for (const item of items) {
+					bytes += String(item || "").length * 2;
+				}
+			}
+
+			return bytes;
+		}
+
+		function evictLabelCache(currentBucket) {
+			if (labelCacheBytes <= labelCacheLimitBytes) {
+				return;
+			}
+
+			const entries = [...labelCache.values()].sort((a, b) => {
+				const distance = Math.abs(b.zoomBucket - currentBucket) - Math.abs(a.zoomBucket - currentBucket);
+
+				return distance || a.lastUsed - b.lastUsed;
+			});
+
+			for (const entry of entries) {
+				if (labelCacheBytes <= labelCacheLimitBytes) {
+					break;
+				}
+
+				labelCache.delete(entry.key);
+				labelCacheBytes -= entry.bytes;
+			}
+		}
+
+		function scheduleLabelCachePrewarm(context) {
+			if (labelCacheLimitBytes <= 0) {
+				return;
+			}
+
+			const prewarmKey = makeLabelCacheKey(context);
+
+			if (prewarmKey === lastPrewarmKey) {
+				return;
+			}
+
+			lastPrewarmKey = prewarmKey;
+			const runId = ++labelCacheRunId;
+			const buckets = [-1, 1, -2, 2].map(offset => context.zoomBucket + offset).filter(bucket => bucket >= 0);
+			const schedule = window.requestIdleCallback || (callback => window.setTimeout(() => callback({ timeRemaining: () => 8 }), 80));
+			let index = 0;
+			const work = deadline => {
+				while (index < buckets.length && deadline.timeRemaining() > 2) {
+					if (runId !== labelCacheRunId) {
+						return;
+					}
+
+					const zoomBucket = buckets[index++];
+					const nextContext = Object.assign({}, context, { zoomBucket });
+					const key = makeLabelCacheKey(nextContext);
+
+					if (!labelCache.has(key)) {
+						getLabelCacheEntry(nextContext);
+					}
+				}
+
+				if (index < buckets.length && runId === labelCacheRunId) {
+					schedule(work);
+				}
+			};
+
+			schedule(work);
+		}
+
+		function updateVirtualTable(resetScroll = false) {
+			if (!tableWrap || !tableBody) {
+				return;
+			}
+
+			if (resetScroll) {
+				tableWrap.scrollTop = 0;
+			}
+
+			const totalRows = currentTableRows.length;
+			const overscan = 6;
+			const visibleCount = Math.max(1, Math.ceil(tableWrap.clientHeight / tableRowHeight) + overscan * 2);
+			const startIndex = Math.max(0, Math.floor(tableWrap.scrollTop / tableRowHeight) - overscan);
+			const endIndex = Math.min(totalRows, startIndex + visibleCount);
+			const topHeight = startIndex * tableRowHeight;
+			const bottomHeight = Math.max(0, (totalRows - endIndex) * tableRowHeight);
+			const rows = [];
+
+			if (topHeight > 0) {
+				rows.push(makeTableSpacerRow(topHeight));
+			}
+
+			for (let index = startIndex; index < endIndex; index++) {
+				rows.push(renderVirtualTableRow(currentTableRows[index]));
+			}
+
+			if (bottomHeight > 0) {
+				rows.push(makeTableSpacerRow(bottomHeight));
+			}
+
+			tableBody.innerHTML = rows.join("");
+		}
+
+		function makeTableSpacerRow(height) {
+			return '<tr class="table-spacer"><td colspan="9" style="height:' + Math.max(0, Math.round(height)) + 'px"></td></tr>';
+		}
+
+		function renderVirtualTableRow(row) {
+			if (row.type === "label") {
+				const comment = row.comment ? " " + row.comment : "";
+
+				return '<tr class="label-row">' +
+					renderTableToolMarkerCell(row) +
+					'<td class="tool-marker-gap"></td>' +
+					'<td>' + svgEscape(row.lineNumber) + '</td>' +
+					'<td colspan="6"><code>' + svgEscape(row.instruction) + '</code>' + svgEscape(comment) + '</td>' +
+				'</tr>';
+			}
+
+			return '<tr>' +
+				renderTableToolMarkerCell(row) +
+				'<td class="tool-marker-gap"></td>' +
+				'<td>' + svgEscape(row.lineNumber) + '</td>' +
+				'<td><code>' + svgEscape(row.instruction) + '</code></td>' +
+				'<td>' + svgEscape(getRowWcsLabel(row)) + '</td>' +
+				'<td>' + svgEscape(row.startLabel || "-") + '</td>' +
+				'<td>' + svgEscape(row.endLabel || "-") + '</td>' +
+				'<td>' + svgEscape(formatTableDistance(row)) + '</td>' +
+				'<td class="notes">' + (svgEscape((row.warnings || []).join(" ")) || "-") + '</td>' +
+			'</tr>';
+		}
+
+		function renderTableToolMarkerCell(row) {
+			const style = row.toolColor ? ' style="background:' + escapeAttribute(row.toolColor) + '"' : "";
+
+			return '<td class="tool-marker-cell"' + style + '></td>';
+		}
+
+		function getRowWcsLabel(row) {
+			const key = getRowWcsKey(row);
+
+			return key === "__none" ? "No WCS" : key;
+		}
+
+		function formatTableDistance(row) {
+			if (row.type === "tool") {
+				return "Tool change";
+			}
+
+			if (Number.isFinite(row.distance) && Math.abs(row.distance) < 0.000000001) {
+				return "0.00";
+			}
+
+			return Number.isFinite(row.distance)
+				? formatAxisNumber(row.distance, data.options.humanFormat)
+				: "-";
 		}
 
 		function makePointLabelTarget(point, pointSize, pointClass, labelClass, labelLine, coordinateLine, details = {}) {
@@ -1111,27 +1635,20 @@ function renderVisionHtml(document, mode, options, result) {
 				coordinateLine,
 				kind: details.kind || "endpoint",
 				sourcePosition: details.position,
-				hoverHtml: details.hoverHtml || ""
+				showMarker: details.showMarker !== false,
+				hoverItems: details.hoverItems || (details.hoverHtml ? [details.hoverHtml] : [])
 			};
 		}
 
-		function makePointLabelDetails(position, row, kind) {
-			return {
-				kind,
-				position,
-				hoverHtml: makePointHoverHtml(position, row)
-			};
-		}
-
-		function makeToolChangeLabelTarget(toolChange, showLabels, plane, humanFormat, toolChangeSize) {
+		function makeToolChangeLabelTarget(toolChange, showLabels, toolChangeSize, showMarker) {
 			return makePointLabelTarget(
 				toolChange.projectedPoint,
 				toolChangeSize,
 				"tool-change-dot",
 				"endpoint-label",
 				showLabels ? "T[1]" : "",
-				showLabels ? makePlaneCoordinateLine(toolChange.point, plane, humanFormat, data.options.trimLabelTrailingZeros !== false) : "",
-				{ kind: "tool", position: toolChange.point, hoverHtml: makeToolChangeHoverHtml(toolChange) }
+				showLabels ? toolChange.labelCoordinateLine : "",
+				{ kind: "tool", position: toolChange.point, hoverItems: [toolChange.labelHoverHtml], showMarker }
 			);
 		}
 
@@ -1172,52 +1689,163 @@ function renderVisionHtml(document, mode, options, result) {
 
 			return '<div class="tooltip-row">' + lines.join("") + '</div>';
 		}
-		function collapseCoincidentLabelTargets(targets, plane, humanFormat, mergeDistance) {
+		function collapseCoincidentLabelTargets(targets, plane, humanFormat, mergeDistance, showLabels) {
 			const tolerance = Math.max(0, Number(mergeDistance) || 0);
 			const groups = [];
+			const exactGroups = new Map();
+			const spatialCells = new Map();
 
 			for (const target of targets) {
-				let group = tolerance > 0
-					? groups.find(candidate => candidate.some(existing => getPointDistance(existing.point, target.point) <= tolerance))
-					: groups.find(candidate => makePointKey(candidate[0].point) === makePointKey(target.point));
+				let group;
 
-				if (!group) {
-					group = [];
-					groups.push(group);
+				if (tolerance <= 0) {
+					const key = makePointKey(target.point);
+					group = exactGroups.get(key);
+
+					if (!group) {
+						group = [];
+						exactGroups.set(key, group);
+						groups.push(group);
+					}
+				} else {
+					group = findNearbyLabelGroup(target, spatialCells, tolerance);
+
+					if (!group) {
+						group = [];
+						groups.push(group);
+					}
+
+					addLabelTargetToSpatialCells(target, group, spatialCells, tolerance);
 				}
 
 				group.push(target);
 			}
 
-			return groups.flatMap(group => group.length > 1 ? makeCollapsedLabelTargets(group, plane, humanFormat) : group[0]);
+			return groups.flatMap(group => group.length > 1 ? makeCollapsedLabelTargets(group, plane, humanFormat, showLabels) : group[0]);
 		}
 
-		function makeCollapsedLabelTargets(group, plane, humanFormat) {
+		function findNearbyLabelGroup(target, spatialCells, tolerance) {
+			const cell = makeMergeCell(target.point, tolerance);
+
+			for (let dx = -1; dx <= 1; dx++) {
+				for (let dy = -1; dy <= 1; dy++) {
+					const entries = spatialCells.get((cell.x + dx) + "," + (cell.y + dy));
+
+					if (!entries) {
+						continue;
+					}
+
+					for (const entry of entries) {
+						if (getPointDistance(entry.target.point, target.point) <= tolerance) {
+							return entry.group;
+						}
+					}
+				}
+			}
+
+			return undefined;
+		}
+
+		function addLabelTargetToSpatialCells(target, group, spatialCells, tolerance) {
+			const cell = makeMergeCell(target.point, tolerance);
+			const key = cell.x + "," + cell.y;
+			const entries = spatialCells.get(key) || [];
+			entries.push({ target, group });
+			spatialCells.set(key, entries);
+		}
+
+		function makeMergeCell(point, tolerance) {
+			const size = Math.max(tolerance, 0.000001);
+
+			return {
+				x: Math.floor(point.x / size),
+				y: Math.floor(point.y / size)
+			};
+		}
+
+		function makeCollapsedLabelTargets(group, plane, humanFormat, showLabels) {
 			const representative = chooseRepresentativeTarget(group);
 			const sourcePosition = representative.sourcePosition || (group.find(target => target.sourcePosition) || {}).sourcePosition;
 			const toolCount = group.filter(target => target.kind === "tool").length;
-			const hoverHtml = '<div class="tooltip-item">' + group.map(target => target.hoverHtml || '<div class="tooltip-row"><div class="tooltip-line">' + svgEscape([target.labelLine, target.coordinateLine].filter(Boolean).join(" ")) + '</div></div>').join("") + '</div>';
+			const hoverItems = group.flatMap(target => target.hoverItems && target.hoverItems.length
+				? target.hoverItems
+				: ['<div class="tooltip-row"><div class="tooltip-line">' + svgEscape([target.labelLine, target.coordinateLine].filter(Boolean).join(" ")) + '</div></div>']);
+			const markerSlices = makeMergedMarkerSlices(group);
+			const mergedSemanticEndpointScale = Math.max(1, Number(data.options.mergedSemanticEndpointScale) || 1.5);
+			const mergedPointSize = Math.max(...group.map(target => target.pointSize || 0)) * (markerSlices && markerSlices.length > 1 ? mergedSemanticEndpointScale : 1);
 
 			const collapsedTarget = Object.assign({}, representative, {
-				pointSize: Math.max(...group.map(target => target.pointSize || 0)),
-				labelLine: makeCollapsedLabelText(group.length, toolCount, sourcePosition, plane, humanFormat, data.options.trimLabelTrailingZeros !== false),
+				pointSize: mergedPointSize,
+				labelLine: showLabels ? makeCollapsedLabelText(group.length, toolCount, sourcePosition, plane, humanFormat, data.options.trimLabelTrailingZeros !== false) : "",
 				coordinateLine: "",
-				hoverHtml
+				markerSlices,
+				showMarker: representative.showMarker,
+				hoverItems
 			});
 			const markerTargets = group
 				.filter(target => target !== representative)
 				.map(target => Object.assign({}, target, {
 					labelLine: "",
 					coordinateLine: "",
-					connector: undefined,
-					hoverHtml
+					showMarker: markerSlices && markerSlices.length > 1 ? false : target.showMarker,
+					hoverItems
 				}));
 
 			return [collapsedTarget, ...markerTargets];
 		}
 
+		function makeMergedMarkerSlices(group) {
+			const slices = [];
+			const seen = new Set();
+
+			for (const target of group) {
+				const slice = getMarkerSlice(target);
+
+				if (!slice || seen.has(slice.key)) {
+					continue;
+				}
+
+				seen.add(slice.key);
+				slices.push(slice);
+			}
+
+			return slices.length ? slices : undefined;
+		}
+
+		function getMarkerSlice(target) {
+			if (target.kind === "programEnd" || hasClassName(target.pointClass, "endpoint-program-end")) {
+				return { key: "programEnd", color: "#7f1d1d" };
+			}
+
+			if (target.kind === "optionalStop" || hasClassName(target.pointClass, "endpoint-optional-stop")) {
+				return { key: "optionalStop", color: "#dcdc6b" };
+			}
+
+			if (target.kind === "speedChange" || hasClassName(target.pointClass, "endpoint-speed-change")) {
+				return { key: "speedChange", color: "#ff2b2b" };
+			}
+
+			if (target.kind === "tool" || hasClassName(target.pointClass, "tool-change-dot")) {
+				return { key: "tool", color: "#6A9955" };
+			}
+
+			if (target.kind === "compensation" || hasClassName(target.pointClass, "endpoint-compensation")) {
+				return { key: "compensation", color: "#1f7a3a" };
+			}
+
+			if (target.kind === "compensationCancel" || hasClassName(target.pointClass, "endpoint-compensation-cancel")) {
+				return { key: "compensationCancel", color: "#8e44ad" };
+			}
+
+			return undefined;
+		}
+
+		function hasClassName(classText, className) {
+			return (" " + String(classText || "") + " ").includes(" " + className + " ");
+		}
+
 		function chooseRepresentativeTarget(group) {
-			const priority = { start: 4, tool: 3, cycle: 2, endpoint: 1 };
+			const priority = { programEnd: 8, optionalStop: 7, speedChange: 6, tool: 5, start: 4, compensation: 3, compensationCancel: 3, cycle: 2, endpoint: 1 };
 
 			return group.slice().sort((a, b) => (priority[b.kind] || 0) - (priority[a.kind] || 0))[0] || group[0];
 		}
@@ -1268,9 +1896,6 @@ function renderVisionHtml(document, mode, options, result) {
 			return parts.join(" ");
 		}
 		function layoutPointLabels(targets, options) {
-			const pointObstacles = targets.map(target => makePointObstacle(target.point, target.pointSize, options.labelHitboxPadding, makePointKey(target.point)));
-			const placedLabelBoxes = [];
-			const placedConnectors = [];
 			const duplicateCounts = countLabelTargetsByPoint(targets);
 			const stackedOffsets = new Map();
 
@@ -1284,7 +1909,6 @@ function renderVisionHtml(document, mode, options, result) {
 				if (duplicateCounts.get(stackKey) > 1) {
 					const stacked = makeStackedLabelPlacement(target, options, stackedOffsets.get(stackKey) || 0);
 					stackedOffsets.set(stackKey, stacked.nextOffset);
-					placedLabelBoxes.push(stacked.box);
 
 					return Object.assign({}, target, {
 						labelX: stacked.labelX,
@@ -1292,38 +1916,11 @@ function renderVisionHtml(document, mode, options, result) {
 					});
 				}
 
-				const candidates = makeLabelCandidates(target, options);
-				let chosen = candidates[0];
-
-				if (options.endpointLabelAvoidance) {
-					let bestScore = Number.POSITIVE_INFINITY;
-
-					for (const candidate of candidates) {
-						const connector = candidate.index === 0 ? undefined : makeLabelConnector(target.point, target.pointSize, candidate.box, options.connectorPointGap, options.connectorLabelGap);
-						const collisionScore = scoreLabelCandidate(candidate.box, connector, pointObstacles, placedLabelBoxes, placedConnectors, stackKey);
-						const score = collisionScore + candidate.priority;
-
-						if (score < bestScore) {
-							chosen = Object.assign({}, candidate, { connector });
-							bestScore = score;
-						}
-
-						if (collisionScore === 0) {
-							break;
-						}
-					}
-				}
-
-				placedLabelBoxes.push(chosen.box);
-
-				if (chosen.connector) {
-					placedConnectors.push(chosen.connector);
-				}
+				const chosen = makeSimpleLabelPlacement(target, options);
 
 				return Object.assign({}, target, {
 					labelX: chosen.labelX,
-					firstBaselineY: chosen.firstBaselineY,
-					connector: chosen.connector
+					firstBaselineY: chosen.firstBaselineY
 				});
 			});
 		}
@@ -1370,35 +1967,14 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function makePointObstacle(point, radius, padding, key) {
-			return {
-				key,
-				left: point.x - radius - padding,
-				top: point.y - radius - padding,
-				right: point.x + radius + padding,
-				bottom: point.y + radius + padding
-			};
-		}
-
-		function makeLabelCandidates(target, options) {
+		function makeSimpleLabelPlacement(target, options) {
 			const metrics = measurePointLabel(target, options.labelSize, options.labelHitboxPadding);
-			const xDistance = target.pointSize + options.labelOffset + metrics.width / 2;
 			const yDistance = target.pointSize + options.labelOffset + metrics.height / 2;
-			const offsets = [[0, yDistance]];
-			const rings = [1.15, 1.65, 2.25, 3.0];
-			const angles = [];
 
-			for (let angle = 0; angle < 360; angle += 10) {
-				angles.push(angle);
-			}
-
-			for (const ring of rings) {
-				for (const angle of angles) {
-					offsets.push(makeAngleOffset(angle, xDistance * ring, yDistance * ring));
-				}
-			}
-
-			return offsets.map((offset, index) => makeLabelCandidate(target.point.x + offset[0], target.point.y + offset[1], metrics, index, offset));
+			return {
+				labelX: target.point.x,
+				firstBaselineY: target.point.y + yDistance - metrics.height / 2 + metrics.firstBaselineOffset
+			};
 		}
 
 		function measurePointLabel(target, labelSize, padding) {
@@ -1414,134 +1990,19 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function makeAngleOffset(angleDegrees, xRadius, yRadius) {
-			const radians = angleDegrees * Math.PI / 180;
-
-			return [
-				Math.cos(radians) * xRadius,
-				Math.sin(radians) * yRadius
-			];
-		}
-
-		function makeLabelCandidate(centerX, centerY, metrics, index, offset) {
-			const left = centerX - metrics.width / 2;
-			const top = centerY - metrics.height / 2;
-			const distance = offset ? Math.hypot(offset[0], offset[1]) : 0;
-
-			return {
-				index,
-				priority: distance * 0.02 + index * 0.001,
-				labelX: centerX,
-				firstBaselineY: top + metrics.firstBaselineOffset,
-				box: {
-					left,
-					top,
-					right: left + metrics.width,
-					bottom: top + metrics.height
-				}
-			};
-		}
-
-		function scoreLabelCandidate(box, connector, pointObstacles, placedLabelBoxes, placedConnectors, targetKey) {
-			let score = 0;
-
-			for (const obstacle of pointObstacles) {
-				if (obstacle.key === targetKey) {
-					continue;
-				}
-
-				score += getIntersectionArea(box, obstacle) * 1000;
-			}
-
-			for (const placedBox of placedLabelBoxes) {
-				score += getIntersectionArea(box, placedBox) * 1200;
-			}
-
-			if (connector) {
-				for (const placedConnector of placedConnectors) {
-					if (segmentsIntersect(connector, placedConnector)) {
-						score += 100000000;
-					}
-				}
-			}
-
-			return score;
-		}
-
-		function segmentsIntersect(a, b) {
-			const directionA = {
-				x: a.x2 - a.x1,
-				y: a.y2 - a.y1
-			};
-			const directionB = {
-				x: b.x2 - b.x1,
-				y: b.y2 - b.y1
-			};
-			const denominator = cross(directionA, directionB);
-
-			if (Math.abs(denominator) < 0.000001) {
-				return false;
-			}
-
-			const delta = {
-				x: b.x1 - a.x1,
-				y: b.y1 - a.y1
-			};
-			const t = cross(delta, directionB) / denominator;
-			const u = cross(delta, directionA) / denominator;
-
-			return t > 0.03 && t < 0.97 && u > 0.03 && u < 0.97;
-		}
-
-		function cross(a, b) {
-			return a.x * b.y - a.y * b.x;
-		}
-
-		function getIntersectionArea(a, b) {
-			const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-			const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-
-			return width * height;
-		}
-
-		function makeLabelConnector(point, pointSize, box, pointGap, labelGap) {
-			const targetX = Math.max(box.left, Math.min(box.right, point.x));
-			const targetY = Math.max(box.top, Math.min(box.bottom, point.y));
-			const dx = targetX - point.x;
-			const dy = targetY - point.y;
-			const length = Math.hypot(dx, dy);
-
-			if (length <= 0) {
-				return undefined;
-			}
-
-			const ux = dx / length;
-			const uy = dy / length;
-
-			return {
-				x1: point.x + ux * (pointSize + pointGap),
-				y1: point.y + uy * (pointSize + pointGap),
-				x2: targetX - ux * labelGap,
-				y2: targetY - uy * labelGap
-			};
-		}
-
 		function renderPointLabel(target) {
 			const x = round(target.point.x);
 			const y = round(target.point.y);
-			const tooltipAttribute = target.hoverHtml ? ' data-tooltip="' + escapeAttribute(target.hoverHtml) + '"' : "";
-			const marker = '<circle class="' + target.pointClass + '" cx="' + x + '" cy="' + y + '" r="' + target.pointSize + '" />';
+			const tooltipAttribute = target.hoverId ? ' data-tooltip-id="' + escapeAttribute(target.hoverId) + '"' : "";
+			const markerKeys = getMarkerLegendKeys(target);
+			const markerKeysAttribute = markerKeys.length ? ' data-marker-keys="' + escapeAttribute(markerKeys.join(",")) + '"' : "";
+			const marker = target.showMarker === false ? "" : renderPointMarker(target, x, y);
 
 			if (!target.labelLine && !target.coordinateLine) {
-				return '<g class="point-label-hit"' + tooltipAttribute + '>' + marker + '</g>';
+				return marker ? '<g class="point-label-hit"' + tooltipAttribute + markerKeysAttribute + '>' + marker + '</g>' : "";
 			}
 
-			const connector = target.connector
-				? '<line class="label-connector" x1="' + round(target.connector.x1) + '" y1="' + round(target.connector.y1) + '" x2="' + round(target.connector.x2) + '" y2="' + round(target.connector.y2) + '" />'
-				: "";
-
-			return '<g class="point-label-hit"' + tooltipAttribute + '>' + marker +
-				connector +
+			return '<g class="point-label-hit"' + tooltipAttribute + markerKeysAttribute + '>' + marker +
 				'<text class="point-label ' + target.labelClass + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
 					'<tspan x="' + round(target.labelX) + '">' + svgEscape(target.labelLine) + '</tspan>' +
 					(target.coordinateLine ? '<tspan x="' + round(target.labelX) + '" dy="1.15em">' + svgEscape(target.coordinateLine) + '</tspan>' : "") +
@@ -1549,28 +2010,256 @@ function renderVisionHtml(document, mode, options, result) {
 				'</g>';
 		}
 
-
-		function renderMotionPath(row, useToolColors) {
-			const cls = row.motionCode === 0 ? "rapid" : "cut";
-			const toolColor = useToolColors && row.toolColor ? boostToolColor(row.toolColor) : "";
-			const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
-
-			return '<polyline class="' + cls + '"' + strokeStyle + ' points="' + formatPointList(row.projectedPoints) + '" />';
-		}
-
-		function renderDirectionArrow(row, useToolColors, endpointSize, arrowSize, unitsPerPixel) {
-			const arrowSegment = makeDirectionArrowSegment(row.projectedPoints, endpointSize, arrowSize, unitsPerPixel);
-
-			if (!arrowSegment) {
-				return "";
+		function getMarkerLegendKeys(target) {
+			if (target.markerSlices && target.markerSlices.length) {
+				return target.markerSlices.map(slice => slice.key);
 			}
 
-			const cls = row.motionCode === 0 ? "rapid-direction" : "cut-direction";
-			const marker = row.motionCode === 0 ? "url(#rapid-arrow)" : "url(#cut-arrow)";
-			const toolColor = useToolColors && row.toolColor ? boostToolColor(row.toolColor) : "";
-			const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
+			const slice = getMarkerSlice(target);
 
-			return '<line class="direction-arrow ' + cls + '"' + strokeStyle + ' marker-end="' + marker + '" x1="' + round(arrowSegment.start.x) + '" y1="' + round(arrowSegment.start.y) + '" x2="' + round(arrowSegment.end.x) + '" y2="' + round(arrowSegment.end.y) + '" />';
+			return slice ? [slice.key] : [];
+		}
+
+		function renderPointMarker(target, x, y) {
+			if (!target.markerSlices || !target.markerSlices.length) {
+				return '<circle class="' + target.pointClass + '" cx="' + x + '" cy="' + y + '" r="' + target.pointSize + '" />';
+			}
+
+			if (target.markerSlices.length === 1) {
+				return '<circle class="' + target.pointClass + '" cx="' + x + '" cy="' + y + '" r="' + target.pointSize + '" style="fill:' + escapeAttribute(target.markerSlices[0].color) + '" />';
+			}
+
+			const radius = Number(target.pointSize) || 0;
+			const angleStep = Math.PI * 2 / target.markerSlices.length;
+			const slices = target.markerSlices.map((slice, index) => {
+				const startAngle = -Math.PI / 2 + index * angleStep;
+				const endAngle = startAngle + angleStep;
+				const start = makePiePoint(x, y, radius, startAngle);
+				const end = makePiePoint(x, y, radius, endAngle);
+				const largeArc = angleStep > Math.PI ? 1 : 0;
+
+				return '<path d="M ' + x + ' ' + y + ' L ' + round(start.x) + ' ' + round(start.y) + ' A ' + radius + ' ' + radius + ' 0 ' + largeArc + ' 1 ' + round(end.x) + ' ' + round(end.y) + ' Z" fill="' + escapeAttribute(slice.color) + '" />';
+			}).join("");
+
+			return '<g>' + slices +
+				'<circle class="' + target.pointClass + '" cx="' + x + '" cy="' + y + '" r="' + radius + '" style="fill:none" />' +
+				'</g>';
+		}
+
+		function makePiePoint(x, y, radius, angle) {
+			return {
+				x: x + Math.cos(angle) * radius,
+				y: y + Math.sin(angle) * radius
+			};
+		}
+
+		function drawCanvasLayer(state) {
+			const canvas = document.getElementById("vision-canvas");
+
+			if (!canvas || !state) {
+				return;
+			}
+
+			const rect = canvas.getBoundingClientRect();
+			const scale = window.devicePixelRatio || 1;
+			const width = Math.max(1, Math.floor(rect.width * scale));
+			const height = Math.max(1, Math.floor(rect.height * scale));
+
+			if (canvas.width !== width || canvas.height !== height) {
+				canvas.width = width;
+				canvas.height = height;
+			}
+
+			const context = canvas.getContext("2d");
+
+			if (!context) {
+				return;
+			}
+
+			context.clearRect(0, 0, width, height);
+			context.save();
+			context.scale(scale, scale);
+			const transform = makeCanvasTransform(state.bounds, rect.width, rect.height);
+
+			drawMotionRows(context, state.rows, state, transform);
+			drawCycleRows(context, state.cycles, state, transform);
+			drawDirectionArrows(context, state.rows, state, transform);
+			context.restore();
+		}
+
+		function makeCanvasTransform(bounds, width, height) {
+			return {
+				x: point => (point.x - bounds.minX) / bounds.width * width,
+				y: point => (point.y - bounds.minY) / bounds.height * height
+			};
+		}
+
+		function drawMotionRows(context, rows, state, transform) {
+			const buckets = new Map();
+
+			for (const row of rows) {
+				const color = getMotionStrokeColor(row, state.useToolColors);
+				const width = (row.motionCode === 0 ? 1.1 : 1.4) * state.lineScale;
+				const dash = row.motionCode === 0 ? "8,6" : "";
+				const key = color + "|" + width + "|" + dash;
+				const bucket = buckets.get(key) || {
+					color,
+					width,
+					dash: row.motionCode === 0 ? [8, 6] : undefined,
+					rows: []
+				};
+				bucket.rows.push(row.projectedPoints);
+				buckets.set(key, bucket);
+			}
+
+			for (const bucket of buckets.values()) {
+				drawPolylineBucket(context, bucket.rows, bucket, transform);
+			}
+		}
+
+		function drawCycleRows(context, cycles, state, transform) {
+			const buckets = new Map();
+
+			for (const cycle of cycles) {
+				const color = state.useToolColors && cycle.toolColor ? boostToolColor(cycle.toolColor) : "#4fc3ff";
+				const width = 1.45 * state.lineScale;
+				const key = color + "|" + width;
+				const bucket = buckets.get(key) || {
+					color,
+					width,
+					rows: []
+				};
+				bucket.rows.push(cycle.projectedPoints);
+				buckets.set(key, bucket);
+			}
+
+			for (const bucket of buckets.values()) {
+				drawPolylineBucket(context, bucket.rows, bucket, transform);
+			}
+		}
+
+		function drawPolylineBucket(context, pointSets, style, transform) {
+			context.save();
+			context.beginPath();
+			context.strokeStyle = style.color;
+			context.lineWidth = Math.max(0.5, style.width || 1);
+			context.lineCap = "round";
+			context.lineJoin = "round";
+			context.setLineDash(style.dash || []);
+
+			for (const points of pointSets) {
+				if (!points || points.length < 2) {
+					continue;
+				}
+
+				context.moveTo(transform.x(points[0]), transform.y(points[0]));
+
+				for (let index = 1; index < points.length; index++) {
+					context.lineTo(transform.x(points[index]), transform.y(points[index]));
+				}
+			}
+
+			context.stroke();
+			context.restore();
+		}
+
+		function drawDirectionArrows(context, rows, state, transform) {
+			const buckets = new Map();
+
+			for (const row of rows) {
+				const arrowSegment = makeDirectionArrowSegment(row.projectedPoints, state.endpointSize, state.arrowSize, state.unitsPerPixel);
+
+				if (!arrowSegment) {
+					continue;
+				}
+
+				const color = getDirectionStrokeColor(row, state.useToolColors);
+				const width = 1.35 * state.lineScale;
+				const size = Math.max(6, state.arrowSize / Math.max(state.unitsPerPixel, 0.000001));
+				const key = color + "|" + width + "|" + size;
+				const bucket = buckets.get(key) || {
+					color,
+					width,
+					size,
+					segments: []
+				};
+				bucket.segments.push(arrowSegment);
+				buckets.set(key, bucket);
+			}
+
+			for (const bucket of buckets.values()) {
+				drawArrowBucket(context, bucket, transform);
+			}
+		}
+
+		function drawArrowBucket(context, bucket, transform) {
+			context.save();
+			context.strokeStyle = bucket.color;
+			context.fillStyle = bucket.color;
+			context.lineWidth = Math.max(0.5, bucket.width || 1);
+			context.lineCap = "round";
+			context.beginPath();
+
+			const triangles = [];
+			const size = Math.max(4, Math.min(28, bucket.size));
+			const wing = size * 0.45;
+
+			for (const segment of bucket.segments) {
+				const start = {
+					x: transform.x(segment.start),
+					y: transform.y(segment.start)
+				};
+				const end = {
+					x: transform.x(segment.end),
+					y: transform.y(segment.end)
+				};
+				const dx = end.x - start.x;
+				const dy = end.y - start.y;
+				const length = Math.hypot(dx, dy);
+
+				if (!Number.isFinite(length) || length <= 0) {
+					continue;
+				}
+
+				const ux = dx / length;
+				const uy = dy / length;
+				context.moveTo(start.x, start.y);
+				context.lineTo(end.x, end.y);
+				triangles.push([
+					end,
+					{ x: end.x - ux * size - uy * wing, y: end.y - uy * size + ux * wing },
+					{ x: end.x - ux * size + uy * wing, y: end.y - uy * size - ux * wing }
+				]);
+			}
+
+			context.stroke();
+			context.beginPath();
+
+			for (const triangle of triangles) {
+				context.moveTo(triangle[0].x, triangle[0].y);
+				context.lineTo(triangle[1].x, triangle[1].y);
+				context.lineTo(triangle[2].x, triangle[2].y);
+				context.closePath();
+			}
+
+			context.fill();
+			context.restore();
+		}
+
+		function getMotionStrokeColor(row, useToolColors) {
+			if (useToolColors && row.toolColor) {
+				return boostToolColor(row.toolColor);
+			}
+
+			return row.motionCode === 0 ? "#ff8800" : "#ffd500";
+		}
+
+		function getDirectionStrokeColor(row, useToolColors) {
+			if (useToolColors && row.toolColor) {
+				return boostToolColor(row.toolColor);
+			}
+
+			return row.motionCode === 0 ? "#ff8800" : "#ffd500";
 		}
 
 		function makeDirectionArrowSegment(points, endpointSize, arrowSize, unitsPerPixel) {
@@ -1634,18 +2323,6 @@ function renderVisionHtml(document, mode, options, result) {
 
 			return length;
 		}
-		function renderCycleStroke(cycle, useToolColors) {
-			if (!cycle.projectedPoints || cycle.projectedPoints.length < 2) {
-				return "";
-			}
-
-			const toolColor = useToolColors && cycle.toolColor ? boostToolColor(cycle.toolColor) : "";
-			const strokeStyle = toolColor ? ' style="stroke:' + escapeAttribute(toolColor) + '"' : "";
-
-			return '<polyline class="cycle-stroke"' + strokeStyle + ' points="' + formatPointList(cycle.projectedPoints) + '" />';
-		}
-
-
 		function renderCompass(bounds, plane, compassSize, offsetX, offsetY) {
 			const x = bounds.minX + offsetX + compassSize * 0.55;
 			const y = bounds.minY + offsetY + compassSize * 0.55;
@@ -1734,9 +2411,13 @@ function renderVisionHtml(document, mode, options, result) {
 			resetView();
 		});
 		labelsInput.addEventListener("change", render);
+		endpointsInput.addEventListener("change", render);
 		zeroLinesInput.addEventListener("change", render);
 		toolColorsInput.addEventListener("change", render);
 		document.querySelectorAll("[data-visibility-tool], [data-visibility-wcs]").forEach(input => input.addEventListener("change", render));
+		if (tableWrap) {
+			tableWrap.addEventListener("scroll", () => updateVirtualTable(false));
+		}
 		function updateTooltip(event) {
 			if (!tooltip || dragState) {
 				hideTooltip();
@@ -1744,10 +2425,12 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			const target = event.target && event.target.closest ? event.target.closest(".point-label-hit") : undefined;
-			const html = target && target.getAttribute("data-tooltip");
+			const hoverId = target && target.getAttribute("data-tooltip-id");
+			const html = getCachedTooltipHtml(currentLabelEntry, hoverId);
+			updateMarkerLegend(target);
 
 			if (!html) {
-				hideTooltip();
+				hideTooltipOnly();
 				return;
 			}
 
@@ -1775,9 +2458,54 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function hideTooltip() {
+			hideTooltipOnly();
+			hideMarkerLegend();
+		}
+
+		function hideTooltipOnly() {
 			if (tooltip) {
 				tooltip.style.display = "none";
 			}
+		}
+
+		function updateMarkerLegend(target) {
+			if (!markerLegend) {
+				return;
+			}
+
+			const keys = target && target.getAttribute("data-marker-keys")
+				? target.getAttribute("data-marker-keys").split(",").filter(Boolean)
+				: [];
+			const entries = keys.map(getMarkerLegendEntry).filter(Boolean);
+
+			if (!entries.length) {
+				hideMarkerLegend();
+				return;
+			}
+
+			markerLegend.innerHTML = entries.map(entry =>
+				'<div class="marker-legend-row"><span class="marker-legend-swatch" style="background:' + escapeAttribute(entry.color) + '"></span><span>' + svgEscape(entry.label) + '</span></div>'
+			).join("");
+			markerLegend.style.display = "block";
+		}
+
+		function hideMarkerLegend() {
+			if (markerLegend) {
+				markerLegend.style.display = "none";
+			}
+		}
+
+		function getMarkerLegendEntry(key) {
+			const entries = {
+				programEnd: { color: "#7f1d1d", label: "Program end" },
+				optionalStop: { color: "#dcdc6b", label: "M00 / M01 stop" },
+				speedChange: { color: "#ff2b2b", label: "Spindle speed change" },
+				tool: { color: "#6A9955", label: "Tool change" },
+				compensation: { color: "#1f7a3a", label: "Compensation on" },
+				compensationCancel: { color: "#8e44ad", label: "Compensation off" }
+			};
+
+			return entries[key];
 		}
 		document.getElementById("fit").addEventListener("click", () => {
 			resetView();
@@ -1834,15 +2562,6 @@ function renderVisionHtml(document, mode, options, result) {
 		viewer.addEventListener("pointercancel", () => {
 			dragState = undefined;
 			viewer.classList.remove("dragging");
-		});
-		document.getElementById("save").addEventListener("click", () => {
-			const svg = document.getElementById("vision-svg");
-
-			if (!svg) {
-				return;
-			}
-
-			vscode.postMessage({ type: "saveSvg", plane: planeSelect.value, svg: svg.outerHTML });
 		});
 		document.getElementById("whole").addEventListener("click", () => {
 			vscode.postMessage({ type: "whole", options: collectVisionOptions() });
@@ -1974,32 +2693,7 @@ function renderRows(rows, humanFormat) {
 		return "<p class=\"empty\">No motion rows found.</p>";
 	}
 
-	const body = rows.map(row => {
-		if (row.type === "label") {
-			const comment = row.comment ? ` ${row.comment}` : "";
-
-			return `<tr class="label-row">
-				${renderToolMarkerCell(row)}
-				<td class="tool-marker-gap"></td>
-				<td>${escapeHtml(row.lineNumber)}</td>
-				<td colspan="6"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}</td>
-			</tr>`;
-		}
-
-		return `<tr data-vision-row data-tool-key="${escapeAttribute(getVisionToolKey(row))}" data-wcs-key="${escapeAttribute(getVisionWcsKey(row))}">
-			${renderToolMarkerCell(row)}
-			<td class="tool-marker-gap"></td>
-			<td>${escapeHtml(row.lineNumber)}</td>
-			<td><code>${escapeHtml(row.instruction)}</code></td>
-			<td>${escapeHtml(getVisionWcsLabel(row))}</td>
-			<td>${escapeHtml(row.startLabel || "-")}</td>
-			<td>${escapeHtml(row.endLabel || "-")}</td>
-			<td>${escapeHtml(formatDistance(row, humanFormat))}</td>
-			<td class="notes">${escapeHtml((row.warnings || []).join(" ")) || "-"}</td>
-		</tr>`;
-	}).join("");
-
-	return `<div class="table-wrap">
+	return `<div id="visionTableWrap" class="table-wrap">
 		<table>
 			<thead>
 				<tr>
@@ -2014,7 +2708,7 @@ function renderRows(rows, humanFormat) {
 					<th>Notes</th>
 				</tr>
 			</thead>
-			<tbody>${body}</tbody>
+			<tbody id="visionTableBody"></tbody>
 		</table>
 	</div>`;
 }

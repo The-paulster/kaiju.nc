@@ -523,6 +523,18 @@
             "default": 1e-7,
             "minimum": 0,
             "description": "Numeric tolerance used by KAIJU Decomposition when evaluating macro comparisons such as EQ, NE, GT, GE, LT, and LE."
+          },
+          "kaijuNC.decomposition.maxExecutionSteps": {
+            "type": "integer",
+            "default": 20000,
+            "minimum": 1,
+            "description": "Maximum number of execution steps KAIJU Decomposition will process before stopping to avoid unresolved loops or jumps."
+          },
+          "kaijuNC.decomposition.maxOutputLines": {
+            "type": "integer",
+            "default": 50000,
+            "minimum": 1,
+            "description": "Maximum number of output lines KAIJU Decomposition will emit before stopping the trace."
           }
         }
       },
@@ -750,10 +762,17 @@
           },
           "kaijuNC.vision.endpointSize": {
             "type": "number",
-            "default": 3,
+            "default": 4,
             "minimum": 1,
             "maximum": 24,
             "description": "Endpoint marker radius in KAIJU Vision, in screen pixels."
+          },
+          "kaijuNC.vision.mergedSemanticEndpointScale": {
+            "type": "number",
+            "default": 1.5,
+            "minimum": 1,
+            "maximum": 4,
+            "description": "Scale multiplier for KAIJU Vision merged endpoint markers that contain multiple semantic colors."
           },
           "kaijuNC.vision.startPointSize": {
             "type": "number",
@@ -788,10 +807,12 @@
             "maximum": 80,
             "description": "Screen-pixel distance used by KAIJU Vision to merge endpoint and tool-change markers into one visual point. Use 0 for exact-coordinate merging only; zooming in can split near-overlapping points."
           },
-          "kaijuNC.vision.endpointLabelAvoidance": {
-            "type": "boolean",
-            "default": false,
-            "description": "Experimental: move KAIJU Vision endpoint labels away from endpoint dots and other labels when possible, drawing a small connector line when a label is displaced. Off by default because dense programs can make the current layout pass slow or awkward."
+          "kaijuNC.vision.labelCacheMB": {
+            "type": "number",
+            "default": 128,
+            "minimum": 0,
+            "maximum": 512,
+            "description": "Approximate memory limit for KAIJU Vision merged-label zoom cache, in MB. Use 0 to disable label caching."
           },
           "kaijuNC.vision.compassSize": {
             "type": "number",

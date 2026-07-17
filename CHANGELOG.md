@@ -8,6 +8,11 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Fixed KAIJU Sense macro hovers so comment-only macro names like `(#105 = previous removed depth [mm])` or `(#105 previous removed depth [mm])` still appear when the macro value is unresolved.
 - Fixed KAIJU Chronoblade CSS timing at X0 so centerline moves use the active RPM limit instead of reporting unknown time.
 - Fixed KAIJU Chronoblade rapid and dwell rows so they no longer display the modal cutting feedrate, and counted `G04` dwell time separately from cutting time.
+- Improved KAIJU Vision performance for dense programs by drawing toolpaths and arrows on batched canvas, virtualizing the motion table, caching projected geometry, caching merged labels by zoom bucket with a configurable 128 MB default cache, viewport-culling overlays, removing SVG export, and sampling only curved moves.
+- Fixed KAIJU Vision's label toggle so it also hides merged label text, renamed it to Labels, and added an Endpoints toggle for hiding endpoint dots without hiding toolpaths.
+- Added KAIJU Vision endpoint marker colors for program ends, optional stops, spindle speed changes, compensation/offset changes, and compensation cancels, including configurable larger split-color markers and a hover legend for semantic endpoint colors.
+- Changed KAIJU Vision to fill the available viewer space without forcing a square viewport, with marker and label sizing based on viewer height.
+- Added configurable KAIJU Decomposition execution and output limits with `kaijuNC.decomposition.maxExecutionSteps` and `kaijuNC.decomposition.maxOutputLines`.
 
 ## [0.3.0]
 
