@@ -6,6 +6,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 - Added `AND` support to KAIJU Decomposition compound conditions such as `IF[[#105 NE 1.000] AND [#105 NE 2.000]] THEN #3000 = 1.000`.
 - Fixed KAIJU Sense macro hovers so comment-only macro names like `(#105 = previous removed depth [mm])` or `(#105 previous removed depth [mm])` still appear when the macro value is unresolved.
+- Fixed KAIJU Chronoblade CSS timing at X0 so centerline moves use the active RPM limit instead of reporting unknown time.
+- Fixed KAIJU Chronoblade rapid and dwell rows so they no longer display the modal cutting feedrate, and counted `G04` dwell time separately from cutting time.
 
 ## [0.3.0]
 

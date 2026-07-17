@@ -975,6 +975,10 @@ function getEffectiveRpm(position, state, options) {
 	const diameter = Math.abs(position.x);
 
 	if (!Number.isFinite(diameter) || diameter <= 0) {
+		if (Number.isFinite(state.rpmLimit) && state.rpmLimit > 0) {
+			return state.rpmLimit;
+		}
+
 		return NaN;
 	}
 
@@ -1152,7 +1156,13 @@ function analyzeChronobladeRange(document, range, options) {
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
 
-		if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
+		if (isDwellLine(words)) {
+			positionWasUpdated = true;
+
+			if (isLineInRange(lineNumber, targetRange)) {
+				rows.push(makeDwellReportRow(lineNumber, words, getToolRangeAtLine(toolRanges, lineNumber)));
+			}
+		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
@@ -1229,6 +1239,8 @@ function analyzeVisionRange(document, range, options) {
 			}
 
 			applyCannedCyclePositionUpdate(words, state);
+		} else if (isDwellLine(words)) {
+			positionWasUpdated = true;
 		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
@@ -1319,6 +1331,26 @@ function hasCycleSiteAxisWords(words) {
 
 function hasMotionAxisWords(words) {
 	return !isCoordinateSettingLine(words) && words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+}
+
+function isDwellLine(words) {
+	return hasGCode(words, 4);
+}
+
+function getDwellSeconds(words) {
+	const secondsWord = lastWord(words, "X") || lastWord(words, "U");
+
+	if (secondsWord && Number.isFinite(secondsWord.value) && secondsWord.value >= 0) {
+		return secondsWord.value;
+	}
+
+	const millisecondsWord = lastWord(words, "P");
+
+	if (millisecondsWord && Number.isFinite(millisecondsWord.value) && millisecondsWord.value >= 0) {
+		return millisecondsWord.value / 1000;
+	}
+
+	return NaN;
 }
 
 function isCoordinateSettingLine(words) {
@@ -1418,6 +1450,7 @@ function estimateToolChangeTime(previousTool, tool, options) {
 
 function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRange) {
 	const humanFormat = options && options.humanFormat;
+	const showsFeed = motionCode >= 1 && motionCode <= 3;
 
 	return {
 		type: "motion",
@@ -1428,11 +1461,31 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRang
 		end: formatPosition(estimate.end, humanFormat),
 		distance: estimate.distance,
 		timeSeconds: estimate.timeSeconds,
-		feed: estimate.feed,
-		feedMode: estimate.feedMode,
+		feed: showsFeed ? estimate.feed : NaN,
+		feedMode: showsFeed ? estimate.feedMode : "",
 		spindle: formatSpindle(estimate, humanFormat),
 		rpmUsed: formatRpmUsed(estimate, humanFormat),
 		warnings: estimate.warnings || []
+	};
+}
+
+function makeDwellReportRow(lineNumber, words, toolRange) {
+	const timeSeconds = getDwellSeconds(words);
+
+	return {
+		type: "dwell",
+		lineNumber: lineNumber + 1,
+		instruction: "G4",
+		toolColor: getToolColor(toolRange),
+		start: "",
+		end: "",
+		distance: NaN,
+		timeSeconds,
+		feed: NaN,
+		feedMode: "",
+		spindle: "",
+		rpmUsed: "",
+		warnings: Number.isFinite(timeSeconds) ? [] : ["Dwell time is unknown."]
 	};
 }
 
@@ -1670,6 +1723,7 @@ function summarizeChronobladeRows(rows) {
 		totalDistance: 0,
 		rapidTimeSeconds: 0,
 		cuttingTimeSeconds: 0,
+		dwellTimeSeconds: 0,
 		toolTimeSeconds: 0
 	};
 
@@ -1691,6 +1745,8 @@ function summarizeChronobladeRows(rows) {
 
 		if (row.type === "tool") {
 			summary.toolTimeSeconds += row.timeSeconds;
+		} else if (row.type === "dwell") {
+			summary.dwellTimeSeconds += row.timeSeconds;
 		} else if (row.instruction === "G0") {
 			summary.rapidTimeSeconds += row.timeSeconds;
 		} else {

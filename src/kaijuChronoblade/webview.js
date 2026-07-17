@@ -374,6 +374,7 @@ function renderChronobladeHtml(document, mode, options, result) {
 		${renderMetric("Total", formatTime(summary.totalTimeSeconds))}
 		${renderMetric("Cutting", formatTime(summary.cuttingTimeSeconds))}
 		${renderMetric("G0", formatTime(summary.rapidTimeSeconds))}
+		${renderMetric("Dwell", formatTime(summary.dwellTimeSeconds))}
 		${renderMetric("Tool", formatTime(summary.toolTimeSeconds))}
 		${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat))}
 	</section>
