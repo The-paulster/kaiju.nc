@@ -8,6 +8,8 @@ const { getWarpaintOptions } = require("./options");
 
 const STORAGE_KEY = "kaijuWarpaint.sectionsByDocument";
 const TOOL_MARKER_WIDTH = 4;
+const SEEDED_COLOR_SATURATION = 0.72;
+const SEEDED_COLOR_LIGHTNESS = 0.58;
 let warpaintContext;
 let warpaintPanel;
 let pendingUpdate;
@@ -20,6 +22,9 @@ function registerKaijuWarpaint(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("kaijuNC.warpaint", async () => {
 			await openWarpaintPanel();
+		}),
+		vscode.commands.registerCommand("kaijuNC.warpaint.addSelection", async () => {
+			await addActiveSelectionAsWarpaintSection();
 		}),
 		vscode.window.onDidChangeActiveTextEditor(scheduleUpdate),
 		vscode.window.onDidChangeVisibleTextEditors(scheduleUpdate),
@@ -99,10 +104,233 @@ async function openWarpaintPanel() {
 			scheduleUpdate();
 		} else if (message.type === "copySections") {
 			await copyWarpaintSectionsFromDocument(targetDocument);
+		} else if (message.type === "addSelectionAsSection") {
+			await addSelectionAsWarpaintSection(targetDocument);
+		} else if (message.type === "appendSelectionToSection") {
+			await appendSelectionToWarpaintSection(targetDocument, message.sectionId);
 		}
 	});
 
 	refreshWarpaintPanel();
+}
+
+async function addActiveSelectionAsWarpaintSection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor || editor.document.languageId !== "gcode") {
+		vscode.window.showWarningMessage("Select G-code before adding it to KAIJU Warpaint.");
+		return;
+	}
+
+	await addSelectionAsWarpaintSection(editor.document, editor);
+}
+
+async function addSelectionAsWarpaintSection(targetDocument, sourceEditor) {
+	const editor = sourceEditor || findVisibleEditorForDocument(targetDocument);
+
+	if (!editor) {
+		vscode.window.showWarningMessage("KAIJU Warpaint could not find the target editor selection.");
+		return;
+	}
+
+	const rangeText = getWarpaintRangeTextFromSelection(editor);
+
+	if (!rangeText) {
+		vscode.window.showWarningMessage("KAIJU Warpaint needs an N-label before the selected area.");
+		return;
+	}
+
+	const sections = getStoredSections(targetDocument);
+
+	sections.unshift({
+		id: `section-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		name: formatRangeName(rangeText),
+		color: getSeededSectionColor(targetDocument, rangeText, sections.length),
+		rangesText: rangeText,
+		enabled: true,
+		background: false
+	});
+
+	await setStoredSections(targetDocument, sections);
+	scheduleUpdate();
+	await revealOrRefreshWarpaintPanel(targetDocument);
+	vscode.window.showInformationMessage(`KAIJU Warpaint added ${rangeText}.`);
+}
+
+async function revealOrRefreshWarpaintPanel(document) {
+	warpaintDocumentUri = document.uri;
+
+	if (warpaintPanel) {
+		warpaintPanel.reveal(vscode.ViewColumn.Beside);
+		refreshWarpaintPanel();
+		return;
+	}
+
+	await openWarpaintPanel();
+}
+
+async function appendSelectionToWarpaintSection(targetDocument, sectionId) {
+	const editor = findVisibleEditorForDocument(targetDocument);
+
+	if (!editor) {
+		vscode.window.showWarningMessage("KAIJU Warpaint could not find the target editor selection.");
+		return;
+	}
+
+	const rangeText = getWarpaintRangeTextFromSelection(editor);
+
+	if (!rangeText) {
+		vscode.window.showWarningMessage("KAIJU Warpaint needs an N-label before the selected area.");
+		return;
+	}
+
+	const sections = getStoredSections(targetDocument);
+	const section = sections.find(item => item.id === sectionId);
+
+	if (!section) {
+		vscode.window.showWarningMessage("KAIJU Warpaint could not find that section.");
+		return;
+	}
+
+	section.rangesText = appendRangeText(section.rangesText, rangeText);
+	await setStoredSections(targetDocument, sections);
+	scheduleUpdate();
+	refreshWarpaintPanel();
+	vscode.window.showInformationMessage(`KAIJU Warpaint added ${rangeText} to ${section.name}.`);
+}
+
+function findVisibleEditorForDocument(document) {
+	return vscode.window.visibleTextEditors.find(editor =>
+		editor.document.uri.toString() === document.uri.toString()
+	);
+}
+
+function getWarpaintRangeTextFromSelection(editor) {
+	const labels = buildLabelItems(editor.document);
+	const lineSpan = getSelectionLineSpan(editor);
+	const labelsInSelection = labels.filter(label =>
+		label.lineNumber >= lineSpan.startLine && label.lineNumber <= lineSpan.endLine
+	);
+	const start = findNearestLabelAtOrBefore(labels, lineSpan.startLine) || labelsInSelection[0];
+	const end = findNearestLabelAtOrBefore(labels, lineSpan.endLine);
+
+	if (!start || !end) {
+		return undefined;
+	}
+
+	return start.value === end.value
+		? `${start.value}`
+		: `${start.value}-${end.value}`;
+}
+
+function getSelectionLineSpan(editor) {
+	const selection = editor.selection;
+	const startLine = Math.min(selection.start.line, selection.end.line);
+	let endLine = Math.max(selection.start.line, selection.end.line);
+
+	if (!selection.isEmpty && selection.end.character === 0 && endLine > startLine) {
+		endLine -= 1;
+	}
+
+	return {
+		startLine,
+		endLine
+	};
+}
+
+function findNearestLabelAtOrBefore(labels, lineNumber) {
+	let nearest;
+
+	for (const label of labels) {
+		if (label.lineNumber > lineNumber) {
+			break;
+		}
+
+		nearest = label;
+	}
+
+	return nearest;
+}
+
+function appendRangeText(existingText, rangeText) {
+	const parts = String(existingText || "")
+		.split(",")
+		.map(part => part.trim())
+		.filter(Boolean);
+
+	if (!parts.some(part => part.toLowerCase() === rangeText.toLowerCase())) {
+		parts.push(rangeText);
+	}
+
+	return parts.join(", ");
+}
+
+function formatRangeName(rangeText) {
+	const parts = String(rangeText || "")
+		.split("-")
+		.map(part => part.trim())
+		.filter(Boolean);
+
+	return parts.map(part => `N${part}`).join("-");
+}
+
+function getSeededSectionColor(document, rangeText, index) {
+	const fileName = document && document.fileName ? path.basename(document.fileName) : "untitled";
+	const seed = `${fileName}:${rangeText}:${index}`;
+	const hue = hashString(seed) % 360;
+
+	return hslToHex(hue / 360, SEEDED_COLOR_SATURATION, SEEDED_COLOR_LIGHTNESS);
+}
+
+function hashString(text) {
+	let hash = 2166136261;
+
+	for (const character of String(text || "")) {
+		hash ^= character.charCodeAt(0);
+		hash = Math.imul(hash, 16777619);
+	}
+
+	return hash >>> 0;
+}
+
+function hslToHex(hue, saturation, lightness) {
+	const q = lightness < 0.5
+		? lightness * (1 + saturation)
+		: lightness + saturation - lightness * saturation;
+	const p = 2 * lightness - q;
+	const red = hueToRgb(p, q, hue + 1 / 3);
+	const green = hueToRgb(p, q, hue);
+	const blue = hueToRgb(p, q, hue - 1 / 3);
+
+	return `#${toHexByte(red)}${toHexByte(green)}${toHexByte(blue)}`;
+}
+
+function hueToRgb(p, q, hue) {
+	let adjustedHue = hue;
+
+	if (adjustedHue < 0) {
+		adjustedHue += 1;
+	}
+	if (adjustedHue > 1) {
+		adjustedHue -= 1;
+	}
+	if (adjustedHue < 1 / 6) {
+		return p + (q - p) * 6 * adjustedHue;
+	}
+	if (adjustedHue < 1 / 2) {
+		return q;
+	}
+	if (adjustedHue < 2 / 3) {
+		return p + (q - p) * (2 / 3 - adjustedHue) * 6;
+	}
+
+	return p;
+}
+
+function toHexByte(value) {
+	return Math.round(Math.max(0, Math.min(1, value)) * 255)
+		.toString(16)
+		.padStart(2, "0");
 }
 
 function refreshWarpaintPanel() {
@@ -113,14 +341,12 @@ function refreshWarpaintPanel() {
 	const document = getWarpaintDocument();
 
 	if (!document) {
-		warpaintPanel.webview.html = renderWarpaintHtml([], [], "No active G-code document.");
+		warpaintPanel.webview.html = renderWarpaintHtml([], "No active G-code document.");
 		return;
 	}
 
 	const sections = getStoredSections(document);
-	const labels = buildLabelItems(document);
-	const summary = makeSectionSummary(sections, labels, document.lineCount);
-	warpaintPanel.webview.html = renderWarpaintHtml(sections, summary, path.basename(document.fileName));
+	warpaintPanel.webview.html = renderWarpaintHtml(sections, path.basename(document.fileName));
 }
 
 function getWarpaintDocument() {
@@ -571,38 +797,6 @@ function mergeSpans(spans) {
 	return mergedSpans;
 }
 
-function makeSectionSummary(sections, labels, lineCount) {
-	return sections.map(section => {
-		if (!section.enabled) {
-			return {
-				id: section.id,
-				disabled: true,
-				spans: [],
-				missingLabels: []
-			};
-		}
-
-		const parsedRanges = parseNLabelRangeText(section.rangesText);
-		const spans = resolveSectionSpans(section, labels, lineCount);
-		const missingLabels = [];
-
-		for (const range of parsedRanges) {
-			if (!findLabelByValue(labels, range.start)) {
-				missingLabels.push(`N${range.start}`);
-			}
-			if (range.end !== range.start && !findLabelByValue(labels, range.end)) {
-				missingLabels.push(`N${range.end}`);
-			}
-		}
-
-		return {
-			id: section.id,
-			spans,
-			missingLabels: [...new Set(missingLabels)]
-		};
-	});
-}
-
 function normalizeColor(color) {
 	const text = String(color || "").trim();
 
@@ -618,10 +812,9 @@ function makeRgba(color, alpha) {
 	return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
-function renderWarpaintHtml(sections, summary, documentName) {
+function renderWarpaintHtml(sections, documentName) {
 	const payload = JSON.stringify({
 		sections,
-		summary,
 		documentName
 	}).replace(/</g, "\\u003c");
 
@@ -676,19 +869,13 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			gap: 6px;
 		}
 		button {
-			border: 0;
+			border: 1px solid var(--button);
 			border-radius: 3px;
 			background: var(--button);
 			color: var(--button-fg);
 			padding: 4px 8px;
 			font: inherit;
 			cursor: pointer;
-		}
-		button.icon {
-			width: 26px;
-			height: 24px;
-			padding: 0;
-			font-weight: 700;
 		}
 		button.secondary {
 			background: var(--vscode-button-secondaryBackground, #3a3d41);
@@ -697,6 +884,11 @@ function renderWarpaintHtml(sections, summary, documentName) {
 		button.copy {
 			background: var(--button);
 			color: var(--button-fg);
+		}
+		button.selection {
+			background: var(--button);
+			color: var(--button-fg);
+			white-space: nowrap;
 		}
 		button:disabled {
 			cursor: default;
@@ -715,22 +907,37 @@ function renderWarpaintHtml(sections, summary, documentName) {
 		.section {
 			border: 1px solid var(--border);
 			border-radius: 6px;
-			padding: 10px;
 			background: color-mix(in srgb, var(--bg) 88%, var(--fg) 12%);
+			display: grid;
+			grid-template-columns: 18px minmax(0, 1fr);
+			overflow: hidden;
+		}
+		.paint-color {
+			appearance: none;
+			-webkit-appearance: none;
+			width: 18px;
+			height: 100%;
+			min-height: 134px;
+			border: 0;
+			background: var(--paint-color, #4fc3ff);
+			padding: 0;
+			cursor: pointer;
+		}
+		.paint-color::-webkit-color-swatch-wrapper {
+			padding: 0;
+		}
+		.paint-color::-webkit-color-swatch {
+			border: 0;
+		}
+		.section-body {
+			padding: 10px;
 		}
 		.section-head {
 			display: grid;
-			grid-template-columns: 28px minmax(0, 1fr) auto;
+			grid-template-columns: minmax(0, 1fr) auto;
 			gap: 8px;
 			align-items: center;
 			margin-bottom: 8px;
-		}
-		input[type="color"] {
-			width: 28px;
-			height: 24px;
-			border: 1px solid var(--border);
-			background: var(--input);
-			padding: 0;
 		}
 		input[type="text"],
 		textarea {
@@ -777,21 +984,12 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			gap: 6px;
 			margin: 0;
 		}
-		.summary {
-			margin-top: 8px;
-			color: var(--muted);
-			font-size: 12px;
-			line-height: 1.45;
-		}
 		.empty {
 			border: 1px dashed var(--border);
 			border-radius: 6px;
 			color: var(--muted);
 			padding: 18px 12px;
 			text-align: center;
-		}
-		.warning {
-			color: var(--vscode-editorWarning-foreground, #cca700);
 		}
 	</style>
 </head>
@@ -802,8 +1000,9 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			<div id="documentName" class="document-name"></div>
 		</div>
 		<div class="toolbar">
-			<button id="add" class="icon" title="Add section">+</button>
-			<button id="copy" class="copy" title="Copy saved sections from another file">Copy From...</button>
+			<button id="add" title="Add a new KAIJU Warpaint section">New Paint</button>
+			<button id="addSelection" class="selection" title="Add current editor selection as a new top-priority Warpaint section">New Paint from Selection</button>
+			<button id="copy" class="copy" title="Copy saved paints from another file">Copy Paint from...</button>
 			<span id="autosave" class="autosave">Live</span>
 		</div>
 	</header>
@@ -827,12 +1026,13 @@ function renderWarpaintHtml(sections, summary, documentName) {
 				return;
 			}
 			state.sections.forEach((section, index) => {
-				const summary = (state.summary || []).find(item => item.id === section.id);
 				const el = document.createElement("section");
 				el.className = "section";
+				el.style.setProperty("--paint-color", section.color || "#4fc3ff");
 				el.innerHTML = [
+					'<input class="paint-color" type="color" data-field="color" value="' + escapeAttribute(section.color || "#4fc3ff") + '" title="Paint color">',
+					'<div class="section-body">',
 					'<div class="section-head">',
-					'<input type="color" data-field="color" value="' + escapeAttribute(section.color || "#4fc3ff") + '" title="Section color">',
 					'<input type="text" data-field="name" value="' + escapeAttribute(section.name || "") + '" placeholder="Section name">',
 					'<div class="section-actions">',
 					'<button class="icon secondary" data-action="up" title="Move earlier" ' + (index === 0 ? "disabled" : "") + '>+</button>',
@@ -846,8 +1046,9 @@ function renderWarpaintHtml(sections, summary, documentName) {
 					'<div class="toggle-row">',
 					'<label><input type="checkbox" data-field="enabled" ' + (section.enabled !== false ? "checked" : "") + '> Enabled</label>',
 					'<label><input type="checkbox" data-field="background" ' + (section.background === true ? "checked" : "") + '> Background tint when highest priority</label>',
+					'<button class="selection" data-action="appendSelection" title="Add current editor selection to this paint">Add Selection</button>',
 					'</div>',
-					renderSummary(summary),
+					'</div>',
 				].join("");
 				bindSection(el, section, index);
 				sectionsEl.appendChild(el);
@@ -859,11 +1060,17 @@ function renderWarpaintHtml(sections, summary, documentName) {
 				input.addEventListener("input", () => {
 					const field = input.getAttribute("data-field");
 					section[field] = input.type === "checkbox" ? input.checked : input.value;
+					if (field === "color") {
+						el.style.setProperty("--paint-color", section.color || "#4fc3ff");
+					}
 					queueUpdate();
 				});
 				input.addEventListener("change", () => {
 					const field = input.getAttribute("data-field");
 					section[field] = input.type === "checkbox" ? input.checked : input.value;
+					if (field === "color") {
+						el.style.setProperty("--paint-color", section.color || "#4fc3ff");
+					}
 					queueUpdate();
 				});
 			});
@@ -878,6 +1085,12 @@ function renderWarpaintHtml(sections, summary, documentName) {
 					} else if (action === "down" && index < state.sections.length - 1) {
 						const moved = state.sections.splice(index, 1)[0];
 						state.sections.splice(index + 1, 0, moved);
+					} else if (action === "appendSelection") {
+						vscode.postMessage({
+							type: "appendSelectionToSection",
+							sectionId: section.id
+						});
+						return;
 					}
 					render();
 					queueUpdate();
@@ -885,30 +1098,12 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			});
 		}
 
-		function renderSummary(summary) {
-			if (!summary) {
-				return '<div class="summary">Not saved yet.</div>';
-			}
-			if (summary.disabled) {
-				return '<div class="summary">Disabled.</div>';
-			}
-			const parts = [];
-			if (summary.spans && summary.spans.length) {
-				parts.push(summary.spans.map(span => "L" + (span.startLine + 1) + "-L" + (span.endLine + 1)).join(", "));
-			} else {
-				parts.push("No matching N-label range.");
-			}
-			if (summary.missingLabels && summary.missingLabels.length) {
-				parts.push('<span class="warning">Missing ' + escapeHtml(summary.missingLabels.join(", ")) + '</span>');
-			}
-			return '<div class="summary">' + parts.join(" | ") + '</div>';
-		}
-
 		function addSection() {
+			const id = "section-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 			state.sections.push({
-				id: "section-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+				id,
 				name: "New Section",
-				color: "#ffcc00",
+				color: getSeededColor((state.documentName || "untitled") + ":" + id + ":" + state.sections.length),
 				rangesText: "",
 				enabled: true,
 				background: false
@@ -937,6 +1132,12 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			});
 		}
 
+		function addSelectionAsSection() {
+			vscode.postMessage({
+				type: "addSelectionAsSection"
+			});
+		}
+
 		function escapeHtml(value) {
 			return String(value || "").replace(/[&<>"]/g, ch => ({
 				"&": "&amp;",
@@ -950,7 +1151,59 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			return escapeHtml(value).replace(/'/g, "&#39;");
 		}
 
+		function getSeededColor(seed) {
+			const hue = hashString(seed) % 360;
+			return hslToHex(hue / 360, 0.72, 0.58);
+		}
+
+		function hashString(text) {
+			let hash = 2166136261;
+			for (let index = 0; index < String(text || "").length; index++) {
+				hash ^= String(text || "").charCodeAt(index);
+				hash = Math.imul(hash, 16777619);
+			}
+			return hash >>> 0;
+		}
+
+		function hslToHex(hue, saturation, lightness) {
+			const q = lightness < 0.5
+				? lightness * (1 + saturation)
+				: lightness + saturation - lightness * saturation;
+			const p = 2 * lightness - q;
+			const red = hueToRgb(p, q, hue + 1 / 3);
+			const green = hueToRgb(p, q, hue);
+			const blue = hueToRgb(p, q, hue - 1 / 3);
+			return "#" + toHexByte(red) + toHexByte(green) + toHexByte(blue);
+		}
+
+		function hueToRgb(p, q, hue) {
+			let adjustedHue = hue;
+			if (adjustedHue < 0) {
+				adjustedHue += 1;
+			}
+			if (adjustedHue > 1) {
+				adjustedHue -= 1;
+			}
+			if (adjustedHue < 1 / 6) {
+				return p + (q - p) * 6 * adjustedHue;
+			}
+			if (adjustedHue < 1 / 2) {
+				return q;
+			}
+			if (adjustedHue < 2 / 3) {
+				return p + (q - p) * (2 / 3 - adjustedHue) * 6;
+			}
+			return p;
+		}
+
+		function toHexByte(value) {
+			return Math.round(Math.max(0, Math.min(1, value)) * 255)
+				.toString(16)
+				.padStart(2, "0");
+		}
+
 		document.getElementById("add").addEventListener("click", addSection);
+		document.getElementById("addSelection").addEventListener("click", addSelectionAsSection);
 		document.getElementById("copy").addEventListener("click", copySections);
 		render();
 	</script>

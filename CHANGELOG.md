@@ -19,6 +19,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added a bottom right-click KAIJU Quick Toggles submenu for Warpaint and out-of-order N-label alerts.
 - Added `Ctrl+Alt+W` / `Cmd+Alt+W` for KAIJU Warpaint and `Ctrl+Alt+Shift+W` / `Cmd+Alt+Shift+W` for toggling Warpaint.
 - Moved the main KAIJU editor right-click commands into their own top context-menu section instead of sharing VS Code's navigation group.
+- Added Warpaint panel actions for creating a new top-priority paint named from the selected N-label range, or appending the current selection to an existing paint.
+- Changed new KAIJU Warpaint sections to start with seeded program-specific colors instead of reusing the same default color each time.
 
 ## [0.3.0]
 
