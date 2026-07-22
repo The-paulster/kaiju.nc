@@ -11,6 +11,7 @@ const { registerKaijuVisionWebview } = require("./kaijuVision/webview");
 const { registerKaijuDecomposition } = require("./kaijuDecomposition");
 const { registerMachineModeCommands } = require("./MetaMachineMode");
 const { registerKaijuRangefinder } = require("./kaijuRangefinder");
+const { registerKaijuWarpaint } = require("./kaijuWarpaint");
 
 function activate(context) {
 	registerFormatter(context);
@@ -24,6 +25,7 @@ function activate(context) {
 	registerKaijuDecomposition(context);
 	registerMachineModeCommands(context);
 	registerKaijuRangefinder(context);
+	registerKaijuWarpaint(context);
 }
 
 function deactivate() {}

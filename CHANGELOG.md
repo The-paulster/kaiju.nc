@@ -13,6 +13,9 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added KAIJU Vision endpoint marker colors for program ends, optional stops, spindle speed changes, compensation/offset changes, and compensation cancels, including configurable larger split-color markers and a hover legend for semantic endpoint colors.
 - Changed KAIJU Vision to fill the available viewer space without forcing a square viewport, with marker and label sizing based on viewer height.
 - Added configurable KAIJU Decomposition execution and output limits with `kaijuNC.decomposition.maxExecutionSteps` and `kaijuNC.decomposition.maxOutputLines`.
+- Added an optional Kaiju Alert error for adjacent math operators such as `1.00*-2.00`, controlled by `kaijuNC.alerts.adjacentOperators.enabled`.
+- Changed KAIJU Vision tool-change markers and merged-marker legend slices to use the same neon lime color as T-code syntax highlighting.
+- Added KAIJU Warpaint for live, per-file section coloring from N-label ranges such as `10-100, 200-300`, with named colors, priority ordering, `Copy From...`, optional soft background tinting, and overview-ruler markers.
 
 ## [0.3.0]
 

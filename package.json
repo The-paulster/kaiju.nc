@@ -417,6 +417,11 @@
             "default": true,
             "description": "Show an error when WHILE DO / END loop markers are not matched."
           },
+          "kaijuNC.alerts.adjacentOperators.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when two symbolic math operators are adjacent, such as 1.00*-2.00."
+          },
           "kaijuNC.alerts.mixedAliasMode.enabled": {
             "type": "boolean",
             "default": true,
@@ -535,6 +540,33 @@
             "default": 50000,
             "minimum": 1,
             "description": "Maximum number of output lines KAIJU Decomposition will emit before stopping the trace."
+          }
+        }
+      },
+      {
+        "title": "KAIJU.NC: Warpaint",
+        "properties": {
+          "kaijuNC.warpaint.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable KAIJU Warpaint section coloring for G-code files."
+          },
+          "kaijuNC.warpaint.leftStripes.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Show KAIJU Warpaint section markers at the left edge of painted lines. Disabled by default because marker rendering can interfere with editor layout."
+          },
+          "kaijuNC.warpaint.backgroundIntensity": {
+            "type": "number",
+            "default": 0.05,
+            "minimum": 0,
+            "maximum": 0.5,
+            "description": "Opacity used for KAIJU Warpaint background tinting. Lower values keep the editor softer."
+          },
+          "kaijuNC.warpaint.overviewRuler.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show KAIJU Warpaint section colors in the editor overview ruler."
           }
         }
       },
@@ -939,6 +971,10 @@
         "title": "KAIJU Rangefinder"
       },
       {
+        "command": "kaijuNC.warpaint",
+        "title": "KAIJU Warpaint"
+      },
+      {
         "command": "kaijuNC.machineMode.mill",
         "title": "KAIJU Machine Mode: Mill"
       },
@@ -1036,6 +1072,11 @@
         },
         {
           "command": "kaijuNC.rangefinder",
+          "when": "editorLangId == gcode",
+          "group": "navigation"
+        },
+        {
+          "command": "kaijuNC.warpaint",
           "when": "editorLangId == gcode",
           "group": "navigation"
         },

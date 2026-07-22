@@ -11,6 +11,7 @@ function getAlertOptions(document) {
 		warnDuplicateSequenceNumbers: config.get("duplicateSequenceNumbers.enabled", true),
 		warnSequenceNumberOrder: config.get("sequenceNumberOrder.enabled", true),
 		warnUnmatchedLoops: config.get("unmatchedLoops.enabled", true),
+		warnAdjacentOperators: config.get("adjacentOperators.enabled", true),
 		warnMixedAliasMode: config.get("mixedAliasMode.enabled", true),
 		warnUndefinedAliases: config.get("undefinedAliases.enabled", true),
 		warnUnresolvedGotos: syntaxConfig.get("unresolvedGotos.enabled", true)

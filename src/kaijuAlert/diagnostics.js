@@ -98,6 +98,9 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 		if (options.warnNonAscii) {
 			warnings.push(...makeNonAsciiWarnings(line, lineNumber));
 		}
+		if (options.warnAdjacentOperators) {
+			warnings.push(...makeAdjacentOperatorWarnings(line, lineNumber, ignoreRanges));
+		}
 
 		const directAddressRegex = /\b([XYZUVWABCIJKRFxyzuvwabcijkrf])([-+]?\d+)(?![.\d])/g;
 
@@ -355,6 +358,35 @@ function makeNonAsciiWarnings(line, lineNumber) {
 	}
 
 	return warnings;
+}
+
+function makeAdjacentOperatorWarnings(line, lineNumber, ignoreRanges) {
+	const warnings = [];
+	const adjacentOperatorRegex = /([+\-*/])\s*([+\-*/])/g;
+	let match;
+
+	while ((match = adjacentOperatorRegex.exec(line)) !== null) {
+		const start = match.index;
+		const end = match.index + match[0].length;
+
+		if (rangeTouchesIgnoredText(start, end, ignoreRanges)) {
+			continue;
+		}
+
+		warnings.push(makeAdjacentOperatorWarning(lineNumber, start, end, match[1], match[2]));
+	}
+
+	return warnings;
+}
+
+function rangeTouchesIgnoredText(start, end, ignoreRanges) {
+	for (let index = start; index < end; index++) {
+		if (isInsideRange(index, ignoreRanges)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 function makeMixedAliasModeWarnings(document) {
@@ -711,6 +743,19 @@ function makeNonAsciiWarning(lineNumber, start, end, character, codePoint) {
 		range,
 		`Non-ASCII character "${character}" (${codePointText}) may not be readable by some lathe controls.`,
 		vscode.DiagnosticSeverity.Warning
+	);
+
+	warning.source = DIAGNOSTIC_SOURCE;
+	return warning;
+}
+
+function makeAdjacentOperatorWarning(lineNumber, start, end, firstOperator, secondOperator) {
+	const range = new vscode.Range(lineNumber, start, lineNumber, end);
+
+	const warning = new vscode.Diagnostic(
+		range,
+		`Adjacent math operators "${firstOperator}${secondOperator}" may not be accepted by some lathe controls.`,
+		vscode.DiagnosticSeverity.Error
 	);
 
 	warning.source = DIAGNOSTIC_SOURCE;

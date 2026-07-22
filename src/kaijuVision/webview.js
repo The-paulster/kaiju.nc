@@ -1230,7 +1230,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
 			const overlaySvg = '<svg id="vision-svg" class="vision-overlay" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="none" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
 				'</style>' +
 				zeroAxes +
 				compass +
@@ -1826,7 +1826,7 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			if (target.kind === "tool" || hasClassName(target.pointClass, "tool-change-dot")) {
-				return { key: "tool", color: "#6A9955" };
+				return { key: "tool", color: "#88ff00" };
 			}
 
 			if (target.kind === "compensation" || hasClassName(target.pointClass, "endpoint-compensation")) {
@@ -2500,7 +2500,7 @@ function renderVisionHtml(document, mode, options, result) {
 				programEnd: { color: "#7f1d1d", label: "Program end" },
 				optionalStop: { color: "#dcdc6b", label: "M00 / M01 stop" },
 				speedChange: { color: "#ff2b2b", label: "Spindle speed change" },
-				tool: { color: "#6A9955", label: "Tool change" },
+				tool: { color: "#88ff00", label: "Tool change" },
 				compensation: { color: "#1f7a3a", label: "Compensation on" },
 				compensationCancel: { color: "#8e44ad", label: "Compensation off" }
 			};
