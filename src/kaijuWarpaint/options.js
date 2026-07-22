@@ -7,9 +7,13 @@ function getWarpaintOptions(document) {
 
 	return {
 		enabled: config.get("enabled", true),
-		leftStripesEnabled: config.get("leftStripes.enabled", false),
 		backgroundIntensity: clampNumber(config.get("backgroundIntensity", 0.05), 0, 0.5),
-		overviewRulerEnabled: config.get("overviewRuler.enabled", true)
+		overviewRulerEnabled: config.get("overviewRuler.enabled", true),
+		markerCompositorEnabled: config.get("markerCompositor.enabled", true),
+		markerMaxSections: clampInteger(config.get("marker.maxSections", 2), 0, 2),
+		markerSectionStripeWidth: clampNumber(config.get("marker.sectionStripeWidth", 2), 1, 12),
+		markerToolGap: clampNumber(config.get("marker.toolGap", 2), 0, 8),
+		markerVerticalOverflow: clampNumber(config.get("marker.verticalOverflow", 1), 0, 4)
 	};
 }
 
@@ -21,6 +25,10 @@ function clampNumber(value, min, max) {
 	}
 
 	return Math.max(min, Math.min(max, numericValue));
+}
+
+function clampInteger(value, min, max) {
+	return Math.round(clampNumber(value, min, max));
 }
 
 module.exports = {

@@ -15,7 +15,6 @@ function registerKaijuSenseTool(context) {
 		context.subscriptions.push(decorationType);
 		return decorationType;
 	});
-
 	let pendingUpdate;
 
 	const scheduleUpdate = () => {
@@ -34,7 +33,10 @@ function registerKaijuSenseTool(context) {
 			}
 		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.syntax.toolDecorations.enabled")) {
+			if (
+				event.affectsConfiguration("kaijuNC.syntax.toolDecorations.enabled")
+				|| event.affectsConfiguration("kaijuNC.warpaint.markerCompositor.enabled")
+			) {
 				scheduleUpdate();
 			}
 		}),
@@ -57,12 +59,19 @@ function updateVisibleToolDecorations(decorationTypes) {
 function updateToolDecorations(editor, decorationTypes) {
 	const groupedDecorations = decorationTypes.map(() => []);
 
-	if (editor.document.languageId === "gcode" && areToolDecorationsEnabled(editor.document)) {
+	if (
+		editor.document.languageId === "gcode"
+		&& areToolDecorationsEnabled(editor.document)
+	) {
 		for (const range of getToolRanges(editor.document)) {
 			for (let lineNumber = range.startLine; lineNumber <= range.endLine; lineNumber++) {
-				groupedDecorations[range.colorIndex].push({
+				const decoration = {
 					range: new vscode.Range(lineNumber, 0, lineNumber, 0)
-				});
+				};
+
+				if (!isWarpaintMarkerCompositorEnabled(editor.document)) {
+					groupedDecorations[range.colorIndex].push(decoration);
+				}
 			}
 		}
 	}
@@ -76,6 +85,12 @@ function areToolDecorationsEnabled(document) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.syntax", document.uri);
 
 	return config.get("toolDecorations.enabled", true);
+}
+
+function isWarpaintMarkerCompositorEnabled(document) {
+	const config = vscode.workspace.getConfiguration("kaijuNC.warpaint", document.uri);
+
+	return config.get("markerCompositor.enabled", true);
 }
 
 function makeToolMarkerUri(color) {

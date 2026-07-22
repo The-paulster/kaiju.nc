@@ -2,10 +2,12 @@
 // decorations. Keep generic N-label selection helpers in kaijuRangefinder.
 const path = require("path");
 const vscode = require("vscode");
+const { TOOL_COLORS, getToolRanges } = require("../MetaToolModel");
 const { buildLabelItems } = require("../kaijuRangefinder");
 const { getWarpaintOptions } = require("./options");
 
 const STORAGE_KEY = "kaijuWarpaint.sectionsByDocument";
+const TOOL_MARKER_WIDTH = 4;
 let warpaintContext;
 let warpaintPanel;
 let pendingUpdate;
@@ -28,7 +30,10 @@ function registerKaijuWarpaint(context) {
 			}
 		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.warpaint")) {
+			if (
+				event.affectsConfiguration("kaijuNC.warpaint")
+				|| event.affectsConfiguration("kaijuNC.syntax.toolDecorations.enabled")
+			) {
 				scheduleUpdate();
 			}
 		}),
@@ -148,32 +153,36 @@ function updateWarpaintDecorations(editor) {
 
 	const options = getWarpaintOptions(editor.document);
 
-	if (!options.enabled) {
+	const toolRanges = areToolDecorationsEnabled(editor.document) && options.markerCompositorEnabled
+		? getToolRanges(editor.document)
+		: [];
+
+	if (!options.enabled && !toolRanges.length) {
 		return;
 	}
 
-	const sections = getStoredSections(editor.document);
+	const sections = options.enabled ? getStoredSections(editor.document).filter(section => section.enabled) : [];
 
-	if (!sections.length) {
+	if (!sections.length && !toolRanges.length) {
 		return;
 	}
 
 	const labels = buildLabelItems(editor.document);
 	const lineSections = resolveLineSections(sections, labels, editor.document.lineCount);
+	const lineTools = resolveLineTools(toolRanges, editor.document.lineCount);
 	const groupedDecorations = new Map();
 
-	for (let lineNumber = 0; lineNumber < lineSections.length; lineNumber++) {
-		const matches = lineSections[lineNumber];
+	for (let lineNumber = 0; lineNumber < editor.document.lineCount; lineNumber++) {
+		const matches = lineSections[lineNumber] || [];
+		const tool = lineTools[lineNumber];
 
-		if (!matches || !matches.length) {
+		if (!matches.length && !tool) {
 			continue;
 		}
 
-		if (options.leftStripesEnabled) {
-			matches.forEach((section, slotIndex) => {
-				const decorationType = getStripeDecorationType(section.color, slotIndex);
-				pushDecoration(groupedDecorations, decorationType, lineNumber);
-			});
+		if (options.markerCompositorEnabled && (tool || matches.length)) {
+			const decorationType = getMarkerDecorationType(tool, matches, options);
+			pushDecoration(groupedDecorations, decorationType, lineNumber);
 		}
 		if (options.overviewRulerEnabled) {
 			matches.forEach(section => {
@@ -206,13 +215,48 @@ function clearEditorWarpaintDecorations(editor) {
 
 function pushDecoration(groupedDecorations, decorationType, lineNumber) {
 	const decorations = groupedDecorations.get(decorationType) || [];
-	decorations.push({ range: new vscode.Range(lineNumber, 0, lineNumber, 0) });
+	const decoration = { range: new vscode.Range(lineNumber, 0, lineNumber, 0) };
+
+	decorations.push(decoration);
 	groupedDecorations.set(decorationType, decorations);
 }
 
-function getStripeDecorationType(color, slotIndex) {
-	const safeColor = normalizeColor(color);
-	const key = `stripe:${slotIndex}:${safeColor}`;
+function resolveLineTools(toolRanges, lineCount) {
+	const lineTools = Array.from({ length: lineCount }, () => undefined);
+
+	for (const toolRange of toolRanges) {
+		const color = TOOL_COLORS[toolRange.colorIndex] || TOOL_COLORS[0];
+
+		for (let lineNumber = toolRange.startLine; lineNumber <= toolRange.endLine && lineNumber < lineCount; lineNumber++) {
+			if (lineNumber >= 0) {
+				lineTools[lineNumber] = {
+					name: toolRange.tool,
+					color
+				};
+			}
+		}
+	}
+
+	return lineTools;
+}
+
+function areToolDecorationsEnabled(document) {
+	const config = vscode.workspace.getConfiguration("kaijuNC.syntax", document.uri);
+
+	return config.get("toolDecorations.enabled", true);
+}
+
+function getMarkerDecorationType(tool, sections, options) {
+	const visibleSections = sections.slice(0, options.markerMaxSections);
+	const key = [
+		"marker",
+		tool ? normalizeColor(tool.color) : "none",
+		options.markerMaxSections,
+		options.markerSectionStripeWidth,
+		options.markerToolGap,
+		options.markerVerticalOverflow,
+		...visibleSections.map(section => normalizeColor(section.color)),
+	].join(":");
 	const existing = decorationTypeCache.get(key);
 
 	if (existing) {
@@ -220,12 +264,66 @@ function getStripeDecorationType(color, slotIndex) {
 	}
 
 	const decorationType = vscode.window.createTextEditorDecorationType({
+		gutterIconPath: makeMarkerUri(tool, sections, options),
+		gutterIconSize: "contain",
 		rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 	});
 
 	decorationTypeCache.set(key, decorationType);
 	warpaintContext.subscriptions.push(decorationType);
 	return decorationType;
+}
+
+function makeMarkerUri(tool, sections, options) {
+	const size = getMarkerSize(sections, options);
+	const visibleSections = sections.slice(0, options.markerMaxSections);
+	const sectionWidth = options.markerSectionStripeWidth;
+	const toolGap = options.markerMaxSections > 0 ? options.markerToolGap : 0;
+	const height = 16;
+	const overflow = options.markerVerticalOverflow;
+	let x = 0;
+	const rects = [
+		makeMarkerRect(0, -overflow, size.width, height + overflow * 2, "#ffffff", "0.001")
+	];
+
+	if (tool) {
+		rects.push(makeMarkerRect(x, -overflow, TOOL_MARKER_WIDTH, height + overflow * 2, normalizeColor(tool.color), "0.92"));
+	}
+	x += TOOL_MARKER_WIDTH + toolGap;
+
+	for (const section of visibleSections) {
+		rects.push(makeMarkerRect(x, -overflow, sectionWidth, height + overflow * 2, normalizeColor(section.color), "0.9"));
+		x += sectionWidth;
+	}
+
+	const svg = [
+		`<svg xmlns="http://www.w3.org/2000/svg" width="${roundMarkerNumber(size.width)}" height="${roundMarkerNumber(size.height)}" viewBox="0 ${roundMarkerNumber(-overflow)} ${roundMarkerNumber(size.width)} ${roundMarkerNumber(size.height)}" shape-rendering="crispEdges">`,
+		...rects,
+		"</svg>"
+	].join("");
+
+	return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+}
+
+function getMarkerSize(sections, options) {
+	const sectionWidth = options.markerSectionStripeWidth;
+	const toolGap = options.markerMaxSections > 0 ? options.markerToolGap : 0;
+	const sectionTotal = options.markerMaxSections ? options.markerMaxSections * sectionWidth : 0;
+	const width = Math.max(
+		TOOL_MARKER_WIDTH + toolGap + sectionTotal,
+		1
+	);
+	const height = 16 + options.markerVerticalOverflow * 2;
+
+	return { width, height };
+}
+
+function makeMarkerRect(x, y, width, height, color, opacity) {
+	return `<rect x="${roundMarkerNumber(x)}" y="${roundMarkerNumber(y)}" width="${roundMarkerNumber(width)}" height="${roundMarkerNumber(height)}" fill="${color}" fill-opacity="${opacity}"/>`;
+}
+
+function roundMarkerNumber(value) {
+	return Math.round(Number(value) * 100) / 100;
 }
 
 function getOverviewRulerDecorationType(color) {
@@ -385,6 +483,7 @@ function normalizeSections(sections) {
 			name: String(section.name || `Section ${index + 1}`).trim() || `Section ${index + 1}`,
 			color: normalizeColor(section.color),
 			rangesText: String(section.rangesText || "").trim(),
+			enabled: section.enabled !== false,
 			background: section.background === true
 		}));
 }
@@ -474,6 +573,15 @@ function mergeSpans(spans) {
 
 function makeSectionSummary(sections, labels, lineCount) {
 	return sections.map(section => {
+		if (!section.enabled) {
+			return {
+				id: section.id,
+				disabled: true,
+				spans: [],
+				missingLabels: []
+			};
+		}
+
 		const parsedRanges = parseNLabelRangeText(section.rangesText);
 		const spans = resolveSectionSpans(section, labels, lineCount);
 		const missingLabels = [];
@@ -655,12 +763,19 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			gap: 4px;
 			margin-bottom: 8px;
 		}
-		.background-row {
+		.toggle-row {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: 14px;
+			flex-wrap: wrap;
 			color: var(--fg);
 			font-size: 12px;
+		}
+		.toggle-row label {
+			align-items: center;
+			display: flex;
+			gap: 6px;
+			margin: 0;
 		}
 		.summary {
 			margin-top: 8px;
@@ -728,7 +843,10 @@ function renderWarpaintHtml(sections, summary, documentName) {
 					'<div class="range-row">',
 					'<textarea data-field="rangesText" spellcheck="false" placeholder="Enter N ranges here eg 1-100">' + escapeHtml(section.rangesText || "") + '</textarea>',
 					'</div>',
-					'<label class="background-row"><input type="checkbox" data-field="background" ' + (section.background === true ? "checked" : "") + '> Background tint when highest priority</label>',
+					'<div class="toggle-row">',
+					'<label><input type="checkbox" data-field="enabled" ' + (section.enabled !== false ? "checked" : "") + '> Enabled</label>',
+					'<label><input type="checkbox" data-field="background" ' + (section.background === true ? "checked" : "") + '> Background tint when highest priority</label>',
+					'</div>',
 					renderSummary(summary),
 				].join("");
 				bindSection(el, section, index);
@@ -771,6 +889,9 @@ function renderWarpaintHtml(sections, summary, documentName) {
 			if (!summary) {
 				return '<div class="summary">Not saved yet.</div>';
 			}
+			if (summary.disabled) {
+				return '<div class="summary">Disabled.</div>';
+			}
 			const parts = [];
 			if (summary.spans && summary.spans.length) {
 				parts.push(summary.spans.map(span => "L" + (span.startLine + 1) + "-L" + (span.endLine + 1)).join(", "));
@@ -789,6 +910,7 @@ function renderWarpaintHtml(sections, summary, documentName) {
 				name: "New Section",
 				color: "#ffcc00",
 				rangesText: "",
+				enabled: true,
 				background: false
 			});
 			render();

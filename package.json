@@ -551,10 +551,38 @@
             "default": true,
             "description": "Enable KAIJU Warpaint section coloring for G-code files."
           },
-          "kaijuNC.warpaint.leftStripes.enabled": {
+          "kaijuNC.warpaint.markerCompositor.enabled": {
             "type": "boolean",
-            "default": false,
-            "description": "Show KAIJU Warpaint section markers at the left edge of painted lines. Disabled by default because marker rendering can interfere with editor layout."
+            "default": true,
+            "description": "Use KAIJU Warpaint as the central gutter marker renderer for active tools and Warpaint sections."
+          },
+          "kaijuNC.warpaint.marker.maxSections": {
+            "type": "integer",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 2,
+            "description": "Maximum number of overlapping KAIJU Warpaint sections shown in the gutter marker."
+          },
+          "kaijuNC.warpaint.marker.sectionStripeWidth": {
+            "type": "number",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 12,
+            "description": "Width in pixels for each KAIJU Warpaint section stripe in composited gutter markers."
+          },
+          "kaijuNC.warpaint.marker.toolGap": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 8,
+            "description": "Gap in pixels between the active-tool stripe and the first KAIJU Warpaint stripe in composited gutter markers."
+          },
+          "kaijuNC.warpaint.marker.verticalOverflow": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0,
+            "maximum": 4,
+            "description": "Extra vertical bleed in pixels for composited gutter markers to reduce visible gaps between painted lines."
           },
           "kaijuNC.warpaint.backgroundIntensity": {
             "type": "number",
@@ -975,6 +1003,26 @@
         "title": "KAIJU Warpaint"
       },
       {
+        "command": "kaijuNC.quickToggle.warpaint",
+        "title": "KAIJU Quick Toggle: Warpaint"
+      },
+      {
+        "command": "kaijuNC.quickToggle.warpaintOn",
+        "title": "Warpaint: On"
+      },
+      {
+        "command": "kaijuNC.quickToggle.warpaintOff",
+        "title": "Warpaint: Off"
+      },
+      {
+        "command": "kaijuNC.quickToggle.sequenceNumberOrderOn",
+        "title": "Out-of-Order N Alerts: On"
+      },
+      {
+        "command": "kaijuNC.quickToggle.sequenceNumberOrderOff",
+        "title": "Out-of-Order N Alerts: Off"
+      },
+      {
         "command": "kaijuNC.machineMode.mill",
         "title": "KAIJU Machine Mode: Mill"
       },
@@ -1029,12 +1077,28 @@
         "key": "ctrl+alt+f",
         "mac": "cmd+alt+f",
         "when": "editorTextFocus && editorLangId == gcode"
+      },
+      {
+        "command": "kaijuNC.warpaint",
+        "key": "ctrl+alt+w",
+        "mac": "cmd+alt+w",
+        "when": "editorTextFocus && editorLangId == gcode"
+      },
+      {
+        "command": "kaijuNC.quickToggle.warpaint",
+        "key": "ctrl+alt+shift+w",
+        "mac": "cmd+alt+shift+w",
+        "when": "editorTextFocus && editorLangId == gcode"
       }
     ],
     "submenus": [
       {
         "id": "kaijuNC.machineModeMenu",
         "label": "KAIJU Machine Mode"
+      },
+      {
+        "id": "kaijuNC.quickTogglesMenu",
+        "label": "KAIJU Quick Toggles"
       }
     ],
 
@@ -1043,47 +1107,74 @@
         {
           "command": "kaijuNC.formatDocument",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@1"
         },
         {
           "command": "kaijuNC.aliasMacros",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@2"
         },
         {
           "command": "kaijuNC.orphanKiller",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@3"
         },
         {
           "command": "kaijuNC.chronoblade",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@4"
         },
         {
           "command": "kaijuNC.vision",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@5"
         },
         {
           "command": "kaijuNC.decompose",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@6"
         },
         {
           "command": "kaijuNC.rangefinder",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@7"
         },
         {
           "command": "kaijuNC.warpaint",
           "when": "editorLangId == gcode",
-          "group": "navigation"
+          "group": "0_kaiju@8"
         },
         {
           "submenu": "kaijuNC.machineModeMenu",
           "when": "editorLangId == gcode",
           "group": "z_kaijuMachineMode"
+        },
+        {
+          "submenu": "kaijuNC.quickTogglesMenu",
+          "when": "editorLangId == gcode",
+          "group": "z_kaijuQuickToggles"
+        }
+      ],
+      "kaijuNC.quickTogglesMenu": [
+        {
+          "command": "kaijuNC.quickToggle.warpaintOn",
+          "when": "editorLangId == gcode && kaijuNC.quickToggle.warpaintEnabled",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kaijuNC.quickToggle.warpaintOff",
+          "when": "editorLangId == gcode && !kaijuNC.quickToggle.warpaintEnabled",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kaijuNC.quickToggle.sequenceNumberOrderOn",
+          "when": "editorLangId == gcode && kaijuNC.quickToggle.sequenceNumberOrderEnabled",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kaijuNC.quickToggle.sequenceNumberOrderOff",
+          "when": "editorLangId == gcode && !kaijuNC.quickToggle.sequenceNumberOrderEnabled",
+          "group": "navigation@2"
         }
       ],
       "kaijuNC.machineModeMenu": [

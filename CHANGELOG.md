@@ -15,7 +15,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Added configurable KAIJU Decomposition execution and output limits with `kaijuNC.decomposition.maxExecutionSteps` and `kaijuNC.decomposition.maxOutputLines`.
 - Added an optional Kaiju Alert error for adjacent math operators such as `1.00*-2.00`, controlled by `kaijuNC.alerts.adjacentOperators.enabled`.
 - Changed KAIJU Vision tool-change markers and merged-marker legend slices to use the same neon lime color as T-code syntax highlighting.
-- Added KAIJU Warpaint for live, per-file section coloring from N-label ranges such as `10-100, 200-300`, with named colors, priority ordering, `Copy From...`, optional soft background tinting, and overview-ruler markers.
+- Added KAIJU Warpaint for live, per-file section coloring from N-label ranges such as `10-100, 200-300`, with named colors, per-section enable toggles, priority ordering, `Copy From...`, optional soft background tinting, overview-ruler markers, and compact gutter markers that combine the active tool with the top two matching Warpaint sections.
+- Added a bottom right-click KAIJU Quick Toggles submenu for Warpaint and out-of-order N-label alerts.
+- Added `Ctrl+Alt+W` / `Cmd+Alt+W` for KAIJU Warpaint and `Ctrl+Alt+Shift+W` / `Cmd+Alt+Shift+W` for toggling Warpaint.
+- Moved the main KAIJU editor right-click commands into their own top context-menu section instead of sharing VS Code's navigation group.
 
 ## [0.3.0]
 

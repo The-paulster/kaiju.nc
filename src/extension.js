@@ -12,6 +12,7 @@ const { registerKaijuDecomposition } = require("./kaijuDecomposition");
 const { registerMachineModeCommands } = require("./MetaMachineMode");
 const { registerKaijuRangefinder } = require("./kaijuRangefinder");
 const { registerKaijuWarpaint } = require("./kaijuWarpaint");
+const { registerKaijuQuickToggles } = require("./kaijuQuickToggles");
 
 function activate(context) {
 	registerFormatter(context);
@@ -26,6 +27,7 @@ function activate(context) {
 	registerMachineModeCommands(context);
 	registerKaijuRangefinder(context);
 	registerKaijuWarpaint(context);
+	registerKaijuQuickToggles(context);
 }
 
 function deactivate() {}
