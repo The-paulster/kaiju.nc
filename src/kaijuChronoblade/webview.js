@@ -2,6 +2,7 @@
 // motion interpretation in MetaMotionEngine.js and machine defaults in
 // MetaMachineMode.js.
 const vscode = require("vscode");
+const path = require("path");
 const {
 	analyzeChronobladeRange,
 	formatNumber,
@@ -171,6 +172,8 @@ function renderChronobladeHtml(document, mode, options, result) {
 	const rangeText = result.range.startLine === 0 && result.range.endLine === document.lineCount - 1
 		? "Whole program"
 		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
+	const sourceName = getChronobladeSourceName(document);
+	const reportLabel = mode === "selection" ? "Selection report" : "Whole program report";
 	const summary = result.summary;
 
 	return `<!DOCTYPE html>
@@ -203,6 +206,12 @@ function renderChronobladeHtml(document, mode, options, result) {
 		.note {
 			color: var(--vscode-descriptionForeground);
 			font-size: 12px;
+		}
+
+		.meta-line {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 
 		.controls {
@@ -281,6 +290,7 @@ function renderChronobladeHtml(document, mode, options, result) {
 		table {
 			width: 100%;
 			border-collapse: collapse;
+			table-layout: fixed;
 			font-size: 12px;
 		}
 
@@ -301,11 +311,6 @@ function renderChronobladeHtml(document, mode, options, result) {
 			padding: 7px 10px 7px 0;
 			vertical-align: top;
 			white-space: nowrap;
-		}
-
-		td.notes {
-			white-space: normal;
-			min-width: 18ch;
 		}
 
 		th.tool-marker-header,
@@ -330,6 +335,41 @@ function renderChronobladeHtml(document, mode, options, result) {
 			font-weight: 600;
 		}
 
+		.instruction-cell {
+			width: 7ch;
+			max-width: 7ch;
+		}
+
+		.position-cell {
+		}
+		.position-cell .coord {
+			margin-right: 0.45ch;
+		}
+
+		.position-cell .axis-x {
+			color: #D65D5D;
+		}
+
+		.position-cell .axis-y {
+			color: #6A9955;
+		}
+
+		.position-cell .axis-z {
+			color: #4A90E2;
+		}
+
+		.position-cell .axis-letter {
+			font-weight: 700;
+		}
+
+		.instruction-cell code,
+		.truncate {
+			display: block;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
 		code {
 			font-family: var(--vscode-editor-font-family);
 			background: var(--vscode-textCodeBlock-background);
@@ -348,8 +388,8 @@ function renderChronobladeHtml(document, mode, options, result) {
 <body>
 	<header>
 		<h1>KAIJU Chronoblade</h1>
-		<div class="meta">${escapeHtml(rangeText)} from ${escapeHtml(document.fileName || document.uri.toString())}</div>
-		<div class="meta">${escapeHtml(mode === "selection" ? "Selection report" : "Whole program report")}</div>
+		<div class="meta meta-line" title="${escapeAttribute(`${rangeText} from ${sourceName}`)}">${escapeHtml(rangeText)} from ${escapeHtml(sourceName)}</div>
+		<div class="meta meta-line" title="${escapeAttribute(reportLabel)}">${escapeHtml(reportLabel)}</div>
 	</header>
 
 	<section class="controls">
@@ -409,11 +449,23 @@ function renderMetric(label, value) {
 	</div>`;
 }
 
+function getChronobladeSourceName(document) {
+	if (document.fileName) {
+		return path.basename(document.fileName).replace(/\.decomposition\.gcode$/i, "");
+	}
+
+	const uriText = document.uri && document.uri.toString ? document.uri.toString() : "";
+	const uriTail = uriText.split(/[\\/]/).pop() || uriText;
+
+	return uriTail.replace(/\.decomposition\.gcode$/i, "") || "untitled";
+}
+
 function renderRows(rows, humanFormat) {
 	if (!rows.length) {
 		return "<p class=\"empty\">No motion or tool-change rows found.</p>";
 	}
 
+	let accumulatedTimeSeconds = 0;
 	const body = rows.map(row => {
 		if (row.type === "label") {
 			const comment = row.comment ? ` ${row.comment}` : "";
@@ -425,23 +477,27 @@ function renderRows(rows, humanFormat) {
 				${renderToolMarkerCell(row)}
 				<td class="tool-marker-gap"></td>
 				<td>${escapeHtml(row.lineNumber)}</td>
-				<td colspan="9"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}${escapeHtml(total)}</td>
+				<td colspan="9"><span class="truncate" title="${escapeAttribute(`${row.instruction}${comment}${total}`)}"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}${escapeHtml(total)}</span></td>
 			</tr>`;
+		}
+
+		if (Number.isFinite(row.timeSeconds)) {
+			accumulatedTimeSeconds += row.timeSeconds;
 		}
 
 		return `<tr>
 			${renderToolMarkerCell(row)}
 			<td class="tool-marker-gap"></td>
 			<td>${escapeHtml(row.lineNumber)}</td>
-			<td><code>${escapeHtml(row.instruction)}</code></td>
-			<td>${escapeHtml(row.start || "-")}</td>
-			<td>${escapeHtml(row.end || "-")}</td>
+			<td class="instruction-cell" title="${escapeAttribute(row.instruction)}"><code>${escapeHtml(row.instruction)}</code></td>
+			<td class="position-cell">${renderPositionCell(row.start)}</td>
+			<td class="position-cell">${renderPositionCell(row.end)}</td>
 			<td>${escapeHtml(formatDistance(row, humanFormat))}</td>
 			<td>${escapeHtml(formatFeed(row, humanFormat))}</td>
 			<td>${escapeHtml(row.spindle || "-")}</td>
 			<td>${escapeHtml(row.rpmUsed || "-")}</td>
 			<td>${escapeHtml(formatTime(row.timeSeconds))}</td>
-			<td class="notes">${escapeHtml((row.warnings || []).join(" ")) || "-"}</td>
+			<td>${escapeHtml(formatAccumulatedTime(accumulatedTimeSeconds))}</td>
 		</tr>`;
 	}).join("");
 
@@ -451,16 +507,16 @@ function renderRows(rows, humanFormat) {
 				<tr>
 					<th class="tool-marker-header"></th>
 					<th class="tool-marker-gap"></th>
-					<th>Line</th>
-					<th>Instruction</th>
-					<th>Start</th>
-					<th>End</th>
-					<th>Distance</th>
-					<th>Feed</th>
-					<th>Spindle</th>
-					<th>RPM Used</th>
-					<th>Time</th>
-					<th>Notes</th>
+					<th style="width:5ch">Line</th>
+					<th style="width:7ch">Code</th>
+					<th style="width:18ch">Start</th>
+					<th style="width:18ch">End</th>
+					<th style="width:9ch">Distance</th>
+					<th style="width:10ch">Feed</th>
+					<th style="width:15ch">Spindle</th>
+					<th style="width:15ch">RPM Used</th>
+					<th style="width:10ch">Time</th>
+					<th style="width:10ch">Total</th>
 				</tr>
 			</thead>
 			<tbody>${body}</tbody>
@@ -474,12 +530,44 @@ function renderToolMarkerCell(row) {
 	return `<td class="tool-marker-cell"${style}></td>`;
 }
 
+function renderPositionCell(positionText) {
+	if (!positionText) {
+		return "-";
+	}
+
+	const text = String(positionText);
+	const parts = [];
+	const coordinateRegex = /([XYZ])([^XYZ\s]+)/gi;
+	let lastIndex = 0;
+	let match;
+
+	while ((match = coordinateRegex.exec(text)) !== null) {
+		parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+		parts.push(renderCoordinateWord(match[1], match[2]));
+		lastIndex = coordinateRegex.lastIndex;
+	}
+
+	parts.push(escapeHtml(text.slice(lastIndex)));
+
+	return parts.join("") || "-";
+}
+
+function renderCoordinateWord(axis, valueText) {
+	const normalizedAxis = String(axis).toLowerCase();
+
+	return `<span class="coord axis-${escapeAttribute(normalizedAxis)}"><span class="axis-letter">${escapeHtml(axis.toUpperCase())}</span>${escapeHtml(valueText)}</span>`;
+}
+
 function formatFeed(row, humanFormat) {
 	if (!Number.isFinite(row.feed)) {
 		return "-";
 	}
 
-	return `${formatNumber(row.feed, humanFormat)} ${row.feedMode === "perRev" ? "per rev" : "per min"}`;
+	return `${row.feedMode === "perRev" ? "G95" : "G94"} F${formatNumber(row.feed, humanFormat)}`;
+}
+
+function formatAccumulatedTime(seconds) {
+	return Number.isFinite(seconds) && seconds > 0 ? formatTime(seconds) : "-";
 }
 
 function formatDistance(row, humanFormat) {

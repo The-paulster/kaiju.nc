@@ -810,6 +810,8 @@ function buildPlanarArcPathFromCenter(motionCode, sweepMotionCode, start, end, p
 			z: secondaryAxis === "z" ? centerSecondary : startPoint.z
 		}, options),
 		radius,
+		startAngle,
+		sweepMotionCode,
 		sweepRadians: sweep,
 		sweepDegrees: radiansToDegrees(sweep),
 		direction: motionCode === 2 ? "CW" : "CCW",
@@ -904,9 +906,12 @@ function getArcSweep(motionCode, startAngle, endAngle) {
 }
 
 function estimatePathTime(path, state, options) {
+	if (path && path.kind === "linear") {
+		return estimateLinearPathTime(path, state, options);
+	}
+
 	let timeSeconds = 0;
-	let minRpm = Infinity;
-	let maxRpm = -Infinity;
+	const rpmRange = estimatePathRpmRange(path, state, options);
 
 	for (let index = 1; index < path.points.length; index++) {
 		const start = path.points[index - 1];
@@ -920,19 +925,233 @@ function estimatePathTime(path, state, options) {
 			continue;
 		}
 
-		if (Number.isFinite(rpm)) {
-			minRpm = Math.min(minRpm, rpm);
-			maxRpm = Math.max(maxRpm, rpm);
-		}
-
 		timeSeconds += distance / feedRate * 60;
 	}
 
 	return {
 		timeSeconds: timeSeconds > 0 ? timeSeconds : NaN,
-		minRpm: minRpm === Infinity ? NaN : minRpm,
-		maxRpm: maxRpm === -Infinity ? NaN : maxRpm
+		minRpm: rpmRange.minRpm,
+		maxRpm: rpmRange.maxRpm
 	};
+}
+
+function estimateLinearPathTime(path, state, options) {
+	const points = path && Array.isArray(path.points) ? path.points : [];
+	const start = points[0];
+	const end = points[points.length - 1];
+	const distance = start && end ? getPhysicalDistance(start, end, options) : NaN;
+	const rpmRange = estimatePathRpmRange(path, state, options);
+	let timeSeconds = NaN;
+
+	if (Number.isFinite(distance) && distance > 0) {
+		if (state.feedMode === "perMinute") {
+			const feedRate = getFeedRatePerMinute(state.feed, NaN, state.feedMode);
+			timeSeconds = Number.isFinite(feedRate) && feedRate > 0
+				? distance / feedRate * 60
+				: NaN;
+		} else if (state.spindleMode === "css") {
+			timeSeconds = estimateLinearCssFeedPerRevTime(start, end, distance, state, options);
+		} else {
+			const rpm = getEffectiveRpm(midpointPosition(start, end), state, options);
+			const feedRate = getFeedRatePerMinute(state.feed, rpm, state.feedMode);
+			timeSeconds = Number.isFinite(feedRate) && feedRate > 0
+				? distance / feedRate * 60
+				: NaN;
+		}
+	}
+
+	return {
+		timeSeconds,
+		minRpm: rpmRange.minRpm,
+		maxRpm: rpmRange.maxRpm
+	};
+}
+
+function estimateLinearCssFeedPerRevTime(start, end, distance, state, options) {
+	if (!Number.isFinite(state.feed) || state.feed <= 0 || !Number.isFinite(distance) || distance <= 0) {
+		return NaN;
+	}
+
+	const cssRpmConstant = getCssRpmConstant(state, options);
+
+	if (!Number.isFinite(cssRpmConstant) || cssRpmConstant <= 0) {
+		return NaN;
+	}
+
+	const inverseRpmIntegral = integrateLinearInverseCssRpm(start.x, end.x, cssRpmConstant, state.rpmLimit);
+
+	if (!Number.isFinite(inverseRpmIntegral) || inverseRpmIntegral <= 0) {
+		return NaN;
+	}
+
+	return distance * 60 / state.feed * inverseRpmIntegral;
+}
+
+function getCssRpmConstant(state, options) {
+	if (!Number.isFinite(state.cssSurfaceSpeed) || state.cssSurfaceSpeed <= 0) {
+		return NaN;
+	}
+
+	return options.cssSurfaceSpeedUnit === "sfm"
+		? (state.cssSurfaceSpeed * 12) / Math.PI
+		: (state.cssSurfaceSpeed * 1000) / Math.PI;
+}
+
+function integrateLinearInverseCssRpm(startDiameter, endDiameter, cssRpmConstant, rpmLimit) {
+	if (!Number.isFinite(startDiameter) || !Number.isFinite(endDiameter)) {
+		return NaN;
+	}
+
+	const splitPoints = [0, 1];
+	const delta = endDiameter - startDiameter;
+
+	addLinearRootSplit(splitPoints, startDiameter, delta, 0);
+
+	if (Number.isFinite(rpmLimit) && rpmLimit > 0) {
+		const clampDiameter = cssRpmConstant / rpmLimit;
+		addLinearRootSplit(splitPoints, startDiameter, delta, clampDiameter);
+		addLinearRootSplit(splitPoints, startDiameter, delta, -clampDiameter);
+	}
+
+	splitPoints.sort((a, b) => a - b);
+
+	let integral = 0;
+
+	for (let index = 1; index < splitPoints.length; index++) {
+		const t0 = splitPoints[index - 1];
+		const t1 = splitPoints[index];
+
+		if (t1 <= t0) {
+			continue;
+		}
+
+		const midpoint = (t0 + t1) / 2;
+		const midpointDiameter = startDiameter + delta * midpoint;
+		const unclampedInverse = Math.abs(midpointDiameter) / cssRpmConstant;
+
+		if (Number.isFinite(rpmLimit) && rpmLimit > 0 && unclampedInverse < 1 / rpmLimit) {
+			integral += (t1 - t0) / rpmLimit;
+			continue;
+		}
+
+		integral += integrateAbsoluteLinear(startDiameter, delta, t0, t1) / cssRpmConstant;
+	}
+
+	return integral;
+}
+
+function addLinearRootSplit(splitPoints, startValue, delta, targetValue) {
+	if (!Number.isFinite(delta) || delta === 0) {
+		return;
+	}
+
+	const t = (targetValue - startValue) / delta;
+
+	if (t > 0 && t < 1) {
+		splitPoints.push(t);
+	}
+}
+
+function integrateAbsoluteLinear(startValue, delta, t0, t1) {
+	const midpoint = (t0 + t1) / 2;
+	const sign = startValue + delta * midpoint < 0 ? -1 : 1;
+	const rawIntegral = startValue * (t1 - t0) + 0.5 * delta * (t1 * t1 - t0 * t0);
+
+	return sign * rawIntegral;
+}
+
+function estimatePathRpmRange(path, state, options) {
+	if (state.spindleMode === "fixed") {
+		return Number.isFinite(state.rpm)
+			? { minRpm: state.rpm, maxRpm: state.rpm }
+			: { minRpm: NaN, maxRpm: NaN };
+	}
+
+	const diameters = getPathCssDiameterCandidates(path, options);
+	const rpms = diameters
+		.map(diameter => getEffectiveRpm({ x: diameter }, state, options))
+		.filter(Number.isFinite);
+
+	if (!rpms.length) {
+		return { minRpm: NaN, maxRpm: NaN };
+	}
+
+	return {
+		minRpm: Math.min(...rpms),
+		maxRpm: Math.max(...rpms)
+	};
+}
+
+function getPathCssDiameterCandidates(path, options) {
+	const candidates = [];
+	const points = path && Array.isArray(path.points) ? path.points : [];
+
+	for (const point of points) {
+		addFiniteCandidate(candidates, point.x);
+	}
+
+	for (let index = 1; index < points.length; index++) {
+		const previousX = points[index - 1].x;
+		const nextX = points[index].x;
+
+		if (Number.isFinite(previousX) && Number.isFinite(nextX) && previousX * nextX < 0) {
+			candidates.push(0);
+		}
+	}
+
+	addArcCssDiameterExtrema(candidates, path, options);
+
+	return candidates;
+}
+
+function addArcCssDiameterExtrema(candidates, path, options) {
+	if (!path || path.kind !== "arc" || path.usedArcFallback || !path.plane || !path.plane.includes("X")) {
+		return;
+	}
+
+	const center = path.center && toPhysicalPoint(path.center, options);
+
+	if (!center || !Number.isFinite(center.x) || !Number.isFinite(path.radius) || path.radius <= 0) {
+		return;
+	}
+
+	for (const angle of [0, Math.PI]) {
+		if (!isAngleOnArcSweep(angle, path.startAngle, path.sweepRadians, path.sweepMotionCode)) {
+			continue;
+		}
+
+		const physicalX = center.x + Math.cos(angle) * path.radius;
+		addFiniteCandidate(candidates, fromPhysicalPoint({ x: physicalX }, options).x);
+	}
+}
+
+function isAngleOnArcSweep(angle, startAngle, sweepRadians, sweepMotionCode) {
+	if (!Number.isFinite(angle) || !Number.isFinite(startAngle) || !Number.isFinite(sweepRadians)) {
+		return false;
+	}
+
+	const travel = sweepMotionCode === 2
+		? normalizePositiveAngle(startAngle - angle)
+		: normalizePositiveAngle(angle - startAngle);
+
+	return travel <= sweepRadians + 1e-9;
+}
+
+function normalizePositiveAngle(angle) {
+	const fullCircle = Math.PI * 2;
+	let normalized = angle % fullCircle;
+
+	if (normalized < 0) {
+		normalized += fullCircle;
+	}
+
+	return normalized;
+}
+
+function addFiniteCandidate(candidates, value) {
+	if (Number.isFinite(value)) {
+		candidates.push(value);
+	}
 }
 
 function estimateRapidTime(distance, options) {
@@ -1862,11 +2081,11 @@ function summarizeChronobladeRows(rows) {
 
 function formatSpindle(estimate, humanFormat) {
 	if (estimate.spindleMode === "css") {
-		return `G96 S${formatNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` / limit ${formatNumber(estimate.rpmLimit, humanFormat)}` : ""}`;
+		return `G96 S${formatCompactModalNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` [${formatCompactModalNumber(estimate.rpmLimit, humanFormat)}]` : ""}`;
 	}
 
 	if (Number.isFinite(estimate.rpm)) {
-		return `G97 ${formatNumber(estimate.rpm, humanFormat)} rpm`;
+		return `G97 S${formatCompactModalNumber(estimate.rpm, humanFormat)}`;
 	}
 
 	return "";
@@ -1878,6 +2097,18 @@ function formatRpmUsed(estimate, humanFormat) {
 	}
 
 	return "";
+}
+
+function formatCompactModalNumber(value, humanFormat) {
+	const formatted = formatNumber(value, humanFormat);
+
+	if (!String(formatted).includes(".")) {
+		return formatted;
+	}
+
+	return String(formatted)
+		.replace(/(\.\d*?)0+$/, "$1")
+		.replace(/\.$/, "");
 }
 
 function formatPosition(position, options) {

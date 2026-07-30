@@ -113,11 +113,11 @@ function renderKaijuSenseHover(estimate, options = {}) {
 	}
 
 	if (estimate.usedArcFallback) {
-		md.appendMarkdown("`Arc center not found; using chord distance.`\n\n");
+		md.appendMarkdown("`Arc center not found; using chord distance.`  \n");
 	}
 
 	for (const warning of estimate.warnings || []) {
-		md.appendMarkdown(`\`${warning}\`\n\n`);
+		md.appendMarkdown(`\`${warning}\`  \n`);
 	}
 
 	return md;
@@ -133,7 +133,7 @@ function appendHoverValue(md, label, value, coloredValues) {
 		return;
 	}
 
-	md.appendMarkdown(` \`${value}\`\n\n`);
+	md.appendMarkdown(` \`${value}\`  \n`);
 }
 
 function appendLinearGeometry(md, geometry, humanFormat, coloredValues) {
