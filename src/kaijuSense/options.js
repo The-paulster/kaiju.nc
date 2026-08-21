@@ -17,6 +17,7 @@ function getSenseOptions(document) {
 		enabled: senseConfig.get("enabled", chronobladeConfig.get("enabled", true)),
 		statusVerbose: senseConfig.get("statusBarVerbose", true),
 		statusSyntaxColors: senseConfig.get("statusBarSyntaxColors", false),
+		modalNames: getModalNames(senseConfig.get("modalNames", {})),
 		syntaxColoredHoverValues: senseConfig.get("syntaxColoredHoverValues", false),
 		machineMode: profile.id,
 		defaultFeedMode: profile.defaultFeedMode,
@@ -31,6 +32,31 @@ function getSenseOptions(document) {
 	};
 }
 
+function getModalNames(value) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return {};
+	}
+
+	const names = {};
+
+	for (const [code, label] of Object.entries(value)) {
+		const normalizedCode = normalizeModalCode(code);
+		const normalizedLabel = typeof label === "string" ? label.trim() : "";
+
+		if (normalizedCode && normalizedLabel) {
+			names[normalizedCode] = normalizedLabel;
+		}
+	}
+
+	return names;
+}
+
+function normalizeModalCode(value) {
+	const match = String(value || "").trim().toUpperCase().match(/^([GM])0*(\d+(?:\.\d+)?)(?:\s|$)/);
+
+	return match ? `${match[1]}${Number(match[2])}` : "";
+}
+
 function clampNumber(value, min, max) {
 	const number = Number(value);
 
@@ -42,5 +68,7 @@ function clampNumber(value, min, max) {
 }
 
 module.exports = {
-	getSenseOptions
+	getSenseOptions,
+	getModalNames,
+	normalizeModalCode
 };

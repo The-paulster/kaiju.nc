@@ -52,7 +52,8 @@ function updateKaijuSenseStatusBar(statusBar, context) {
 	}
 
 	const state = getModalStateAtLine(editor.document, editor.selection.active.line, options);
-	const text = formatModalStateStatus(state, options.statusVerbose);
+	const namedState = applyModalNames(state, options.modalNames);
+	const text = formatModalStateStatus(namedState, options.statusVerbose);
 
 	if (!text) {
 		hideKaijuSenseStatusBar(statusBar);
@@ -62,12 +63,36 @@ function updateKaijuSenseStatusBar(statusBar, context) {
 	// Left-side cursor indicator: this follows program modal state at the caret,
 	// not the configured KAIJU machine profile shown on the right.
 	if (options.statusSyntaxColors) {
-		renderColoredKaijuSenseStatusBar(statusBar, context, state, options.statusVerbose);
+		renderColoredKaijuSenseStatusBar(statusBar, context, namedState, options.statusVerbose);
 	} else {
 		hideColoredKaijuSenseStatusBar(statusBar);
 		statusBar.plainItem.text = text;
 		statusBar.plainItem.show();
 	}
+}
+
+function applyModalNames(state, modalNames) {
+	if (!state || !Array.isArray(state.modalGroups)) {
+		return state;
+	}
+
+	return {
+		...state,
+		modalGroups: state.modalGroups.map(entry => ({
+			...entry,
+			label: getModalName(entry, modalNames) || entry.label
+		}))
+	};
+}
+
+function getModalName(entry, modalNames) {
+	if (!entry || !modalNames || typeof modalNames !== "object") {
+		return "";
+	}
+
+	const match = String(entry.code || "").match(/^([GM])0*(\d+(?:\.\d+)?)/i);
+
+	return match ? modalNames[`${match[1].toUpperCase()}${Number(match[2])}`] : "";
 }
 
 function hideKaijuSenseStatusBar(statusBar) {
@@ -129,5 +154,6 @@ function getModalStatusColor(entry) {
 }
 
 module.exports = {
-	registerKaijuSenseStatusBar
+	registerKaijuSenseStatusBar,
+	applyModalNames
 };

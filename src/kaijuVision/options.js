@@ -17,6 +17,8 @@ function getVisionOptions(document, rawOptions = {}) {
 	const defaultPlane = getDefaultVisionPlane(profile);
 
 	return {
+		analysisMode: rawOptions.analysisMode === "asWritten" ? "asWritten" : "trace",
+		showTraceLine: rawOptions.showTraceLine !== false,
 		plane: VISION_PLANES.has(rawOptions.plane)
 			? rawOptions.plane
 			: normalizeVisionPlane(getConfiguredValue(config, "plane", AUTO_VISION_PLANE), defaultPlane),

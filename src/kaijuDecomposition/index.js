@@ -84,12 +84,15 @@ async function runKaijuDecompositionCommand() {
 
 async function decomposeDocument(document) {
 	const sourceName = document.fileName ? document.fileName.split(/[\\/]/).pop() : document.uri.toString();
+	const macroAliases = buildMacroAliasMap(document);
+	const commentDefaults = buildInitialCommentDefaults(document, macroAliases);
 	const context = {
 		document,
-		macroValues: new Map(),
+		macroValues: new Map(commentDefaults),
 		assignedMacros: new Set(),
-		macroAliases: buildMacroAliasMap(document),
+		macroAliases,
 		macroAliasLabels: buildMacroAliasLabelMap(document),
+		commentDefaults,
 		manualInputs: new Map(),
 		warnings: [],
 		labels: buildLabelMap(document),
@@ -211,14 +214,14 @@ async function handleControlLine(codeLine, lineNumber, context) {
 
 			if (targetLine !== undefined) {
 				return {
-					comment: makeFlowComment(lineNumber, `IF true, GOTO N${ifGoto.target}`),
+					comment: makeComparisonComment(lineNumber, ifGoto.condition, condition, ifGoto.body, context),
 					nextLine: targetLine
 				};
 			}
 		}
 
 		return {
-			comment: makeFlowComment(lineNumber, `IF false, did not GOTO N${ifGoto.target}`)
+			comment: makeComparisonComment(lineNumber, ifGoto.condition, condition, ifGoto.body, context)
 		};
 	}
 
@@ -231,7 +234,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 			: [];
 
 		return {
-			comment: makeFlowComment(lineNumber, `IF ${condition.value ? "true" : "false"}, ${condition.value ? "applied" : "skipped"} THEN ${ifThen.body}`),
+			comment: makeComparisonComment(lineNumber, ifThen.condition, condition, ifThen.body, context),
 			comments: assignmentComments,
 			terminal: condition.value && isMacroAlarmLine(ifThen.body),
 			nextLine: lineNumber + 1
@@ -254,7 +257,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 				condition: whileStart.condition
 			});
 			return {
-				comment: makeFlowComment(lineNumber, `WHILE true, entering DO${whileStart.doNumber}`)
+				comment: makeComparisonComment(lineNumber, whileStart.condition, condition, `DO${whileStart.doNumber}`, context)
 			};
 		}
 
@@ -266,7 +269,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 		}
 
 		return {
-			comment: makeFlowComment(lineNumber, `WHILE false, skipped to after END${whileStart.doNumber}`),
+			comment: makeComparisonComment(lineNumber, whileStart.condition, condition, `DO${whileStart.doNumber}`, context),
 			nextLine: endLine + 1
 		};
 	}
@@ -283,7 +286,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 
 		context.loopStack.splice(context.loopStack.indexOf(loop), 1);
 		return {
-			comment: makeFlowComment(lineNumber, `END${loopEnd.doNumber}, returning to line ${loop.startLine + 1}`),
+			comment: makeFlowComment(lineNumber, `END${loopEnd.doNumber}; return to L${loop.startLine + 1}`),
 			nextLine: loop.startLine
 		};
 	}
@@ -295,7 +298,7 @@ async function handleControlLine(codeLine, lineNumber, context) {
 
 		if (targetLine !== undefined) {
 			return {
-				comment: makeFlowComment(lineNumber, `GOTO N${gotoTarget}`),
+				comment: makeFlowComment(lineNumber, `GOTO ${gotoTarget}`),
 				nextLine: targetLine
 			};
 		}
@@ -313,7 +316,7 @@ async function variableTracker(codeLine, lineNumber, context) {
 		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
 
 		if (Number.isFinite(value)) {
-			comments.push(makeMacroAssignmentComment(assignment, value));
+			comments.push(makeMacroAssignmentComment(assignment, value, lineNumber));
 		}
 	}
 
@@ -496,6 +499,28 @@ function buildMacroAliasLabelMap(document) {
 	return labels;
 }
 
+function buildInitialCommentDefaults(document, macroAliases) {
+	const defaults = new Map();
+
+	for (const entry of buildAliasEntries(document)) {
+		const value = getTrailingCommentDefault(entry.comment);
+
+		if (!Number.isFinite(value)) {
+			continue;
+		}
+
+		setMacroValue(defaults, entry.macro, value, macroAliases);
+	}
+
+	return defaults;
+}
+
+function getTrailingCommentDefault(comment) {
+	const match = String(comment || "").match(/\{\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s*\}\s*$/);
+
+	return match ? Number(match[1]) : NaN;
+}
+
 function getMacroAliasLabel(macro, resolvedMacro, context) {
 	const labels = context.macroAliasLabels || new Map();
 	const normalizedMacro = normalizeMacro(macro);
@@ -644,7 +669,7 @@ function findIfGoto(codeLine) {
 	const match = statement ? statement.rest.match(/^\s*GOTO\s*N?(\d+)/i) : undefined;
 
 	return match
-		? { condition: statement.condition, target: match[1] }
+		? { condition: statement.condition, target: match[1], body: `GOTO ${match[1]}` }
 		: undefined;
 }
 
@@ -919,11 +944,71 @@ function addWarning(context, lineNumber, message) {
 }
 
 function makeFlowComment(lineNumber, message) {
-	return `( KAIJU flow line ${lineNumber + 1}: ${message} )`;
+	return `(/flow L${lineNumber + 1}: ${message})`;
 }
 
-function makeMacroAssignmentComment(assignment, value) {
-	return `(${assignment.macro} = ${formatMacroAssignmentValue(assignment.value, value)})`;
+function makeComparisonComment(lineNumber, conditionText, condition, action, context) {
+	const details = describeCondition(conditionText, context);
+	const result = condition.value ? "TRUE" : "FALSE";
+
+	return `(/comparison L${lineNumber + 1}: ${[details, result, action].filter(Boolean).join("; ")})`;
+}
+
+function describeCondition(conditionText, context) {
+	const expression = stripOuterDisplayBrackets(conditionText);
+	const values = getConditionMacroValues(expression, context);
+	const test = describeConditionTest(expression, context);
+
+	return [values.join(", "), test].filter(Boolean).join("; ");
+}
+
+function getConditionMacroValues(expression, context) {
+	const macros = new Set();
+
+	for (const match of String(expression || "").matchAll(MACRO_REGEX)) {
+		macros.add(normalizeMacro(match[0]));
+	}
+
+	return [...macros].map(macro => {
+		const value = evaluateNumericExpression(macro, context.macroValues, context.macroAliases);
+		return Number.isFinite(value) ? `${macro}=${formatNumber(value)}` : macro;
+	});
+}
+
+function describeConditionTest(expression, context) {
+	const normalizedExpression = stripOuterDisplayBrackets(expression);
+	const andParts = splitTopLevelLogicalAnd(normalizedExpression);
+
+	if (andParts) {
+		return andParts.map(part => describeConditionTest(part, context)).join(" AND ");
+	}
+
+	const comparison = splitComparison(normalizedExpression);
+
+	if (!comparison) {
+		const value = evaluateNumericExpression(normalizedExpression, context.macroValues, context.macroAliases);
+		return Number.isFinite(value) ? formatNumber(value) : normalizedExpression;
+	}
+
+	const left = evaluateNumericExpression(comparison.left, context.macroValues, context.macroAliases);
+	const right = evaluateNumericExpression(comparison.right, context.macroValues, context.macroAliases);
+	const leftText = Number.isFinite(left) ? formatNumber(left) : comparison.left;
+	const rightText = Number.isFinite(right) ? formatNumber(right) : comparison.right;
+
+	return `${leftText} ${comparison.operator} ${rightText}`;
+}
+
+function stripOuterDisplayBrackets(text) {
+	const trimmed = String(text || "").trim();
+	const outerToken = trimmed.startsWith("[") ? readBracketToken(trimmed, 0) : undefined;
+
+	return outerToken && outerToken.end === trimmed.length
+		? trimmed.slice(1, -1).trim()
+		: trimmed;
+}
+
+function makeMacroAssignmentComment(assignment, value, lineNumber) {
+	return `(/assignment L${lineNumber + 1}: ${assignment.macro} = ${formatMacroAssignmentValue(assignment.value, value)})`;
 }
 
 function formatMacroAssignmentValue(rawValue, value) {
@@ -944,6 +1029,14 @@ function makeOutputText(sourceName, context, outputLines) {
 		"( This is not verified machine-ready code. )"
 	];
 
+	if (context.commentDefaults.size) {
+		header.push("( Comment defaults: )");
+
+		for (const [macro, value] of context.commentDefaults) {
+			header.push(`( ${macro} = ${formatNumber(value)} )`);
+		}
+	}
+
 	if (context.manualInputs.size) {
 		header.push("( Manual inputs: )");
 
@@ -951,6 +1044,7 @@ function makeOutputText(sourceName, context, outputLines) {
 			header.push(`( ${macro} = ${formatNumber(value)} )`);
 		}
 	}
+
 
 	if (context.warnings.length) {
 		header.push("( Warnings: )");

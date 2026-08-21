@@ -10,6 +10,8 @@ const { registerChronobladeWebview } = require("./kaijuChronoblade/webview");
 const { registerKaijuVisionWebview } = require("./kaijuVision/webview");
 const { registerKaijuDecomposition } = require("./kaijuDecomposition");
 const { registerMachineModeCommands } = require("./MetaMachineMode");
+const { registerExecutionTrace } = require("./MetaExecutionTrace");
+const { registerKaijuTrace } = require("./kaijuTrace");
 const { registerKaijuRangefinder } = require("./kaijuRangefinder");
 const { registerKaijuWarpaint } = require("./kaijuWarpaint");
 const { registerKaijuQuickToggles } = require("./kaijuQuickToggles");
@@ -25,6 +27,8 @@ function activate(context) {
 	registerKaijuVisionWebview(context);
 	registerKaijuDecomposition(context);
 	registerMachineModeCommands(context);
+	registerExecutionTrace(context);
+	registerKaijuTrace(context);
 	registerKaijuRangefinder(context);
 	registerKaijuWarpaint(context);
 	registerKaijuQuickToggles(context);

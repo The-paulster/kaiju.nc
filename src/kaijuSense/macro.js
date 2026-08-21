@@ -13,15 +13,54 @@ const {
 	resolveMacroAlias,
 	setMacroValue
 } = require("../MetaMacroEngine");
+const {
+	getExecutionTrace,
+	getMacroHistory
+} = require("../MetaExecutionTrace");
 
 function registerKaijuSenseMacro(context) {
 	context.subscriptions.push(
+		vscode.languages.registerDefinitionProvider({ language: "gcode" }, {
+			provideDefinition(document, position) {
+				return provideMacroDefinition(document, position);
+			}
+		}),
 		vscode.languages.registerHoverProvider({ language: "gcode" }, {
 			provideHover(document, position) {
 				return provideMacroHover(document, position);
 			}
 		})
 	);
+}
+
+function provideMacroDefinition(document, position) {
+	if (document.languageId !== "gcode") {
+		return undefined;
+	}
+
+	const macro = getMacroAtPosition(document, position);
+	if (!macro) {
+		return undefined;
+	}
+
+	const aliases = buildMacroAliasMap(document);
+	const definitions = buildMacroDefinitionTable(document, aliases);
+	const resolvedMacro = resolveMacroAlias(macro, aliases);
+	const definition = definitions.get(normalizeMacro(macro)) || definitions.get(resolvedMacro);
+	if (!definition || !Number.isInteger(definition.identityLineNumber)) {
+		return undefined;
+	}
+
+	const sourceLine = document.lineAt(definition.identityLineNumber).text;
+	const sourceMacro = definition.identityMacro || normalizeMacro(macro);
+	const character = Math.max(0, sourceLine.toUpperCase().indexOf(sourceMacro.toUpperCase()));
+	const range = new vscode.Range(
+		definition.identityLineNumber,
+		character,
+		definition.identityLineNumber,
+		character + sourceMacro.length
+	);
+	return new vscode.Location(document.uri, range);
 }
 
 function provideMacroHover(document, position) {
@@ -54,27 +93,52 @@ function provideMacroHover(document, position) {
 
 	md.appendMarkdown(`**KAIJU Sense - ${hoveredMacro}**\n\n`);
 
-	if (definition.value) {
-		md.appendMarkdown(`**Value:** \`${definition.value}\`\n\n`);
-	} else {
-		md.appendMarkdown("**Value:** `No value found`\n\n");
-	}
+	md.appendMarkdown(`**Source:** ${definition.identityLabel}\n\n`);
 
-	if (Number.isFinite(definition.numericValue)) {
-		md.appendMarkdown(`**Resolved:** \`${formatMacroNumber(definition.numericValue)}\`\n\n`);
-	}
+	appendTraceHistory(md, document, position.line, hoveredMacro, macroAliases, definition.numericValue);
 
-	if (definition.comment) {
-		md.appendMarkdown(`**Comment:** ${escapeMarkdown(definition.comment)}\n\n`);
-	} else {
-		md.appendMarkdown("**Comment:** `No comment found`\n\n");
-	}
-
-	md.appendMarkdown(`**Defined:** ${definition.definedLabel}\n\n`);
-
-	md.appendCodeblock(definition.lineText.trim(), "gcode");
+	md.appendCodeblock(definition.identityLineText.trim(), "gcode");
 
 	return new vscode.Hover(md);
+}
+
+function appendTraceHistory(md, document, lineNumber, macro, macroAliases, staticValue) {
+	const trace = getExecutionTrace(document);
+
+	if (!trace) {
+		appendResolvedValue(md, staticValue, "Trace running");
+		return;
+	}
+
+	const history = getMacroHistory(trace, lineNumber, macro, macroAliases);
+
+	if (!history) {
+		appendResolvedValue(md, staticValue, "No executed value");
+		return;
+	}
+
+	if (history.count === 1) {
+		md.appendMarkdown(`**Resolved:** \`${formatHistory(history)}\`\n\n`);
+	} else {
+		md.appendMarkdown(`**Trace occurrences:** \`${history.count}\`\n\n`);
+		md.appendMarkdown(`**Trace values:** \`${formatHistory(history)}\`\n\n`);
+	}
+}
+
+function appendResolvedValue(md, value, unavailableReason) {
+	if (Number.isFinite(value)) {
+		md.appendMarkdown(`**Resolved:** \`${formatMacroNumber(value)}\` (${unavailableReason})\n\n`);
+	} else {
+		md.appendMarkdown(`**Resolved:** \`${unavailableReason}\`\n\n`);
+	}
+}
+
+function formatHistory(history) {
+	if (Array.isArray(history.values)) {
+		return history.values.map(formatMacroNumber).join(", ");
+	}
+
+	return `${history.first.map(formatMacroNumber).join(", ")} … ${history.last.map(formatMacroNumber).join(", ")}`;
 }
 
 function getMacroAtPosition(document, position) {
@@ -114,10 +178,15 @@ function buildMacroDefinitionTable(document, macroAliases) {
 		const definition = {
 			value: "",
 			numericValue: NaN,
-			comment: entry.comment || entry.phrase || entry.alias,
+			name: entry.phrase || entry.comment || entry.alias,
+			alias: entry.alias,
 			definedLabel: lineNumber >= 0 ? `Line ${lineNumber + 1}` : "Alias comment",
 			lineNumber,
 			lineText,
+			identityLabel: lineNumber >= 0 ? `Line ${lineNumber + 1}` : "Alias comment",
+			identityLineText: lineText,
+			identityLineNumber: lineNumber,
+			identityMacro: normalizedMacro,
 			aliasOnly: true
 		};
 
@@ -149,8 +218,8 @@ function buildMacroDefinitionTable(document, macroAliases) {
 			const value = extractValueAfterEquals(line, valueStart);
 			const numericValue = evaluateNumericExpression(value, macroValues, macroAliases);
 			const previousDefinition = definitions.get(normalizedMacro) || definitions.get(resolvedMacro);
-			const comment = previousDefinition && previousDefinition.comment
-				? previousDefinition.comment
+			const name = previousDefinition && previousDefinition.name
+				? previousDefinition.name
 				: extractFirstComment(line);
 			const blockNumber = extractBlockNumber(line);
 
@@ -161,10 +230,23 @@ function buildMacroDefinitionTable(document, macroAliases) {
 			const definition = {
 				value,
 				numericValue,
-				comment,
+				name,
+				alias: previousDefinition && previousDefinition.alias ? previousDefinition.alias : "",
 				definedLabel,
 				lineNumber,
 				lineText: line,
+				identityLabel: previousDefinition && previousDefinition.identityLabel
+					? previousDefinition.identityLabel
+					: definedLabel,
+				identityLineText: previousDefinition && previousDefinition.identityLineText
+					? previousDefinition.identityLineText
+					: line,
+				identityLineNumber: previousDefinition && Number.isInteger(previousDefinition.identityLineNumber)
+					? previousDefinition.identityLineNumber
+					: lineNumber,
+				identityMacro: previousDefinition && previousDefinition.identityMacro
+					? previousDefinition.identityMacro
+					: normalizedMacro,
 				aliasOnly: false
 			};
 
@@ -233,5 +315,6 @@ function escapeMarkdown(text) {
 }
 
 module.exports = {
-	registerKaijuSenseMacro
+	registerKaijuSenseMacro,
+	provideMacroDefinition
 };

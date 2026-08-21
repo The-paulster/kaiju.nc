@@ -192,7 +192,7 @@ function makeAliasName(phrase) {
 
 function cleanAliasPhrase(phrase) {
 	return phrase
-		.split("[")[0]
+		.split(/[\[{]/)[0]
 		.replace(/\s+/g, " ")
 		.trim();
 }

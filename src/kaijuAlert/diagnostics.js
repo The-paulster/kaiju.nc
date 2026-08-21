@@ -11,6 +11,7 @@ const {
 	getUndefinedAliasOccurrences
 } = require("../kaijuAlias");
 const { getAliasOptions } = require("../kaijuAlias/options");
+const { analyzeArcAtLine } = require("../MetaMotionEngine");
 const { getAlertOptions } = require("./options");
 
 const DIAGNOSTIC_SOURCE = "Kaiju Alert";
@@ -39,6 +40,8 @@ function registerDiagnostics(context) {
 			if (
 				event.affectsConfiguration("kaijuNC.alerts")
 				|| event.affectsConfiguration("kaijuNC.alias")
+				|| event.affectsConfiguration("kaijuNC.chronoblade.machineMode")
+				|| event.affectsConfiguration("kaijuNC.chronoblade.xAxisMode")
 				|| event.affectsConfiguration("kaijuNC.syntax.unresolvedGotos.enabled")
 			) {
 				for (const editor of vscode.window.visibleTextEditors) {
@@ -101,6 +104,9 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 		if (options.warnAdjacentOperators) {
 			warnings.push(...makeAdjacentOperatorWarnings(line, lineNumber, ignoreRanges));
 		}
+		if (options.warnIllegalArcs) {
+			warnings.push(...makeIllegalArcWarnings(document, lineNumber, options));
+		}
 
 		const directAddressRegex = /\b([XYZUVWABCIJKRFxyzuvwabcijkrf])([-+]?\d+)(?![.\d])/g;
 
@@ -158,6 +164,23 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	}
 
 	diagnostics.set(document.uri, warnings);
+}
+
+function makeIllegalArcWarnings(document, lineNumber, options) {
+	const arc = analyzeArcAtLine(document, lineNumber, options);
+
+	if (!arc || !arc.validation || arc.validation.valid !== false) {
+		return [];
+	}
+
+	const range = arc.motionRange || { start: 0, end: 1 };
+	const diagnostic = new vscode.Diagnostic(
+		new vscode.Range(lineNumber, range.start, lineNumber, range.end),
+		`Illegal arc: ${arc.validation.message}`,
+		vscode.DiagnosticSeverity.Error
+	);
+	diagnostic.source = DIAGNOSTIC_SOURCE;
+	return [diagnostic];
 }
 
 function scheduleUndefinedAliasDiagnostics(document, diagnostics, timers) {

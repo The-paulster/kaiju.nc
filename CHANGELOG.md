@@ -2,8 +2,37 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+- Added KAIJU Vision Trace motion with saved per-program macro inputs, safety
+  warnings, Trace/As-written motion selection, and source/trace node-line
+  inspection; hid the redundant bottom motion table.
+
+- Added Ctrl/Cmd-click macro navigation in the G-code editor, targeting the
+  Alias-style source line when one exists.
+
+
+- Clarified KAIJU Sense macro hovers by showing the Alias-style variable name
+  separately from its first static assignment and resolved startup value.
+
+- Added KAIJU Trace: a debounced passive macro execution cache with loop/GOTO
+  traversal, assumed-zero input reporting, a right-side health status item,
+  and first-five/last-five loop values in KAIJU Sense macro hovers.
+
+- Added an optional Kaiju Alert error for explicit `G2`/`G3` arcs that have
+  definite geometric errors, controlled by `kaijuNC.alerts.illegalArcs.enabled`.
+
 ## [0.4.0]
 
+- Improved KAIJU Chronoblade's compact report table with centered minimum-width Line and Code columns, a tighter Spindle/RPM layout, `-` for unknown times, no unknown-time warning banner, and a single fixed-RPM value instead of a redundant range.
+- Added collapsible N-label sections to KAIJU Chronoblade reports with accumulated time through each section.
+- Added Chronoblade report toggles and settings for significant-figures display and hiding zero-time label sections, with zero-time sections hidden by default.
+- Fixed KAIJU Vision merged nodes so ordinary endpoint dots no longer paint over a semantic marker at the same position.
+- Removed KAIJU Vision's inactive Send Whole Program and Send Selection controls, and added a Legend toggle that keeps the complete semantic-marker legend visible.
+- Added an `AGENTS.md` architecture guide and module-responsibility documentation for KAIJU.NC features and shared Meta capabilities.
+- Added Decomposition defaults from initial macro comments with trailing numeric braces, such as `(#109 Tool life counter 5 {0})` for `#109 = 0`.
+- Fixed KAIJU Alias parsing so trailing curly-brace annotations such as `{0}` do not become part of a generated alias name.
+- Improved KAIJU Decomposition trace notes with concise syntax-colored `/assignment`, `/comparison`, and `/flow` comments that show resolved macro values, evaluated comparisons, results, and conditional bodies.
+- Added `kaijuNC.sense.modalNames` so verbose KAIJU Sense status-bar modal labels can be overridden per code.
+- Expanded the KAIJU Sense status-bar modal readout with profile-aware mill and lathe labels for distance, units, arc-centre distance, canned cycles and return mode, compensation, tool length, extended work offsets, path control, rotation, scaling, spindle state, coolant, and lathe cycles/axis programming.
 - Added `AND` support to KAIJU Decomposition compound conditions such as `IF[[#105 NE 1.000] AND [#105 NE 2.000]] THEN #3000 = 1.000`.
 - Fixed KAIJU Sense macro hovers so comment-only macro names like `(#105 = previous removed depth [mm])` or `(#105 previous removed depth [mm])` still appear when the macro value is unresolved.
 - Fixed KAIJU Chronoblade CSS timing at X0 so centerline moves use the active RPM limit instead of reporting unknown time.

@@ -259,7 +259,7 @@ function renderChronobladeHtml(document, mode, options, result) {
 
 		.summary {
 			display: grid;
-			grid-template-columns: repeat(5, minmax(90px, 1fr));
+			grid-template-columns: repeat(6, minmax(0, 1fr));
 			gap: 8px;
 			margin-bottom: 14px;
 		}
@@ -281,6 +281,20 @@ function renderChronobladeHtml(document, mode, options, result) {
 			margin-top: 2px;
 		}
 
+		.report-toggles {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 14px;
+			margin: -6px 0 14px;
+		}
+
+		.checkbox {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			min-height: 28px;
+		}
+
 		.table-wrap {
 			overflow: auto;
 			max-height: 68vh;
@@ -288,9 +302,10 @@ function renderChronobladeHtml(document, mode, options, result) {
 		}
 
 		table {
-			width: 100%;
+			width: max-content;
+			min-width: 100%;
 			border-collapse: collapse;
-			table-layout: fixed;
+			table-layout: auto;
 			font-size: 12px;
 		}
 
@@ -335,9 +350,46 @@ function renderChronobladeHtml(document, mode, options, result) {
 			font-weight: 600;
 		}
 
+		tr.label-row {
+			cursor: pointer;
+		}
+
+		.section-group.is-collapsed .section-content {
+			display: none;
+		}
+
+		body.hide-zero-time-labels .section-group[data-zero-time="true"] {
+			display: none;
+		}
+
+		.section-toggle {
+			display: block;
+			width: 100%;
+			padding: 0;
+			color: inherit;
+			background: transparent;
+			border: 0;
+			border-radius: 0;
+			font: inherit;
+			text-align: left;
+		}
+
+		.section-toggle:hover {
+			background: transparent;
+			text-decoration: underline;
+		}
+
+		.section-chevron {
+			display: inline-block;
+			width: 1.25em;
+			text-decoration: none;
+		}
+
+		.line-column,
+		.line-cell,
+		.code-column,
 		.instruction-cell {
-			width: 7ch;
-			max-width: 7ch;
+			text-align: center;
 		}
 
 		.position-cell {
@@ -362,14 +414,6 @@ function renderChronobladeHtml(document, mode, options, result) {
 			font-weight: 700;
 		}
 
-		.instruction-cell code,
-		.truncate {
-			display: block;
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
-
 		code {
 			font-family: var(--vscode-editor-font-family);
 			background: var(--vscode-textCodeBlock-background);
@@ -378,8 +422,7 @@ function renderChronobladeHtml(document, mode, options, result) {
 		}
 
 		@media (max-width: 720px) {
-			.controls,
-			.summary {
+			.controls {
 				grid-template-columns: 1fr;
 			}
 		}
@@ -411,19 +454,25 @@ function renderChronobladeHtml(document, mode, options, result) {
 	</div>
 
 	<section class="summary">
-		${renderMetric("Total", formatTime(summary.totalTimeSeconds))}
-		${renderMetric("Cutting", formatTime(summary.cuttingTimeSeconds))}
-		${renderMetric("G0", formatTime(summary.rapidTimeSeconds))}
-		${renderMetric("Dwell", formatTime(summary.dwellTimeSeconds))}
-		${renderMetric("Tool", formatTime(summary.toolTimeSeconds))}
+		${renderMetric("Total", formatChronobladeTime(summary.totalTimeSeconds))}
+		${renderMetric("Cutting", formatChronobladeTime(summary.cuttingTimeSeconds))}
+		${renderMetric("G0", formatChronobladeTime(summary.rapidTimeSeconds))}
+		${renderMetric("Dwell", formatChronobladeTime(summary.dwellTimeSeconds))}
+		${renderMetric("Tool", formatChronobladeTime(summary.toolTimeSeconds))}
 		${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat))}
 	</section>
 
-	${summary.unknownTimeRows ? `<p class="note">${escapeHtml(summary.unknownTimeRows)} row(s) have unknown time because required motion data is missing.</p>` : ""}
+	<div class="report-toggles">
+		<label class="checkbox"><input id="significantFigures" type="checkbox"${options.significantFiguresOnly ? " checked" : ""}> Significant figures only</label>
+		<label class="checkbox"><input id="hideZeroTimeLabels" type="checkbox"${options.hideZeroTimeLabels ? " checked" : ""}> Hide labels with zero time</label>
+	</div>
+
 	${renderRows(result.rows, options.humanFormat)}
 
 	<script>
 		const vscode = acquireVsCodeApi();
+		const significantFiguresInput = document.getElementById("significantFigures");
+		const hideZeroTimeLabelsInput = document.getElementById("hideZeroTimeLabels");
 		const readOptions = () => ({
 			rapidRate: document.getElementById("rapidRate").value,
 			toolChangeSeconds: document.getElementById("toolChangeSeconds").value,
@@ -437,6 +486,37 @@ function renderChronobladeHtml(document, mode, options, result) {
 		document.getElementById("selection").addEventListener("click", () => {
 			vscode.postMessage({ type: "selection", options: readOptions() });
 		});
+
+		const formatSignificantFigures = value => value.replace(/(-?\\d+)\\.(\\d+)/g, (_match, whole, fraction) => whole + "." + fraction.replace(/0+$/, ""));
+		const updateSignificantFigures = () => {
+			document.querySelectorAll("[data-significant-figures]").forEach(element => {
+				const fullValue = element.dataset.fullValue || element.textContent;
+				element.dataset.fullValue = fullValue;
+				element.textContent = significantFiguresInput.checked ? formatSignificantFigures(fullValue) : fullValue;
+			});
+		};
+		const updateZeroTimeLabels = () => {
+			document.body.classList.toggle("hide-zero-time-labels", hideZeroTimeLabelsInput.checked);
+		};
+
+		significantFiguresInput.addEventListener("change", updateSignificantFigures);
+		hideZeroTimeLabelsInput.addEventListener("change", updateZeroTimeLabels);
+		updateSignificantFigures();
+		updateZeroTimeLabels();
+
+		document.querySelector(".chronoblade-table")?.addEventListener("click", event => {
+			const labelRow = event.target.closest(".label-row");
+			if (!labelRow) {
+				return;
+			}
+
+			const toggle = labelRow.querySelector(".section-toggle");
+			const group = labelRow.closest(".section-group");
+			const isCollapsed = group.classList.toggle("is-collapsed");
+
+			toggle.setAttribute("aria-expanded", String(!isCollapsed));
+			toggle.querySelector(".section-chevron").textContent = String.fromCharCode(isCollapsed ? 9654 : 9660);
+		});
 	</script>
 </body>
 </html>`;
@@ -444,7 +524,7 @@ function renderChronobladeHtml(document, mode, options, result) {
 
 function renderMetric(label, value) {
 	return `<div class="metric">
-		<div class="metric-value">${escapeHtml(value)}</div>
+		<div class="metric-value" data-significant-figures>${escapeHtml(value)}</div>
 		<div class="metric-label">${escapeHtml(label)}</div>
 	</div>`;
 }
@@ -466,62 +546,116 @@ function renderRows(rows, humanFormat) {
 	}
 
 	let accumulatedTimeSeconds = 0;
-	const body = rows.map(row => {
-		if (row.type === "label") {
-			const comment = row.comment ? ` ${row.comment}` : "";
-			const total = Number.isFinite(row.labelTotalTimeSeconds)
-				? ` Total: ${formatTime(row.labelTotalTimeSeconds)}`
-				: "";
+	const unlabelledRows = [];
+	const sections = [];
+	let activeSection;
 
-			return `<tr class="label-row">
-				${renderToolMarkerCell(row)}
-				<td class="tool-marker-gap"></td>
-				<td>${escapeHtml(row.lineNumber)}</td>
-				<td colspan="9"><span class="truncate" title="${escapeAttribute(`${row.instruction}${comment}${total}`)}"><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}${escapeHtml(total)}</span></td>
-			</tr>`;
+	for (const row of rows) {
+		if (row.type === "label") {
+			activeSection = { label: row, rows: [] };
+			sections.push(activeSection);
+			continue;
 		}
 
 		if (Number.isFinite(row.timeSeconds)) {
 			accumulatedTimeSeconds += row.timeSeconds;
 		}
 
-		return `<tr>
+		const renderedRow = `<tr class="section-content">
 			${renderToolMarkerCell(row)}
 			<td class="tool-marker-gap"></td>
-			<td>${escapeHtml(row.lineNumber)}</td>
+			<td class="line-cell">${escapeHtml(row.lineNumber)}</td>
 			<td class="instruction-cell" title="${escapeAttribute(row.instruction)}"><code>${escapeHtml(row.instruction)}</code></td>
-			<td class="position-cell">${renderPositionCell(row.start)}</td>
-			<td class="position-cell">${renderPositionCell(row.end)}</td>
-			<td>${escapeHtml(formatDistance(row, humanFormat))}</td>
-			<td>${escapeHtml(formatFeed(row, humanFormat))}</td>
-			<td>${escapeHtml(row.spindle || "-")}</td>
-			<td>${escapeHtml(row.rpmUsed || "-")}</td>
-			<td>${escapeHtml(formatTime(row.timeSeconds))}</td>
-			<td>${escapeHtml(formatAccumulatedTime(accumulatedTimeSeconds))}</td>
+			<td class="position-cell"><span class="cell-value">${renderPositionCell(row.start)}</span></td>
+			<td class="position-cell"><span class="cell-value">${renderPositionCell(row.end)}</span></td>
+			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatDistance(row, humanFormat))}</span></td>
+			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatFeed(row, humanFormat))}</span></td>
+			<td><span class="cell-value" data-significant-figures>${escapeHtml(row.spindle || "-")}</span></td>
+			<td><span class="cell-value" data-significant-figures>${escapeHtml(row.rpmUsed || "-")}</span></td>
+			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatChronobladeTime(row.timeSeconds))}</span></td>
+			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatAccumulatedTime(accumulatedTimeSeconds))}</span></td>
 		</tr>`;
-	}).join("");
+
+		if (activeSection) {
+			activeSection.rows.push(renderedRow);
+		} else {
+			unlabelledRows.push(renderedRow);
+		}
+	}
+
+	const body = [
+		unlabelledRows.length ? `<tbody>${unlabelledRows.join("")}</tbody>` : "",
+		...renderSectionGroups(sections)
+	].join("");
 
 	return `<div class="table-wrap">
-		<table>
+		<table class="chronoblade-table">
+			<colgroup>
+				<col class="tool-marker-header">
+				<col class="tool-marker-gap">
+				<col style="width:5ch; min-width:5ch">
+				<col style="width:7ch; min-width:7ch">
+				<col style="width:18ch; min-width:18ch">
+				<col style="width:18ch; min-width:18ch">
+				<col style="width:9ch; min-width:9ch">
+				<col style="width:10ch; min-width:10ch">
+				<col style="width:12ch; min-width:12ch">
+				<col>
+				<col>
+				<col>
+			</colgroup>
 			<thead>
 				<tr>
 					<th class="tool-marker-header"></th>
 					<th class="tool-marker-gap"></th>
-					<th style="width:5ch">Line</th>
-					<th style="width:7ch">Code</th>
+					<th class="line-column">Line</th>
+					<th class="code-column">Code</th>
 					<th style="width:18ch">Start</th>
 					<th style="width:18ch">End</th>
 					<th style="width:9ch">Distance</th>
 					<th style="width:10ch">Feed</th>
-					<th style="width:15ch">Spindle</th>
-					<th style="width:15ch">RPM Used</th>
-					<th style="width:10ch">Time</th>
-					<th style="width:10ch">Total</th>
+					<th style="width:12ch">Spindle</th>
+					<th>RPM Used</th>
+					<th>Time</th>
+					<th>Total</th>
 				</tr>
 			</thead>
-			<tbody>${body}</tbody>
+			${body}
 		</table>
 	</div>`;
+}
+
+function renderSectionGroups(sections) {
+	let accumulatedLabelTimeSeconds = 0;
+
+	return sections.map((section, index) => {
+		if (Number.isFinite(section.label.labelTotalTimeSeconds)) {
+			accumulatedLabelTimeSeconds += section.label.labelTotalTimeSeconds;
+		}
+
+		return `<tbody class="section-group" data-section-id="${index}" data-zero-time="${isZeroTimeSection(section.label)}">
+			${renderLabelRow(section.label, index, accumulatedLabelTimeSeconds)}
+			${section.rows.join("")}
+		</tbody>`;
+	});
+}
+
+function renderLabelRow(row, sectionId, accumulatedLabelTimeSeconds) {
+	const comment = row.comment ? ` ${row.comment}` : "";
+	const total = Number.isFinite(accumulatedLabelTimeSeconds)
+		? ` Total: ${formatTime(accumulatedLabelTimeSeconds)}`
+		: "";
+
+	return `<tr class="label-row" data-section-id="${sectionId}">
+		${renderToolMarkerCell(row)}
+		<td class="tool-marker-gap"></td>
+		<td class="line-cell">${escapeHtml(row.lineNumber)}</td>
+		<td colspan="9"><button class="section-toggle" type="button" aria-expanded="true" title="Collapse this label section"><span class="section-chevron" aria-hidden="true">&#9660;</span><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}${escapeHtml(total)}</button></td>
+	</tr>`;
+}
+
+function isZeroTimeSection(row) {
+	return Number.isFinite(row.labelTotalTimeSeconds) && Math.abs(row.labelTotalTimeSeconds) < 0.000000001;
 }
 
 function renderToolMarkerCell(row) {
@@ -555,7 +689,7 @@ function renderPositionCell(positionText) {
 function renderCoordinateWord(axis, valueText) {
 	const normalizedAxis = String(axis).toLowerCase();
 
-	return `<span class="coord axis-${escapeAttribute(normalizedAxis)}"><span class="axis-letter">${escapeHtml(axis.toUpperCase())}</span>${escapeHtml(valueText)}</span>`;
+	return `<span class="coord axis-${escapeAttribute(normalizedAxis)}"><span class="axis-letter">${escapeHtml(axis.toUpperCase())}</span><span data-significant-figures>${escapeHtml(valueText)}</span></span>`;
 }
 
 function formatFeed(row, humanFormat) {
@@ -567,7 +701,11 @@ function formatFeed(row, humanFormat) {
 }
 
 function formatAccumulatedTime(seconds) {
-	return Number.isFinite(seconds) && seconds > 0 ? formatTime(seconds) : "-";
+	return Number.isFinite(seconds) && seconds > 0 ? formatChronobladeTime(seconds) : "-";
+}
+
+function formatChronobladeTime(seconds) {
+	return Number.isFinite(seconds) ? formatTime(seconds) : "-";
 }
 
 function formatDistance(row, humanFormat) {

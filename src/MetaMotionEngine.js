@@ -79,7 +79,7 @@ function getModalStateAtLine(document, targetLineNumber, options = {}) {
 		const motionCode = getMotionCode(words);
 
 		applyModalState(words, motionCode, state);
-		applyStatusModalState(words, statusState);
+		applyStatusModalState(words, statusState, options);
 	}
 
 	return {
@@ -112,8 +112,8 @@ function makeInitialStatusModalState(options = {}) {
 	const statusState = new Map();
 	const defaultFeedModeCode = options.defaultFeedMode === "perMinute" ? 94 : 95;
 
-	setStatusModalEntry(statusState, "feedMode", defaultFeedModeCode);
-	setStatusModalEntry(statusState, "spindleSpeedMode", 97);
+	setStatusModalEntry(statusState, "feedMode", defaultFeedModeCode, undefined, [], options);
+	setStatusModalEntry(statusState, "spindleSpeedMode", 97, undefined, [], options);
 
 	return statusState;
 }
@@ -330,6 +330,47 @@ function applyModalState(words, motionCode, state) {
 	}
 }
 
+// Shared, non-UI arc geometry read model. Consumers decide whether and how to
+// present a failure; this reports only conditions established from the
+// program's resolved modal state.
+function analyzeArcAtLine(document, targetLineNumber, options = {}) {
+	const state = makeInitialState(options);
+	const macroValues = new Map();
+	const macroAliases = buildMacroAliasMap(document);
+
+	for (let lineNumber = 0; lineNumber <= targetLineNumber; lineNumber++) {
+		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
+		trackMacroAssignments(codeLine, macroValues, macroAliases);
+
+		const words = parseWords(codeLine, macroValues, macroAliases);
+		const motionCode = getMotionCode(words);
+		applyModalState(words, motionCode, state);
+
+		if (lineNumber === targetLineNumber) {
+			if (motionCode !== 2 && motionCode !== 3) {
+				return undefined;
+			}
+
+			const motionWord = [...words].reverse().find(word => word.letter === "G"
+				&& Number.isFinite(word.value)
+				&& Math.trunc(word.value) === motionCode);
+			const start = clonePosition(state.position);
+			const end = makeEndPosition(start, words, state.distanceMode, options);
+
+			return {
+				motionCode,
+				arcPlane: state.arcPlane,
+				motionRange: motionWord ? { start: motionWord.start, end: motionWord.end } : undefined,
+				validation: validateArcGeometry(words, start, end, state.arcPlane, options)
+			};
+		}
+
+		applyPositionUpdate(words, state, options);
+	}
+
+	return undefined;
+}
+
 function makeCannedCycleState(cycleCode, words, state) {
 	const existing = state.cannedCycle || {};
 	const cycle = Object.assign({}, existing, {
@@ -370,53 +411,76 @@ function setCycleValue(cycle, key, word) {
 	}
 }
 
-function applyStatusModalState(words, statusState) {
+function applyStatusModalState(words, statusState, options = {}) {
 	for (const group of STATUS_MODAL_GROUPS) {
 		for (const word of words) {
 			if (word.letter !== group.letter || !Number.isFinite(word.value)) {
 				continue;
 			}
 
-			setStatusModalEntry(statusState, group.key, Math.trunc(word.value), word, words);
+			setStatusModalEntry(statusState, group.key, getStatusModalCode(word.value), word, words, options);
 		}
 	}
 }
 
-function setStatusModalEntry(statusState, groupKey, code, word, words = []) {
+function getStatusModalCode(value) {
+	return Number.isInteger(value) ? String(Math.trunc(value)) : String(Number(value));
+}
+
+function setStatusModalEntry(statusState, groupKey, code, word, words = [], options = {}) {
 	const group = STATUS_MODAL_GROUPS.find(candidate => candidate.key === groupKey);
 	const definition = group && group.codes[code];
 
-	if (!group || !definition) {
+	if (!group || !definition || !isStatusDefinitionEnabled(definition, options)) {
 		return;
 	}
 
+	const label = getStatusDefinitionLabel(definition, options);
 	const entry = definition.formatter
-		? makeFormattedStatusModalEntry(definition.formatter, word, words, group, definition)
-		: makeStatusModalEntry(group, definition);
+		? makeFormattedStatusModalEntry(definition.formatter, word, words, group, definition, label)
+		: makeStatusModalEntry(group, definition, label);
 
 	if (entry) {
 		statusState.set(group.key, entry);
 	}
 }
 
-function makeFormattedStatusModalEntry(formatter, word, words, group, definition) {
+function isStatusDefinitionEnabled(definition, options) {
+	if (!Array.isArray(definition.modes) || !definition.modes.length) {
+		return true;
+	}
+
+	return definition.modes.includes(options.machineMode === "mill" ? "mill" : "lathe");
+}
+
+function getStatusDefinitionLabel(definition, options) {
+	return options.machineMode === "mill"
+		? definition.millLabel || definition.label || definition.latheLabel || ""
+		: definition.latheLabel || definition.label || definition.millLabel || "";
+}
+
+function makeFormattedStatusModalEntry(formatter, word, words, group, definition, label) {
 	if (formatter === "speedLimitS") {
-		return makeSpeedLimitStatusEntry(word, words, group, definition);
+		return makeSpeedLimitStatusEntry(word, words, group, definition, label);
+	}
+
+	if (formatter === "extendedWorkOffset") {
+		return makeExtendedWorkOffsetStatusEntry(word, words, group, definition, label);
 	}
 
 	return undefined;
 }
 
-function makeStatusModalEntry(group, definition) {
+function makeStatusModalEntry(group, definition, label) {
 	return {
 		key: group.key,
 		order: group.order,
 		code: definition.code,
-		label: definition.label
+		label
 	};
 }
 
-function makeSpeedLimitStatusEntry(word, words, group, definition) {
+function makeSpeedLimitStatusEntry(word, words, group, definition, label) {
 	const sWord = lastWord(words, "S");
 
 	if (!sWord || !Number.isFinite(sWord.value)) {
@@ -427,7 +491,18 @@ function makeSpeedLimitStatusEntry(word, words, group, definition) {
 		key: group.key,
 		order: group.order,
 		code: `G50 S${formatCodeNumber(sWord.value)}`,
-		label: definition.label
+		label
+	};
+}
+
+function makeExtendedWorkOffsetStatusEntry(word, words, group, definition, label) {
+	const pWord = lastWord(words, "P");
+
+	return {
+		key: group.key,
+		order: group.order,
+		code: `G54.1${pWord && Number.isFinite(pWord.value) ? ` P${formatCodeNumber(pWord.value)}` : ""}`,
+		label
 	};
 }
 
@@ -705,8 +780,8 @@ function getArcOffsetWord(words, axis) {
 
 function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, primaryOffset, secondaryOffset, options) {
 	const startPoint = toPhysicalPoint(start, options);
-	const centerPrimary = startPoint[primaryAxis] + primaryOffset;
-	const centerSecondary = startPoint[secondaryAxis] + secondaryOffset;
+	const centerPrimary = startPoint[primaryAxis] + toPhysicalAxisDistance(primaryAxis, primaryOffset, options);
+	const centerSecondary = startPoint[secondaryAxis] + toPhysicalAxisDistance(secondaryAxis, secondaryOffset, options);
 	const sweepMotionCode = getPlaneSweepMotionCode(motionCode, primaryAxis, secondaryAxis);
 
 	return buildPlanarArcPathFromCenter(
@@ -933,6 +1008,105 @@ function estimatePathTime(path, state, options) {
 		minRpm: rpmRange.minRpm,
 		maxRpm: rpmRange.maxRpm
 	};
+}
+
+function validateArcGeometry(words, start, end, arcPlane, options) {
+	const plane = getArcPlaneAxes(arcPlane);
+	const primaryWord = getArcOffsetWord(words, plane.primaryAxis);
+	const secondaryWord = getArcOffsetWord(words, plane.secondaryAxis);
+	const rWord = lastWord(words, "R");
+	const hasAnyOffset = Boolean(lastWord(words, "I") || lastWord(words, "J") || lastWord(words, "K"));
+	const hasPlaneOffset = Boolean(primaryWord || secondaryWord);
+
+	if (rWord && hasAnyOffset) {
+		return makeInvalidArc("conflictingDefinition", "Arc cannot use both R and I/J/K centre offsets.");
+	}
+
+	if (!rWord && !hasPlaneOffset) {
+		const planeName = arcPlane === "xz" ? "G18 (I/K)" : arcPlane === "yz" ? "G19 (J/K)" : "G17 (I/J)";
+		return makeInvalidArc("missingDefinition", `Arc has no R or centre-offset definition for ${planeName}.`);
+	}
+
+	if ((rWord && !Number.isFinite(rWord.value))
+		|| (primaryWord && !Number.isFinite(primaryWord.value))
+		|| (secondaryWord && !Number.isFinite(secondaryWord.value))) {
+		return { valid: undefined };
+	}
+
+	if (!hasKnownPlanarPosition(start, end, plane)) {
+		return { valid: undefined };
+	}
+
+	const startPoint = toPhysicalPoint(start, options);
+	const endPoint = toPhysicalPoint(end, options);
+	const deltaPrimary = endPoint[plane.primaryAxis] - startPoint[plane.primaryAxis];
+	const deltaSecondary = endPoint[plane.secondaryAxis] - startPoint[plane.secondaryAxis];
+	const chordLength = Math.hypot(deltaPrimary, deltaSecondary);
+
+	if (rWord) {
+		const radius = Math.abs(rWord.value);
+
+		if (radius <= 0) {
+			return makeInvalidArc("zeroRadius", "Arc radius R must be greater than zero.");
+		}
+
+		if (isNearlyZero(chordLength, radius)) {
+			return makeInvalidArc("ambiguousRadiusCircle", "R cannot define a full circle; use centre offsets instead.");
+		}
+
+		if (chordLength / 2 > radius + getArcTolerance(radius, chordLength)) {
+			return makeInvalidArc("radiusTooSmall", `Arc chord ${formatArcValue(chordLength)} is longer than diameter ${formatArcValue(radius * 2)} allowed by R${formatArcValue(rWord.value)}.`);
+		}
+
+		return { valid: true };
+	}
+
+	const primaryOffset = toPhysicalAxisDistance(plane.primaryAxis, primaryWord ? primaryWord.value : 0, options);
+	const secondaryOffset = toPhysicalAxisDistance(plane.secondaryAxis, secondaryWord ? secondaryWord.value : 0, options);
+	const startRadius = Math.hypot(primaryOffset, secondaryOffset);
+	const endRadius = Math.hypot(
+		endPoint[plane.primaryAxis] - (startPoint[plane.primaryAxis] + primaryOffset),
+		endPoint[plane.secondaryAxis] - (startPoint[plane.secondaryAxis] + secondaryOffset)
+	);
+
+	if (isNearlyZero(startRadius, endRadius)) {
+		return makeInvalidArc("zeroRadius", "Arc centre is at its start point, giving a zero radius.");
+	}
+
+	const mismatch = Math.abs(startRadius - endRadius);
+
+	if (mismatch > getArcTolerance(startRadius, endRadius)) {
+		return makeInvalidArc("centerRadiusMismatch", `Arc centre offsets give start radius ${formatArcValue(startRadius)} and end radius ${formatArcValue(endRadius)} (difference ${formatArcValue(mismatch)}).`);
+	}
+
+	return { valid: true };
+}
+
+function makeInvalidArc(code, message) {
+	return { valid: false, code, message };
+}
+
+function hasKnownPlanarPosition(start, end, plane) {
+	return Number.isFinite(start[plane.primaryAxis])
+		&& Number.isFinite(start[plane.secondaryAxis])
+		&& Number.isFinite(end[plane.primaryAxis])
+		&& Number.isFinite(end[plane.secondaryAxis]);
+}
+
+function toPhysicalAxisDistance(axis, value, options) {
+	return axis === "x" && options.xAxisMode === "diameter" ? value / 2 : value;
+}
+
+function getArcTolerance(...values) {
+	return Math.max(0.000001, ...values.map(value => Math.abs(value) * 0.000001));
+}
+
+function isNearlyZero(value, scale) {
+	return Math.abs(value) <= getArcTolerance(value, scale);
+}
+
+function formatArcValue(value) {
+	return Number(value.toFixed(6)).toString();
 }
 
 function estimateLinearPathTime(path, state, options) {
@@ -1401,14 +1575,26 @@ function analyzeVisionRange(document, range, options) {
 	const toolRanges = getToolRanges(document);
 	const rows = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
+	const executionEntries = options.executionTrace && Array.isArray(options.executionTrace.executionEntries)
+		? options.executionTrace.executionEntries
+		: undefined;
 	let hasSeenProgramMotion = false;
 
-	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-		const line = document.lineAt(lineNumber).text;
+	for (let entryIndex = 0; entryIndex < (executionEntries ? executionEntries.length : document.lineCount); entryIndex++) {
+		const executionEntry = executionEntries ? executionEntries[entryIndex] : undefined;
+		const lineNumber = executionEntry ? executionEntry.lineNumber : entryIndex;
+		const line = executionEntry ? executionEntry.sourceLine : document.lineAt(lineNumber).text;
 		const codeLine = maskProtectedRanges(line);
 		let positionWasUpdated = false;
 
-		trackMacroAssignments(codeLine, macroValues, macroAliases);
+		if (executionEntry) {
+			macroValues.clear();
+			for (const [macro, value] of Object.entries(executionEntry.macroValues || {})) {
+				macroValues.set(macro, value);
+			}
+		} else {
+			trackMacroAssignments(codeLine, macroValues, macroAliases);
+		}
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words);
@@ -1459,7 +1645,12 @@ function analyzeVisionRange(document, range, options) {
 			const isFirstProgramMotion = !hasSeenProgramMotion;
 			hasSeenProgramMotion = true;
 			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeVisionMotionRow(lineNumber, words, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
+				const row = makeVisionMotionRow(lineNumber, words, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber));
+				if (executionEntry) {
+					row.sourceLine = executionEntry.sourceLine;
+					row.traceLine = executionEntry.traceLine;
+				}
+				rows.push(row);
 			}
 		}
 
@@ -2093,6 +2284,10 @@ function formatSpindle(estimate, humanFormat) {
 
 function formatRpmUsed(estimate, humanFormat) {
 	if (Number.isFinite(estimate.minRpm) && Number.isFinite(estimate.maxRpm)) {
+		if (Math.abs(estimate.minRpm - estimate.maxRpm) < 0.000000001) {
+			return formatNumber(estimate.minRpm, humanFormat);
+		}
+
 		return `${formatNumber(estimate.minRpm, humanFormat)} - ${formatNumber(estimate.maxRpm, humanFormat)}`;
 	}
 
@@ -2125,6 +2320,7 @@ function formatTime(seconds) {
 
 module.exports = {
 	estimateMotionAtLine,
+	analyzeArcAtLine,
 	// Read-only modal snapshot for the KAIJU Sense status bar.
 	getModalStateAtLine,
 	formatModalStateStatus,

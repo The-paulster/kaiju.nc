@@ -21,6 +21,8 @@ function getChronobladeOptions(document, rawOptions = {}) {
 		rapidRate: clampNumber(coalesce(rawOptions.rapidRate, reportConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY),
 		toolChangeSeconds: clampNumber(coalesce(rawOptions.toolChangeSeconds, reportConfig.get("toolChangeSeconds", 4)), 0, Number.POSITIVE_INFINITY),
 		extraStationSeconds: clampNumber(coalesce(rawOptions.extraStationSeconds, reportConfig.get("extraStationSeconds", 0.5)), 0, Number.POSITIVE_INFINITY),
+		significantFiguresOnly: reportConfig.get("significantFiguresOnly", false) === true,
+		hideZeroTimeLabels: reportConfig.get("hideZeroTimeLabels", true) !== false,
 		humanFormat: {
 			minimumDecimalPlaces: clampNumber(displayConfig.get("minimumDecimalPlaces", 3), 0, 9),
 			maximumDecimalPlaces: clampNumber(displayConfig.get("maximumDecimalPlaces", 3), 0, 9)

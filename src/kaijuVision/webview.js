@@ -7,6 +7,7 @@ const {
 	formatNumber,
 	summarizeVisionRows
 } = require("../MetaMotionEngine");
+const { buildExecutionTrace } = require("../MetaExecutionTrace");
 const {
 	VISION_WORK_OFFSET_CODES,
 	getVisionOptions,
@@ -72,10 +73,15 @@ async function showVisionPanel(editor, mode, options) {
 				await saveOffsetsFromWebview(message.offsets, message.options || {});
 				return;
 			}
-
-			if (["whole", "selection"].includes(message.type)) {
-				await renderFromActiveEditor(message.type, message.options || {});
+			if (message.type === "setVisionAnalysis") {
+				const editor = getVisionSourceEditor();
+				if (editor) {
+					const options = makeVisionOptions(editor.document, message.options || {});
+					visionState = { documentUriText: editor.document.uri.toString(), mode: visionState.mode, options };
+					await renderVisionPanel(editor, visionState.mode, options);
+				}
 			}
+
 		});
 	} else {
 		visionPanel.reveal(vscode.ViewColumn.Beside);
@@ -108,25 +114,6 @@ async function saveOffsetsFromWebview(offsets, rawOptions) {
 
 	await renderVisionPanel(editor, mode, options);
 }
-async function renderFromActiveEditor(mode, rawOptions) {
-	const editor = getVisionSourceEditor();
-
-	if (!editor || editor.document.languageId !== "gcode") {
-		vscode.window.showWarningMessage("Focus a G-code document before sending it to KAIJU Vision.");
-		return;
-	}
-
-	const options = makeVisionOptions(editor.document, rawOptions);
-
-	visionState = {
-		documentUriText: editor.document.uri.toString(),
-		mode,
-		options
-	};
-
-	await renderVisionPanel(editor, mode, options);
-}
-
 function makeVisionOptions(document, rawOptions = {}) {
 	const savedOffsets = getDocumentVisionWorkOffsets(document);
 	const options = getVisionOptions(document, Object.assign({}, rawOptions, {
@@ -187,11 +174,43 @@ async function renderVisionPanel(editor, mode, options) {
 		return;
 	}
 
-	const result = analyzeVisionRange(editor.document, range, options);
+	const traceResult = options.analysisMode === "trace" ? await getVisionTrace(editor.document) : undefined;
+	const analysisOptions = traceResult && traceResult.trace && traceResult.trace.status === "ready"
+		? Object.assign({}, options, { executionTrace: traceResult.trace })
+		: options;
+	const result = analyzeVisionRange(editor.document, range, analysisOptions);
+	result.traceWarning = traceResult && traceResult.warning;
 
 	visionPanel.title = "KAIJU Vision";
 	visionPanel.webview.html = renderVisionHtml(editor.document, mode, options, result);
 	await compactVisionPanelEditorGroup(options);
+}
+
+async function getVisionTrace(document) {
+	let inputs = getDocumentVisionTraceInputs(document);
+	let trace = buildExecutionTrace(document, { initialMacroValues: inputs });
+	if (trace.assumptions.size) {
+		for (const macro of trace.assumptions.keys()) {
+			const entered = await vscode.window.showInputBox({ title: "KAIJU Vision Trace", prompt: `Enter a value for ${macro}`, value: Object.prototype.hasOwnProperty.call(inputs, macro) ? String(inputs[macro]) : "0" });
+			if (entered === undefined || !Number.isFinite(Number(entered))) return { trace, warning: "Trace input was cancelled; Vision is showing as-written motion." };
+			inputs[macro] = Number(entered);
+		}
+		await saveDocumentVisionTraceInputs(document, inputs);
+		trace = buildExecutionTrace(document, { initialMacroValues: inputs });
+	}
+	return { trace, warning: trace.status === "ready" ? "" : `Trace is ${trace.status}; Vision is showing as-written motion.` };
+}
+
+function getDocumentVisionTraceInputs(document) {
+	const all = visionContext && visionContext.workspaceState ? visionContext.workspaceState.get("kaijuVision.traceInputsByDocument", {}) : {};
+	return Object.assign({}, all[getVisionDocumentKey(document)] || {});
+}
+
+async function saveDocumentVisionTraceInputs(document, inputs) {
+	if (!visionContext || !visionContext.workspaceState) return;
+	const all = Object.assign({}, visionContext.workspaceState.get("kaijuVision.traceInputsByDocument", {}));
+	all[getVisionDocumentKey(document)] = inputs;
+	await visionContext.workspaceState.update("kaijuVision.traceInputsByDocument", all);
 }
 
 function getRangeForMode(editor, mode) {
@@ -543,6 +562,7 @@ function renderVisionHtml(document, mode, options, result) {
 		.axis-y { color: #6A9955; }
 		.axis-z { color: #4A90E2; }
 		.table-wrap {
+			display: none;
 			flex: 0 0 calc(var(--vision-row-height) * 9);
 			overflow: auto;
 			max-height: calc(var(--vision-row-height) * 9);
@@ -622,6 +642,13 @@ function renderVisionHtml(document, mode, options, result) {
 </head>
 <body>
 	<section class="controls">
+		<label>Motion data
+			<select id="analysisMode">
+				<option value="trace"${options.analysisMode === "trace" ? " selected" : ""}>Trace</option>
+				<option value="asWritten"${options.analysisMode === "asWritten" ? " selected" : ""}>As written</option>
+			</select>
+		</label>
+		<label class="checkbox"><input id="traceLine" type="checkbox"${options.showTraceLine ? " checked" : ""}> Show trace line</label>
 		<label>Plane
 			<select id="plane">
 				<option value="xy"${options.plane === "xy" ? " selected" : ""}>X-Y</option>
@@ -636,14 +663,13 @@ function renderVisionHtml(document, mode, options, result) {
 		<label class="checkbox"><input id="endpoints" type="checkbox" checked> Endpoints</label>
 		<label class="checkbox"><input id="zeroLines" type="checkbox"> Zero lines</label>
 		<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
+		<label class="checkbox"><input id="markerLegendToggle" type="checkbox"> Legend</label>
 		<button id="fit">Fit View</button>
 		<button id="zoomOut">Zoom -</button>
 		<button id="zoomIn">Zoom +</button>
 		<span id="zoomLabel" class="note">100%</span>
 		<button id="offsetsToggle">Offsets</button>
 		<button id="visibilityToggle">Visibility</button>
-		<button id="whole">Send Whole Program</button>
-		<button id="selection">Send Selection</button>
 	</section>
 
 	${renderVisionOffsetPanel(options.workOffsets)}
@@ -654,6 +680,7 @@ function renderVisionHtml(document, mode, options, result) {
 		${summary.unknownRows ? `<span>${escapeHtml(summary.unknownRows)} row(s) have incomplete path data</span>` : ""}
 		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span></span>
 	</section>
+	${result.traceWarning ? `<p class="note">⚠ ${escapeHtml(result.traceWarning)}</p>` : ""}
 
 	<div id="viewerSlot" class="viewer-slot">
 		<div id="viewer" class="viewer"></div>
@@ -667,10 +694,13 @@ function renderVisionHtml(document, mode, options, result) {
 		const vscode = acquireVsCodeApi();
 		const data = JSON.parse(document.getElementById("vision-data").textContent);
 		const planeSelect = document.getElementById("plane");
+		const analysisModeSelect = document.getElementById("analysisMode");
+		const traceLineToggle = document.getElementById("traceLine");
 		const labelsInput = document.getElementById("labels");
 		const endpointsInput = document.getElementById("endpoints");
 		const zeroLinesInput = document.getElementById("zeroLines");
 		const toolColorsInput = document.getElementById("toolColors");
+		const markerLegendToggle = document.getElementById("markerLegendToggle");
 		const offsetsToggle = document.getElementById("offsetsToggle");
 		const offsetPanel = document.getElementById("offsetPanel");
 		const visibilityToggle = document.getElementById("visibilityToggle");
@@ -711,6 +741,8 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function collectVisionOptions() {
 			return {
+				analysisMode: analysisModeSelect.value,
+				showTraceLine: traceLineToggle.checked,
 				plane: planeSelect.value,
 				useToolColors: toolColorsInput.checked,
 				workOffsets: collectWorkOffsets()
@@ -1656,6 +1688,8 @@ function renderVisionHtml(document, mode, options, result) {
 			const lineLabel = row && Number.isFinite(row.lineNumber) ? "L" + row.lineNumber : "";
 			const instruction = row && row.instruction ? row.instruction : "";
 			const lines = ['<div class="tooltip-line">' + svgEscape((lineLabel + " " + instruction).trim()) + '</div>'];
+			const codeLine = traceLineToggle.checked && row && row.traceLine ? row.traceLine : row && row.sourceLine;
+			if (codeLine) lines.push('<div class="tooltip-line">' + svgEscape(codeLine.trim()) + '</div>');
 
 			for (const axis of ["x", "y", "z"]) {
 				const value = position && position[axis];
@@ -1787,7 +1821,10 @@ function renderVisionHtml(document, mode, options, result) {
 				.map(target => Object.assign({}, target, {
 					labelLine: "",
 					coordinateLine: "",
-					showMarker: markerSlices && markerSlices.length > 1 ? false : target.showMarker,
+					// A normal endpoint carries no additional semantic meaning. Once a
+					// merged point has a semantic marker, do not let its separate grey
+					// endpoint circle paint over that marker.
+					showMarker: markerSlices && markerSlices.length ? false : target.showMarker,
 					hoverItems
 				}));
 
@@ -2410,6 +2447,8 @@ function renderVisionHtml(document, mode, options, result) {
 		planeSelect.addEventListener("change", () => {
 			resetView();
 		});
+		analysisModeSelect.addEventListener("change", () => vscode.postMessage({ type: "setVisionAnalysis", options: collectVisionOptions() }));
+		traceLineToggle.addEventListener("change", render);
 		labelsInput.addEventListener("change", render);
 		endpointsInput.addEventListener("change", render);
 		zeroLinesInput.addEventListener("change", render);
@@ -2473,7 +2512,9 @@ function renderVisionHtml(document, mode, options, result) {
 				return;
 			}
 
-			const keys = target && target.getAttribute("data-marker-keys")
+			const keys = markerLegendToggle && markerLegendToggle.checked
+				? getCompleteMarkerLegendKeys()
+				: target && target.getAttribute("data-marker-keys")
 				? target.getAttribute("data-marker-keys").split(",").filter(Boolean)
 				: [];
 			const entries = keys.map(getMarkerLegendEntry).filter(Boolean);
@@ -2490,9 +2531,18 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function hideMarkerLegend() {
+			if (markerLegendToggle && markerLegendToggle.checked) {
+				updateMarkerLegend();
+				return;
+			}
+
 			if (markerLegend) {
 				markerLegend.style.display = "none";
 			}
+		}
+
+		function getCompleteMarkerLegendKeys() {
+			return ["programEnd", "optionalStop", "speedChange", "tool", "compensation", "compensationCancel"];
 		}
 
 		function getMarkerLegendEntry(key) {
@@ -2563,12 +2613,7 @@ function renderVisionHtml(document, mode, options, result) {
 			dragState = undefined;
 			viewer.classList.remove("dragging");
 		});
-		document.getElementById("whole").addEventListener("click", () => {
-			vscode.postMessage({ type: "whole", options: collectVisionOptions() });
-		});
-		document.getElementById("selection").addEventListener("click", () => {
-			vscode.postMessage({ type: "selection", options: collectVisionOptions() });
-		});
+		markerLegendToggle.addEventListener("change", () => updateMarkerLegend());
 		offsetsToggle.addEventListener("click", () => {
 			offsetPanel.classList.toggle("open");
 		});

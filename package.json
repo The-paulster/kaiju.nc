@@ -431,6 +431,11 @@
             "type": "boolean",
             "default": true,
             "description": "Show an error when a named KAIJU Alias macro is used without a matching alias definition before the first G/M block."
+          },
+          "kaijuNC.alerts.illegalArcs.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show an error when an explicit G2/G3 arc is geometrically impossible or has no usable arc definition."
           }
         }
       },
@@ -544,6 +549,31 @@
         }
       },
       {
+        "title": "KAIJU.NC: Trace",
+        "properties": {
+          "kaijuNC.trace.debounceMs": {
+            "type": "integer",
+            "default": 350,
+            "minimum": 50,
+            "maximum": 5000,
+            "description": "How long KAIJU waits after an edit before refreshing the passive execution trace."
+          },
+          "kaijuNC.trace.maxExecutionSteps": {
+            "type": "integer",
+            "default": 20000,
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "Maximum execution steps for the passive KAIJU Trace before it stops and reports a safety warning."
+          },
+          "kaijuNC.trace.comparisonTolerance": {
+            "type": "number",
+            "default": 1e-7,
+            "minimum": 0,
+            "description": "Numeric tolerance used by KAIJU Trace when evaluating macro comparisons."
+          }
+        }
+      },
+      {
         "title": "KAIJU.NC: Warpaint",
         "properties": {
           "kaijuNC.warpaint.enabled": {
@@ -644,6 +674,14 @@
             "type": "boolean",
             "default": true,
             "description": "Color the left-side KAIJU Sense cursor-state status bar codes with colors matching KAIJU.NC syntax highlighting. VS Code applies this by splitting the readout into adjacent status bar items."
+          },
+          "kaijuNC.sense.modalNames": {
+            "type": "object",
+            "default": {},
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Optional custom names for modal codes in the verbose KAIJU Sense status bar. Add code-to-name pairs in Settings JSON, for example { \"G00\": \"Positioning\", \"M03\": \"Main spindle forward\", \"G50\": \"Chuck speed cap\" }. G0/G00 and M3/M03 are treated as the same code; G50 applies to G50 S speed-limit entries."
           },
           "kaijuNC.sense.syntaxColoredHoverValues": {
             "type": "boolean",
@@ -965,6 +1003,16 @@
             "default": 0.5,
             "minimum": 0,
             "description": "Default extra turret station time added for each station beyond an adjacent tool swap in the KAIJU Chronoblade cycle-time report."
+          },
+          "kaijuNC.chronoblade.significantFiguresOnly": {
+            "type": "boolean",
+            "default": false,
+            "description": "Show Chronoblade report values without insignificant trailing fractional zeros, while retaining a decimal point."
+          },
+          "kaijuNC.chronoblade.hideZeroTimeLabels": {
+            "type": "boolean",
+            "default": true,
+            "description": "Hide Chronoblade N-label sections whose total estimated time is zero when the report opens."
           }
         }
       }
