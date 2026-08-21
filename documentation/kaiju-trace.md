@@ -11,7 +11,7 @@ lists every assumed-zero macro and every safety or flow problem.
 ## Connections
 
 - `MetaExecutionTrace` owns reusable execution state, loop/GOTO traversal,
-  macro history, and the cache.
+  macro history, evaluated per-occurrence trace lines, and the cache.
 - Sense consumes per-line macro histories, showing all values through ten
   occurrences and otherwise the first five and last five.
 - Decomposition remains interactive and requests unresolved macro values when

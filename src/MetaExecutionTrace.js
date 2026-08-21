@@ -235,10 +235,47 @@ function recordExecutionEntry(sourceLine, codeLine, lineNumber, context) {
 }
 
 function renderTraceLine(line, context) {
-	return String(line || "").replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/g, macro => {
+	const text = String(line || "");
+	const commentRanges = getCommentRanges(text).sort((left, right) => left.start - right.start);
+	const parts = [];
+	let cursor = 0;
+
+	for (const range of commentRanges) {
+		parts.push(renderTraceCodeSegment(text.slice(cursor, range.start), context));
+		parts.push(text.slice(range.start, range.end + 1));
+		cursor = range.end + 1;
+	}
+
+	parts.push(renderTraceCodeSegment(text.slice(cursor), context));
+	return parts.join("");
+}
+
+function renderTraceCodeSegment(segment, context) {
+	let result = "";
+	let cursor = 0;
+
+	while (cursor < segment.length) {
+		if (segment[cursor] === "[") {
+			const token = readBracketToken(segment, cursor);
+			if (token) {
+				const value = evaluateNumericExpression(token.text, context.macroValues, context.macroAliases);
+				result += Number.isFinite(value) ? formatTraceNumber(value) : token.text;
+				cursor = token.end;
+				continue;
+			}
+		}
+
+		result += segment[cursor++];
+	}
+
+	return result.replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/g, macro => {
 		const value = context.macroValues.get(resolveMacroAlias(macro, context.macroAliases));
-		return Number.isFinite(value) ? Number(value.toFixed(6)).toString() : macro;
+		return Number.isFinite(value) ? formatTraceNumber(value) : macro;
 	});
+}
+
+function formatTraceNumber(value) {
+	return Number(value.toFixed(6)).toString();
 }
 
 function executeControlLine(codeLine, lineNumber, context) {

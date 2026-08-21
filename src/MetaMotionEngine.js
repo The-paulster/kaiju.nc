@@ -1606,6 +1606,7 @@ function analyzeVisionRange(document, range, options) {
 			const labelRow = makeLabelReportRow(lineNumber, line, codeLine);
 
 			if (labelRow) {
+				attachVisionLineData(labelRow, line, executionEntry);
 				labelRow.toolColor = getToolColor(toolRange);
 				rows.push(labelRow);
 			}
@@ -1614,11 +1615,19 @@ function analyzeVisionRange(document, range, options) {
 		const toolRange = getToolRangeStartingAtLine(toolRanges, lineNumber);
 
 		if (toolRange && isLineInRange(lineNumber, targetRange)) {
-			rows.push(makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, state.coordinateSystem, options));
+			rows.push(attachVisionLineData(
+				makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, state.coordinateSystem, options),
+				line,
+				executionEntry
+			));
 		}
 
 		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words) && isLineInRange(lineNumber, targetRange)) {
-			rows.push(makeVisionEventMarkerRow(lineNumber, words, state.position, state.coordinateSystem, options));
+			rows.push(attachVisionLineData(
+				makeVisionEventMarkerRow(lineNumber, words, state.position, state.coordinateSystem, options),
+				line,
+				executionEntry
+			));
 		}
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
@@ -1627,6 +1636,7 @@ function analyzeVisionRange(document, range, options) {
 
 		if (hasCycleOperation) {
 			const cycleRow = makeVisionCycleRow(lineNumber, state, words, options, getToolRangeAtLine(toolRanges, lineNumber));
+			attachVisionLineData(cycleRow, line, executionEntry);
 			positionWasUpdated = true;
 
 			const isFirstProgramMotion = !hasSeenProgramMotion;
@@ -1646,10 +1656,7 @@ function analyzeVisionRange(document, range, options) {
 			hasSeenProgramMotion = true;
 			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
 				const row = makeVisionMotionRow(lineNumber, words, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber));
-				if (executionEntry) {
-					row.sourceLine = executionEntry.sourceLine;
-					row.traceLine = executionEntry.traceLine;
-				}
+				attachVisionLineData(row, line, executionEntry);
 				rows.push(row);
 			}
 		}
@@ -1663,6 +1670,15 @@ function analyzeVisionRange(document, range, options) {
 		rows,
 		range: targetRange
 	};
+}
+
+function attachVisionLineData(row, sourceLine, executionEntry) {
+	row.sourceLine = sourceLine;
+	if (executionEntry) {
+		row.traceLine = executionEntry.traceLine;
+		row.decompositionLineNumber = executionEntry.decompositionLineNumber;
+	}
+	return row;
 }
 
 function getToolRangeStartingAtLine(toolRanges, lineNumber) {

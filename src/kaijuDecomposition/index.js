@@ -82,7 +82,7 @@ async function runKaijuDecompositionCommand() {
 	vscode.window.showInformationMessage(`KAIJU Decomposition opened an execution trace as a temporary document.${warningText}`);
 }
 
-async function decomposeDocument(document) {
+async function decomposeDocument(document, runtimeOptions = {}) {
 	const sourceName = document.fileName ? document.fileName.split(/[\\/]/).pop() : document.uri.toString();
 	const macroAliases = buildMacroAliasMap(document);
 	const commentDefaults = buildInitialCommentDefaults(document, macroAliases);
@@ -94,6 +94,7 @@ async function decomposeDocument(document) {
 		macroAliasLabels: buildMacroAliasLabelMap(document),
 		commentDefaults,
 		manualInputs: new Map(),
+		promptForUnknownMacros: runtimeOptions.promptForUnknownMacros !== false,
 		warnings: [],
 		labels: buildLabelMap(document),
 		seenOutputLabels: new Set(),
@@ -101,7 +102,17 @@ async function decomposeDocument(document) {
 		lineStates: new Map(),
 		options: getDecompositionOptions(document)
 	};
+	for (const [macro, rawValue] of Object.entries(runtimeOptions.initialMacroValues || {})) {
+		const value = Number(rawValue);
+		if (Number.isFinite(value)) {
+			const normalizedMacro = normalizeMacro(macro);
+			const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
+			setMacroValue(context.macroValues, normalizedMacro, value, macroAliases);
+			context.manualInputs.set(resolvedMacro, value);
+		}
+	}
 	const outputLines = [];
+	const decomposedLineEntries = [];
 	let lineNumber = 0;
 	let steps = 0;
 
@@ -171,6 +182,10 @@ async function decomposeDocument(document) {
 				const decomposedLine = await decomposeLine(line, lineNumber, context);
 
 				if (decomposedLine !== undefined && decomposedLine.trim()) {
+					decomposedLineEntries.push({
+						sourceLineNumber: lineNumber,
+						outputLineIndex: outputLines.length
+					});
 					outputLines.push(decomposedLine);
 				}
 			}
@@ -190,12 +205,24 @@ async function decomposeDocument(document) {
 		throw error;
 	}
 
-	const outputText = makeOutputText(sourceName, context, outputLines);
+	const outputDocumentLines = makeOutputLines(sourceName, context, outputLines);
+	const outputText = outputDocumentLines.join("\n");
 	const formattedText = formatDocumentText(outputText, getFormattingOptions(document, { enabled: true }));
+	const formattedLines = formattedText.split(/\r?\n/);
+	const outputBodyStart = outputDocumentLines.length - outputLines.length;
+	const decompositionLines = decomposedLineEntries.map(entry => {
+		const zeroBasedLineNumber = outputBodyStart + entry.outputLineIndex;
+		return {
+			sourceLineNumber: entry.sourceLineNumber,
+			lineNumber: zeroBasedLineNumber + 1,
+			line: formattedLines[zeroBasedLineNumber] || outputLines[entry.outputLineIndex]
+		};
+	});
 
 	return {
 		text: formattedText,
-		warnings: context.warnings
+		warnings: context.warnings,
+		decompositionLines
 	};
 }
 
@@ -454,6 +481,13 @@ async function promptForUnknownMacros(expression, lineNumber, context) {
 		}
 
 		if (hasAssignedMacro(context.assignedMacros, macro, resolvedMacro)) {
+			continue;
+		}
+
+		if (!context.promptForUnknownMacros) {
+			setMacroValue(context.macroValues, macro, 0, context.macroAliases);
+			context.manualInputs.set(resolvedMacro, 0);
+			addWarning(context, lineNumber, `Assumed 0 for ${formatMacroPromptTarget(macro, resolvedMacro, context)} while building trace line data.`);
 			continue;
 		}
 
@@ -1021,7 +1055,7 @@ function formatMacroAssignmentValue(rawValue, value) {
 	return formatNumber(value);
 }
 
-function makeOutputText(sourceName, context, outputLines) {
+function makeOutputLines(sourceName, context, outputLines) {
 	const header = [
 		"( KAIJU Decomposition )",
 		`( Source: ${sourceName} )`,
@@ -1054,7 +1088,7 @@ function makeOutputText(sourceName, context, outputLines) {
 		}
 	}
 
-	return [...header, "", ...outputLines].join("\n");
+	return [...header, "", ...outputLines];
 }
 
 function formatNumber(value) {
@@ -1066,5 +1100,6 @@ function formatNumber(value) {
 }
 
 module.exports = {
-	registerKaijuDecomposition
+	registerKaijuDecomposition,
+	decomposeDocument
 };

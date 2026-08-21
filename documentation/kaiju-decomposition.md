@@ -14,6 +14,9 @@ In the initial comment section, a macro label ending in `{number}` seeds a
 Decomposition-only default—for example `(#109 Tool life counter 5 {0})` gives
 `#109` the value `0` without prompting for manual input. Other unresolved
 macro inputs are requested when the user explicitly runs Decomposition.
+The module also exposes the formatted output instruction and its exact,
+one-based generated-document line number for consumers that need to identify a
+specific execution occurrence.
 
 ## Connections
 

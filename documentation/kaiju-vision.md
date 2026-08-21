@@ -15,6 +15,9 @@ semantic-marker legend, and Vision-specific options.
   `MetaMotionEngine`.
 - In Trace motion mode, consumes the shared `MetaExecutionTrace` execution
   stream and prompts for missing macro inputs, saving them per source program.
+- Uses Decomposition's formatted output mapping for Trace-line node details, so
+  repeated executions show unique generated-document line numbers and fully
+  substituted instructions. Source-line details preserve the authored G-code.
 - Its options use `MetaMachineMode` defaults.
 - It shares interpretation with Chronoblade and Sense, but provides its own
   inspection-first rendering.

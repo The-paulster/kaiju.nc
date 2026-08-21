@@ -8,6 +8,7 @@ const {
 	summarizeVisionRows
 } = require("../MetaMotionEngine");
 const { buildExecutionTrace } = require("../MetaExecutionTrace");
+const { decomposeDocument } = require("../kaijuDecomposition");
 const {
 	VISION_WORK_OFFSET_CODES,
 	getVisionOptions,
@@ -175,6 +176,9 @@ async function renderVisionPanel(editor, mode, options) {
 	}
 
 	const traceResult = options.analysisMode === "trace" ? await getVisionTrace(editor.document) : undefined;
+	if (traceResult && traceResult.trace && traceResult.decomposition) {
+		attachDecompositionLineData(traceResult.trace, traceResult.decomposition.decompositionLines);
+	}
 	const analysisOptions = traceResult && traceResult.trace && traceResult.trace.status === "ready"
 		? Object.assign({}, options, { executionTrace: traceResult.trace })
 		: options;
@@ -198,7 +202,34 @@ async function getVisionTrace(document) {
 		await saveDocumentVisionTraceInputs(document, inputs);
 		trace = buildExecutionTrace(document, { initialMacroValues: inputs });
 	}
-	return { trace, warning: trace.status === "ready" ? "" : `Trace is ${trace.status}; Vision is showing as-written motion.` };
+	const decomposition = trace.status === "ready"
+		? await decomposeDocument(document, { initialMacroValues: inputs, promptForUnknownMacros: false })
+		: undefined;
+	const decompositionWarning = decomposition && decomposition.warnings.length
+		? ` Decomposition line data has ${decomposition.warnings.length} warning${decomposition.warnings.length === 1 ? "" : "s"}.`
+		: "";
+	return {
+		trace,
+		decomposition,
+		warning: trace.status === "ready" ? decompositionWarning.trim() : `Trace is ${trace.status}; Vision is showing as-written motion.`
+	};
+}
+
+function attachDecompositionLineData(trace, decompositionLines) {
+	const linesBySource = new Map();
+	for (const line of decompositionLines || []) {
+		const queue = linesBySource.get(line.sourceLineNumber) || [];
+		queue.push(line);
+		linesBySource.set(line.sourceLineNumber, queue);
+	}
+
+	for (const entry of trace.executionEntries || []) {
+		const queue = linesBySource.get(entry.lineNumber);
+		if (!queue || !queue.length) continue;
+		const decompositionLine = queue.shift();
+		entry.decompositionLineNumber = decompositionLine.lineNumber;
+		entry.traceLine = decompositionLine.line;
+	}
 }
 
 function getDocumentVisionTraceInputs(document) {
@@ -1685,10 +1716,14 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function makePointHoverHtml(position, row) {
-			const lineLabel = row && Number.isFinite(row.lineNumber) ? "L" + row.lineNumber : "";
+			const showTraceLine = traceLineToggle.checked && row && row.traceLine && Number.isFinite(row.decompositionLineNumber);
+			const displayedLineNumber = showTraceLine && Number.isFinite(row.decompositionLineNumber)
+				? row.decompositionLineNumber
+				: row && Number.isFinite(row.lineNumber) ? row.lineNumber : undefined;
+			const lineLabel = Number.isFinite(displayedLineNumber) ? "L" + displayedLineNumber : "";
 			const instruction = row && row.instruction ? row.instruction : "";
 			const lines = ['<div class="tooltip-line">' + svgEscape((lineLabel + " " + instruction).trim()) + '</div>'];
-			const codeLine = traceLineToggle.checked && row && row.traceLine ? row.traceLine : row && row.sourceLine;
+			const codeLine = showTraceLine ? row.traceLine : row && row.sourceLine;
 			if (codeLine) lines.push('<div class="tooltip-line">' + svgEscape(codeLine.trim()) + '</div>');
 
 			for (const axis of ["x", "y", "z"]) {
@@ -2448,7 +2483,14 @@ function renderVisionHtml(document, mode, options, result) {
 			resetView();
 		});
 		analysisModeSelect.addEventListener("change", () => vscode.postMessage({ type: "setVisionAnalysis", options: collectVisionOptions() }));
-		traceLineToggle.addEventListener("change", render);
+		traceLineToggle.addEventListener("change", () => {
+			projectedPlaneCache.clear();
+			labelCache.clear();
+			labelCacheBytes = 0;
+			labelCacheRunId++;
+			currentLabelEntry = undefined;
+			render();
+		});
 		labelsInput.addEventListener("change", render);
 		endpointsInput.addEventListener("change", render);
 		zeroLinesInput.addEventListener("change", render);

@@ -58,6 +58,7 @@ flowchart TD
 	chronobladeOptions --> machine
 
 	vision --> motion
+	vision --> decomposition
 	vision --> visionOptions[kaijuVision/options.js]
 	visionOptions --> machine
 

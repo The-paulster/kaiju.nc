@@ -2,6 +2,11 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+- Improved KAIJU Vision node data so Source-line mode preserves authored macro
+  expressions, while Trace-line mode shows the exact unique Decomposition output
+  line number and fully substituted instruction for each execution occurrence;
+  changing the line-data toggle now refreshes cached node tooltips immediately.
+
 - Added KAIJU Vision Trace motion with saved per-program macro inputs, safety
   warnings, Trace/As-written motion selection, and source/trace node-line
   inspection; hid the redundant bottom motion table.
