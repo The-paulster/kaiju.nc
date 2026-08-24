@@ -18,7 +18,7 @@ options.
   stream. Its per-program Macro values drawer saves missing initial values and,
   when explicitly enabled, substitutes header initialisations before the first
   executable G/M block.
-- Uses Decomposition's formatted output mapping for Trace-line node details, so
+- Uses the shared Decomposition formatted-output mapping for Trace-line node details, so
   repeated executions show unique generated-document line numbers and fully
   substituted instructions. The Node line control selects that Trace output or
   the authored Source program details; Source program is used for As-written

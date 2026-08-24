@@ -1016,6 +1016,25 @@
             "minimum": 0,
             "description": "Default extra turret station time added for each station beyond an adjacent tool swap in the KAIJU Chronoblade cycle-time report."
           },
+          "kaijuNC.chronoblade.timingProfiles": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string" },
+                "rapidRate": { "type": "number", "minimum": 0 },
+                "toolChangeSeconds": { "type": "number", "minimum": 0 },
+                "extraStationSeconds": { "type": "number", "minimum": 0 },
+                "customTimes": {
+                  "type": "object",
+                  "additionalProperties": { "type": "number", "minimum": 0 }
+                }
+              }
+            },
+            "description": "Reusable Chronoblade timing profiles. Each customTimes entry maps a literal M-code, such as M05 or M86, to seconds added to Other."
+          },
           "kaijuNC.chronoblade.significantFiguresOnly": {
             "type": "boolean",
             "default": false,

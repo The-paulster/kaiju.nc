@@ -12,9 +12,10 @@ lists every assumed-zero macro and every safety or flow problem.
 
 - `MetaExecutionTrace` owns reusable execution state, loop/GOTO traversal,
   macro history, initial macro state, per-occurrence trace lines and macro
-  deltas for explicit inspection, and the cache. Its passive file-open run
+  deltas for explicit inspection, the execution-to-formatted-line mapping, and
+  the cache. Its passive file-open run
   keeps only the health and macro-history data needed by Trace and Sense;
-  Vision explicitly requests the fuller per-occurrence data when opened.
+  Vision and Chronoblade explicitly request the fuller per-occurrence data when opened.
 - Sense consumes per-line macro histories, showing all values through ten
   occurrences and otherwise the first five and last five.
 - Decomposition remains interactive and requests unresolved macro values when

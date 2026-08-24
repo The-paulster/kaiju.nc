@@ -253,13 +253,13 @@ function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroVa
 		}
 	}
 	const entry = {
+		executionIndex: context.executionEntries.length,
 		lineNumber,
 		sourceLine,
 		traceLine: renderTraceLine(sourceLine, context),
 		macroValues: values
 	};
 	if (context.options.includePlaybackData) {
-		entry.executionIndex = context.executionEntries.length;
 		entry.macroChanges = makeMacroChanges(macroValuesBeforeLine || new Map(), context.macroValues);
 		entry.macroDisplayPrecisionChanges = makeMacroDisplayPrecisionChanges(codeLine, context.macroAliases);
 	}
@@ -633,6 +633,24 @@ function makeExecutionStateKey(macroValues) {
 	return [...macroValues.entries()].filter(([, value]) => Number.isFinite(value)).sort(([a], [b]) => a.localeCompare(b)).map(([macro, value]) => `${macro}=${value}`).join("|");
 }
 
+function attachTraceOutputLines(trace, decompositionLines) {
+	if (!trace || !Array.isArray(trace.executionEntries)) return trace;
+	const linesBySource = new Map();
+	for (const line of decompositionLines || []) {
+		const queue = linesBySource.get(line.sourceLineNumber) || [];
+		queue.push(line);
+		linesBySource.set(line.sourceLineNumber, queue);
+	}
+	for (const entry of trace.executionEntries) {
+		const queue = linesBySource.get(entry.lineNumber);
+		if (!queue || !queue.length) continue;
+		const line = queue.shift();
+		entry.decompositionLineNumber = line.lineNumber;
+		entry.traceLine = line.line;
+	}
+	return trace;
+}
+
 function maskProtectedRanges(line) {
 	const characters = String(line || "").split("");
 	for (const range of [...getCommentRanges(line), ...getAngleBracketRanges(line)]) {
@@ -662,5 +680,6 @@ module.exports = {
 	getExecutionTrace,
 	onDidChangeExecutionTrace,
 	buildExecutionTrace,
-	getMacroHistory
+	getMacroHistory,
+	attachTraceOutputLines
 };

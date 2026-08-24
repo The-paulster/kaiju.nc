@@ -1524,15 +1524,27 @@ function analyzeChronobladeRange(document, range, options) {
 	const toolRanges = getToolRanges(document);
 	const rows = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
+	const executionEntries = options.executionTrace && Array.isArray(options.executionTrace.executionEntries)
+		? options.executionTrace.executionEntries
+		: undefined;
 	let previousTool;
 	let hasSeenProgramMotion = false;
 
-	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-		const line = document.lineAt(lineNumber).text;
+	for (let entryIndex = 0; entryIndex < (executionEntries ? executionEntries.length : document.lineCount); entryIndex++) {
+		const executionEntry = executionEntries ? executionEntries[entryIndex] : undefined;
+		const lineNumber = executionEntry ? executionEntry.lineNumber : entryIndex;
+		const line = executionEntry ? executionEntry.sourceLine : document.lineAt(lineNumber).text;
 		const codeLine = maskProtectedRanges(line);
 		let positionWasUpdated = false;
 
-		trackMacroAssignments(codeLine, macroValues, macroAliases);
+		if (executionEntry) {
+			macroValues.clear();
+			for (const [macro, value] of Object.entries(executionEntry.macroValues || {})) {
+				macroValues.set(macro, value);
+			}
+		} else {
+			trackMacroAssignments(codeLine, macroValues, macroAliases);
+		}
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words);
@@ -1544,12 +1556,13 @@ function analyzeChronobladeRange(document, range, options) {
 			const labelRow = makeLabelReportRow(lineNumber, line, codeLine);
 
 			if (labelRow) {
+				attachChronobladeLineData(labelRow, lineNumber, executionEntry);
 				labelRow.toolColor = getToolColor(toolRange);
 				rows.push(labelRow);
 			}
 
 			for (const toolChange of makeToolChangeRows(words, previousTool, options)) {
-				rows.push({
+				rows.push(attachChronobladeLineData({
 					type: "tool",
 					lineNumber: lineNumber + 1,
 					instruction: toolChange.instruction,
@@ -1563,7 +1576,25 @@ function analyzeChronobladeRange(document, range, options) {
 					spindle: "",
 					rpmUsed: "",
 					warnings: toolChange.warnings
-				});
+				}, lineNumber, executionEntry));
+			}
+
+			for (const customEvent of makeCustomEventTimeRows(words, options)) {
+				rows.push(attachChronobladeLineData({
+					type: "other",
+					lineNumber: lineNumber + 1,
+					instruction: customEvent.instruction,
+					toolColor: getToolColor(toolRange),
+					start: "",
+					end: "",
+					distance: NaN,
+					timeSeconds: customEvent.timeSeconds,
+					feed: NaN,
+					feedMode: "",
+					spindle: "",
+					rpmUsed: "",
+					warnings: []
+				}, lineNumber, executionEntry));
 			}
 		}
 
@@ -1579,7 +1610,7 @@ function analyzeChronobladeRange(document, range, options) {
 			positionWasUpdated = true;
 
 			if (isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeDwellReportRow(lineNumber, words, getToolRangeAtLine(toolRanges, lineNumber)));
+				rows.push(attachChronobladeLineData(makeDwellReportRow(lineNumber, words, getToolRangeAtLine(toolRanges, lineNumber)), lineNumber, executionEntry));
 			}
 		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
@@ -1588,7 +1619,7 @@ function analyzeChronobladeRange(document, range, options) {
 			const isFirstProgramMotion = !hasSeenProgramMotion;
 			hasSeenProgramMotion = true;
 			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
-				rows.push(makeMotionReportRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)));
+				rows.push(attachChronobladeLineData(makeMotionReportRow(lineNumber, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber)), lineNumber, executionEntry));
 			}
 		}
 
@@ -1604,6 +1635,16 @@ function analyzeChronobladeRange(document, range, options) {
 		range: targetRange,
 		summary: summarizeChronobladeRows(rows)
 	};
+}
+
+function attachChronobladeLineData(row, lineNumber, executionEntry) {
+	row.sourceLineNumber = lineNumber + 1;
+	if (executionEntry) {
+		row.executionIndex = executionEntry.executionIndex;
+		row.traceLine = executionEntry.traceLine;
+		row.decompositionLineNumber = executionEntry.decompositionLineNumber;
+	}
+	return row;
 }
 
 function analyzeVisionRange(document, range, options) {
@@ -1956,6 +1997,25 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRang
 		rpmUsed: formatRpmUsed(estimate, humanFormat),
 		warnings: estimate.warnings || []
 	};
+}
+
+function makeCustomEventTimeRows(words, options) {
+	const customEventTimes = options && options.customEventTimes;
+
+	if (!customEventTimes || typeof customEventTimes !== "object") {
+		return [];
+	}
+
+	return words
+		.filter(word => word.letter === "M" && Number.isInteger(word.value))
+		.map(word => {
+			const code = `M${Math.abs(word.value)}`;
+			const timeSeconds = Number(customEventTimes[code]);
+			return Number.isFinite(timeSeconds) && timeSeconds >= 0
+				? { instruction: `M${String(Math.abs(word.value)).padStart(2, "0")}`, timeSeconds }
+				: undefined;
+		})
+		.filter(Boolean);
 }
 
 function makeDwellReportRow(lineNumber, words, toolRange) {
@@ -2320,6 +2380,8 @@ function summarizeChronobladeRows(rows) {
 			summary.toolTimeSeconds += row.timeSeconds;
 		} else if (row.type === "dwell") {
 			summary.dwellTimeSeconds += row.timeSeconds;
+		} else if (row.type === "other") {
+			summary.otherTimeSeconds += row.timeSeconds;
 		} else if (row.instruction === "G0") {
 			summary.rapidTimeSeconds += row.timeSeconds;
 		} else {

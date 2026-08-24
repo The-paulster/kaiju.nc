@@ -21,7 +21,7 @@ flowchart TB
 | [Language support](language-support.md) | G-code language declaration and token scopes | VS Code editor presentation |
 | [Alert](kaiju-alert.md) | Static editor diagnostics | Text ranges, Alias state |
 | [Alias](kaiju-alias.md) | Alias editing and mode state | Macro engine, text ranges |
-| [Chronoblade](kaiju-chronoblade.md) | Cycle-time report | Motion engine, machine mode |
+| [Chronoblade](kaiju-chronoblade.md) | Cycle-time report | Motion engine, execution trace, Decomposition line mapping, machine mode |
 | [Decomposition](kaiju-decomposition.md) | Readable execution trace | Macro engine, formatter, text ranges |
 | [Orphan Killer](kaiju-orphan-killer.md) | Macro definition/reference report | Macro engine, text ranges |
 | [Quick Toggles](kaiju-quick-toggles.md) | Context-menu switches for existing settings | Warpaint and Alert settings |

@@ -16,15 +16,37 @@ without changing its side or bottom spacing.
 Chronoblade uses the active editor selection when it opens; its report does
 not include controls to resend the whole program or selection.
 
+Chronoblade offers the same per-program Trace methodology as Vision: Motion
+data selects Trace or As written, Line selects Source or Trace identifiers, and
+Live refreshes the open report after a successful passive Trace update. Source
+rows use non-unique `S###` identifiers; Trace rows use unique execution-order
+`T###` identifiers. Trace expands loop/GOTO occurrences using the shared
+execution stream, while As written analyses each authored line once. An
+unusable Trace falls back to as-written timing and displays a hoverable warning.
+
 Timing assumptions are explained on hover: the G0 rate field and G0 summary
 describe rapid timing, while tool-swap and extra-station fields state their
 respective seconds-based timing contributions.
 
-The three timing fields form a compact vertical stack beside the vertically
-stacked display toggles. Each checkbox remains horizontal with its label. Their
-visible labels are concise; full behaviour remains in their hover text.
-The toggle column reserves enough width for each label and aligns to the top of
-the timing controls, preventing fragmented label wrapping.
+Reusable timing profiles are configured through
+`kaijuNC.chronoblade.timingProfiles` in Settings. Each profile may supply G0,
+tool-swap, and extra-station defaults plus literal M-code durations in
+`customTimes`, such as `{ "M05": 3, "M86": 10 }`. Chronoblade's Profile
+selector includes an Edit action that opens a bare-bones profile editor. It
+selects or creates profiles and manages literal M-code/time pairs while saving
+back to the same Settings value. The selector is saved per program; selecting a
+profile resets that program's three timing-field overrides. Matched M-codes
+produce individual `Other` rows and contribute to the Other summary. Trace
+mode charges every executed occurrence, including loop repetitions.
+
+The three timing fields, Motion/Line selectors, and vertically stacked display
+toggles form three aligned compact columns. Each checkbox remains horizontal
+with its label. Their visible labels are concise; full behaviour remains in
+their hover text. The Trace warning uses the spare selector row, so it does not
+add vertical whitespace before the report table.
+
+The report table is a flex scroll region and fills all remaining webview height
+beneath those controls.
 
 The summary cards sit to the left of these controls in a two-row, four-column
 grid. All cards have the same minimum width and never wrap their values or
@@ -53,6 +75,10 @@ every motion.
 ## Connections
 
 - Consumes `MetaMotionEngine` analysis and human-readable row data.
+- Consumes `MetaExecutionTrace` occurrence streams and the shared formatted
+  Trace-line mapping when Trace motion is selected.
+- Requests Decomposition's formatted output only as data for that shared map;
+  it does not implement execution or formatting rules.
 - Its options derive machine defaults from `MetaMachineMode`.
 - Shares motion interpretation with Sense and Vision; it must not implement an
   independent timing or modal parser.

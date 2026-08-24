@@ -11,7 +11,8 @@ const {
 	buildExecutionTrace,
 	getExecutionTrace,
 	onDidChangeExecutionTrace,
-	scheduleExecutionTrace
+	scheduleExecutionTrace,
+	attachTraceOutputLines
 } = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
 const { MACRO_REGEX, buildAliasEntries, buildMacroAliasMap, normalizeMacro, resolveMacroAlias } = require("../MetaMacroEngine");
@@ -352,7 +353,7 @@ async function renderVisionPanel(editor, mode, options) {
 		return false;
 	}
 	if (traceResult && traceResult.trace && traceResult.decomposition) {
-		attachDecompositionLineData(traceResult.trace, traceResult.decomposition.decompositionLines);
+		attachTraceOutputLines(traceResult.trace, traceResult.decomposition.decompositionLines);
 	}
 	const analysisOptions = traceResult && traceResult.trace && isUsableVisionTrace(traceResult.trace)
 		? Object.assign({}, options, { executionTrace: traceResult.trace })
@@ -453,23 +454,6 @@ async function getVisionTrace(document, includePlaybackData = false) {
 
 function isUsableVisionTrace(trace) {
 	return trace && (trace.status === "ready" || trace.status === "assumed");
-}
-
-function attachDecompositionLineData(trace, decompositionLines) {
-	const linesBySource = new Map();
-	for (const line of decompositionLines || []) {
-		const queue = linesBySource.get(line.sourceLineNumber) || [];
-		queue.push(line);
-		linesBySource.set(line.sourceLineNumber, queue);
-	}
-
-	for (const entry of trace.executionEntries || []) {
-		const queue = linesBySource.get(entry.lineNumber);
-		if (!queue || !queue.length) continue;
-		const decompositionLine = queue.shift();
-		entry.decompositionLineNumber = decompositionLine.lineNumber;
-		entry.traceLine = decompositionLine.line;
-	}
 }
 
 function getDocumentVisionTraceInputs(document) {
@@ -899,7 +883,7 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		.trace-warning {
-			color: #DCDCAA;
+			color: var(--vscode-editorWarning-foreground);
 			cursor: help;
 			font-weight: 600;
 		}

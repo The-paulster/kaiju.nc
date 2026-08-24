@@ -2,6 +2,22 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+- Added Chronoblade Trace/As-written motion, Source/Trace line identifiers, and
+  a saved Live refresh control. Chronoblade now reuses the shared execution
+  stream and formatted Trace-line mapping used by Vision.
+
+- Matched KAIJU Vision's Trace-warning colour to Chronoblade's theme warning
+  colour.
+
+- Compacted Chronoblade's top controls into aligned timing, Trace-selector, and
+  display-toggle columns, reducing unused space above the report table.
+
+- Made Chronoblade's report table fill the remaining panel height.
+
+- Added reusable Chronoblade timing profiles, a saved per-program Profile
+  selector with a bare-bones profile editor, and custom M-code timing rows
+  that contribute to Other.
+
 - Simplified the KAIJU Chronoblade report header by removing redundant range,
   source-file, whole-program, selection metadata, and the duplicate in-panel
   title.
