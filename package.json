@@ -2,7 +2,7 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PaulCGilesLawson",
   "license": "MIT",
@@ -736,7 +736,7 @@
               "zy"
             ],
             "default": "auto",
-            "description": "Default 2D plane used by KAIJU Vision. Auto uses X-Y for mill mode and Z-X for lathe modes."
+            "description": "Default 2D plane used by KAIJU Vision. Auto uses X-Y for mill mode and X-Z for lathe modes."
           },
           "kaijuNC.vision.xAxisMode": {
             "type": "string",
@@ -897,6 +897,11 @@
             "type": "boolean",
             "default": true,
             "description": "Trim insignificant trailing zeros from visible KAIJU Vision coordinate labels. Hover details keep the configured display precision."
+          },
+          "kaijuNC.vision.playbackMacroSignificantFiguresOnly": {
+            "type": "boolean",
+            "default": false,
+            "description": "In KAIJU Vision playback's Macro values panel, trim insignificant trailing zeros. When off, values use three decimal places unless their executed assignment explicitly specifies more, up to six."
           },
           "kaijuNC.vision.pointMergeDistance": {
             "type": "number",

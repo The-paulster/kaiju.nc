@@ -44,6 +44,7 @@ function getVisionOptions(document, rawOptions = {}) {
 		labelFontSize: clampNumber(config.get("labelFontSize", 11), 5, 32),
 		labelOffset: clampNumber(config.get("labelOffset", 5), 0, 80),
 		trimLabelTrailingZeros: config.get("trimLabelTrailingZeros", true) !== false,
+		playbackMacroSignificantFiguresOnly: config.get("playbackMacroSignificantFiguresOnly", false) === true,
 		pointMergeDistance: clampNumber(config.get("pointMergeDistance", 20), 0, 80),
 		labelCacheMB: clampNumber(config.get("labelCacheMB", 128), 0, 512),
 		compassSize: clampNumber(config.get("compassSize", 78), 24, 220),
@@ -86,7 +87,7 @@ function normalizeOffsetAxis(value) {
 	return Number.isFinite(number) ? number : 0;
 }
 function getDefaultVisionPlane(profile) {
-	return profile && profile.id === "mill" ? "xy" : "zx";
+	return profile && profile.id === "mill" ? "xy" : "xz";
 }
 
 function normalizeVisionPlane(value, fallback = "zx") {

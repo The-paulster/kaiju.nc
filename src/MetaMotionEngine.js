@@ -1675,6 +1675,7 @@ function analyzeVisionRange(document, range, options) {
 function attachVisionLineData(row, sourceLine, executionEntry) {
 	row.sourceLine = sourceLine;
 	if (executionEntry) {
+		row.executionIndex = executionEntry.executionIndex;
 		row.traceLine = executionEntry.traceLine;
 		row.decompositionLineNumber = executionEntry.decompositionLineNumber;
 	}

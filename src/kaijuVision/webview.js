@@ -7,7 +7,12 @@ const {
 	formatNumber,
 	summarizeVisionRows
 } = require("../MetaMotionEngine");
-const { buildExecutionTrace } = require("../MetaExecutionTrace");
+const {
+	buildExecutionTrace,
+	getExecutionTrace,
+	onDidChangeExecutionTrace,
+	scheduleExecutionTrace
+} = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
 const { MACRO_REGEX, buildAliasEntries, buildMacroAliasMap, normalizeMacro, resolveMacroAlias } = require("../MetaMacroEngine");
 const { getCommentRanges, getAngleBracketRanges } = require("../MetaTextRanges");
@@ -26,6 +31,17 @@ function registerKaijuVisionWebview(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("kaijuNC.vision", async () => {
 			await runKaijuVision();
+		}),
+		onDidChangeExecutionTrace(document => {
+			void refreshLiveVision(document);
+		}),
+		vscode.workspace.onDidChangeConfiguration(event => {
+			if (event.affectsConfiguration("kaijuNC.chronoblade.machineMode")) {
+				const editor = vscode.window.activeTextEditor;
+				if (editor && editor.document.languageId === "gcode") {
+					void resetVisionPlaneForMachineMode(editor.document);
+				}
+			}
 		})
 	);
 }
@@ -76,6 +92,14 @@ async function showVisionPanel(editor, mode, options) {
 				await saveOffsetsFromWebview(message.offsets, message.options || {});
 				return;
 			}
+			if (message.type === "resetOffsets") {
+				await resetOffsetsFromWebview(message.options || {});
+				return;
+			}
+			if (message.type === "revealVisionSourceLine") {
+				await revealVisionSourceLine(message.lineNumber);
+				return;
+			}
 			if (message.type === "setVisionAnalysis") {
 				const editor = getVisionSourceEditor();
 				if (editor) {
@@ -85,9 +109,57 @@ async function showVisionPanel(editor, mode, options) {
 					await renderVisionPanel(editor, visionState.mode, options);
 				}
 			}
+			if (message.type === "startVisionPlayback") {
+				const editor = getVisionSourceEditor();
+				if (editor) {
+					const options = makeVisionOptions(editor.document, Object.assign({}, visionState.options, {
+						analysisMode: "trace",
+						playbackAutoStart: true
+					}));
+					options.playbackAutoStart = true;
+					visionState = {
+						documentUriText: editor.document.uri.toString(),
+						mode: visionState.mode,
+						options,
+						playbackLocked: true
+					};
+					await renderVisionPanel(editor, visionState.mode, options);
+				}
+				return;
+			}
+			if (message.type === "stopVisionPlayback") {
+				const editor = getVisionSourceEditor();
+				if (editor) {
+					const options = makeVisionOptions(editor.document, Object.assign({}, visionState.options, { playbackAutoStart: false }));
+					visionState = {
+						documentUriText: editor.document.uri.toString(),
+						mode: visionState.mode,
+						options,
+						playbackLocked: false
+					};
+					await renderVisionPanel(editor, visionState.mode, options);
+				}
+				return;
+			}
+			if (message.type === "setVisionLive") {
+				const editor = getVisionSourceEditor();
+				if (editor) {
+					await saveDocumentVisionSettings(editor.document, message.options || {});
+					const options = makeVisionOptions(editor.document, message.options || {});
+					visionState = { documentUriText: editor.document.uri.toString(), mode: visionState.mode, options };
+					if (options.live) scheduleExecutionTrace(editor.document);
+				}
+			}
 			if (message.type === "saveVisionSettings") {
 				const editor = getVisionSourceEditor();
-				if (editor) await saveDocumentVisionSettings(editor.document, message.options || {});
+				if (editor) {
+					await saveDocumentVisionSettings(editor.document, message.options || {});
+					visionState = {
+						documentUriText: editor.document.uri.toString(),
+						mode: visionState.mode,
+						options: makeVisionOptions(editor.document, message.options || {})
+					};
+				}
 			}
 			if (message.type === "saveMacroInputs") {
 				await saveMacroInputsFromWebview(message.macroInputs || {}, message.overrideProgramInitialValues === true, message.options || {});
@@ -128,6 +200,27 @@ async function saveOffsetsFromWebview(offsets, rawOptions) {
 
 	await renderVisionPanel(editor, mode, options);
 }
+
+async function resetOffsetsFromWebview(rawOptions) {
+	const editor = getVisionSourceEditor();
+
+	if (!editor || editor.document.languageId !== "gcode" || !visionContext || !visionContext.workspaceState) {
+		return;
+	}
+
+	const documentKey = getVisionDocumentKey(editor.document);
+	const allOffsets = getStoredVisionWorkOffsets();
+	delete allOffsets[documentKey];
+	await visionContext.workspaceState.update("kaijuVision.workOffsetsByDocument", allOffsets);
+
+	const settings = Object.assign({}, rawOptions);
+	delete settings.workOffsets;
+	const options = makeVisionOptions(editor.document, settings);
+	const mode = visionState && visionState.mode ? visionState.mode : "whole";
+	visionState = { documentUriText: editor.document.uri.toString(), mode, options };
+	await renderVisionPanel(editor, mode, options);
+}
+
 function makeVisionOptions(document, rawOptions = {}) {
 	const savedOffsets = getDocumentVisionWorkOffsets(document);
 	const savedSettings = getDocumentVisionSettings(document);
@@ -135,6 +228,23 @@ function makeVisionOptions(document, rawOptions = {}) {
 		workOffsets: rawOptions.workOffsets || savedOffsets
 	}));
 	return Object.assign(options, normalizeVisionPanelSettings(Object.assign({}, savedSettings, rawOptions)));
+}
+
+async function resetVisionPlaneForMachineMode(document) {
+	if (!document || document.languageId !== "gcode") return;
+	const plane = getVisionOptions(document).machineMode === "mill" ? "xy" : "xz";
+	const settings = Object.assign({}, getDocumentVisionSettings(document), { plane });
+	await saveDocumentVisionSettings(document, settings);
+
+	if (!visionState || visionState.documentUriText !== document.uri.toString()) return;
+	const options = makeVisionOptions(document, Object.assign({}, visionState.options, { plane }));
+	visionState = Object.assign({}, visionState, { options });
+	if (!visionState.playbackLocked) {
+		const editor = getVisionSourceEditor();
+		if (editor && editor.document.uri.toString() === document.uri.toString()) {
+			await renderVisionPanel(editor, visionState.mode, options);
+		}
+	}
 }
 
 function normalizeVisionPanelSettings(value = {}) {
@@ -147,7 +257,8 @@ function normalizeVisionPanelSettings(value = {}) {
 		showEndpoints: value.showEndpoints !== false,
 		showZeroLines: value.showZeroLines === true,
 		showMarkerLegend: value.showMarkerLegend === true,
-		overrideProgramInitialValues: value.overrideProgramInitialValues === true
+		overrideProgramInitialValues: value.overrideProgramInitialValues === true,
+		live: value.live === true
 	};
 }
 
@@ -206,6 +317,21 @@ function getVisionSourceEditor() {
 	return vscode.window.activeTextEditor;
 }
 
+async function revealVisionSourceLine(rawLineNumber) {
+	const editor = getVisionSourceEditor();
+	const lineNumber = Math.floor(Number(rawLineNumber));
+
+	if (!editor || editor.document.languageId !== "gcode" || !Number.isFinite(lineNumber)) {
+		return;
+	}
+
+	const targetLine = Math.max(0, Math.min(editor.document.lineCount - 1, lineNumber));
+	const position = new vscode.Position(targetLine, 0);
+	const sourceEditor = await vscode.window.showTextDocument(editor.document, editor.viewColumn, false);
+	sourceEditor.selection = new vscode.Selection(position, position);
+	sourceEditor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+}
+
 async function renderVisionPanel(editor, mode, options) {
 	const range = getRangeForMode(editor, mode);
 
@@ -214,7 +340,11 @@ async function renderVisionPanel(editor, mode, options) {
 		return;
 	}
 
-	const traceResult = options.analysisMode === "trace" ? await getVisionTrace(editor.document) : undefined;
+	const traceResult = options.analysisMode === "trace" ? await getVisionTrace(editor.document, options.playbackAutoStart === true) : undefined;
+	if (options.preserveOnUnusableTrace && traceResult && !isUsableVisionTrace(traceResult.trace)) {
+		showLiveTraceWarning(makeLiveTraceWarning(traceResult.trace));
+		return false;
+	}
 	if (traceResult && traceResult.trace && traceResult.decomposition) {
 		attachDecompositionLineData(traceResult.trace, traceResult.decomposition.decompositionLines);
 	}
@@ -222,16 +352,74 @@ async function renderVisionPanel(editor, mode, options) {
 		? Object.assign({}, options, { executionTrace: traceResult.trace })
 		: options;
 	const result = analyzeVisionRange(editor.document, range, analysisOptions);
+	result.executionTrace = options.playbackAutoStart === true && traceResult && traceResult.trace && isUsableVisionTrace(traceResult.trace)
+		? traceResult.trace
+		: undefined;
 	result.traceWarning = traceResult && traceResult.warning;
 
 	visionPanel.title = "KAIJU Vision";
 	visionPanel.webview.html = renderVisionHtml(editor.document, mode, options, result);
 	await compactVisionPanelEditorGroup(options);
+	return true;
 }
 
-async function getVisionTrace(document) {
+async function refreshLiveVision(document) {
+	if (!visionPanel || !visionState || visionState.playbackLocked || !document || document.uri.toString() !== visionState.documentUriText || !visionState.options.live) {
+		return;
+	}
+
+	const trace = getExecutionTrace(document);
+	if (!trace || trace.status === "running") {
+		return;
+	}
+	if (!isUsableVisionTrace(trace) && visionState.options.analysisMode === "trace") {
+		showLiveTraceWarning(makeLiveTraceWarning(trace));
+		return;
+	}
+
+	const editor = getVisionSourceEditor();
+	if (!editor || editor.document.uri.toString() !== visionState.documentUriText) {
+		return;
+	}
+
+	const options = makeVisionOptions(editor.document, visionState.options);
+	visionState = { documentUriText: editor.document.uri.toString(), mode: visionState.mode, options };
+	try {
+		await renderVisionPanel(editor, visionState.mode, Object.assign({}, options, { preserveOnUnusableTrace: true }));
+	} catch (error) {
+		showLiveTraceWarning(makeLiveTraceWarning(error));
+	}
+}
+
+function showLiveTraceWarning(warning) {
+	if (!visionPanel || !warning) return;
+	void visionPanel.webview.postMessage({ type: "liveTraceWarning", warning });
+}
+
+function makeLiveTraceWarning(traceOrError) {
+	const isTrace = traceOrError && typeof traceOrError === "object" && typeof traceOrError.status === "string";
+	const details = [];
+	if (isTrace) {
+		details.push(`The newest trace is ${traceOrError.status}.`);
+		for (const problem of traceOrError.problems || []) {
+			details.push(`Line ${Number(problem.lineNumber) + 1}: ${problem.message}`);
+		}
+	} else if (traceOrError) {
+		details.push(`The newest trace could not be read: ${traceOrError.message || String(traceOrError)}`);
+	}
+	return [
+		"Vision is still showing the last usable trace, not the current document version.",
+		...details
+	].join("\n");
+}
+
+async function getVisionTrace(document, includePlaybackData = false) {
 	const inputs = getDocumentVisionTraceInputs(document);
-	const trace = buildExecutionTrace(document, { initialMacroValues: inputs.initialValues, initialMacroOverrides: inputs.overrides });
+	const trace = buildExecutionTrace(document, {
+		initialMacroValues: inputs.initialValues,
+		initialMacroOverrides: inputs.overrides,
+		includePlaybackData
+	});
 	const decomposition = isUsableVisionTrace(trace)
 		? await decomposeDocument(document, { initialMacroValues: inputs.initialValues, initialMacroOverrides: inputs.overrides, promptForUnknownMacros: false })
 		: undefined;
@@ -310,6 +498,26 @@ function getVisionMacroVariables(document) {
 		}
 	}
 	return [...macros].sort((left, right) => left.localeCompare(right, undefined, { numeric: true })).map(macro => ({ macro, label: aliasLabels.get(macro) || macro, initialized: initialized.has(macro) }));
+}
+
+function getVisionProgramAxes(document) {
+	const axes = [];
+	const axisPatterns = {
+		x: /X(?=[-+#.\d\[])/i,
+		y: /Y(?=[-+#.\d\[])/i,
+		z: /Z(?=[-+#.\d\[])/i
+	};
+
+	for (const axis of ["x", "y", "z"]) {
+		for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+			if (axisPatterns[axis].test(maskVisionMacroText(document.lineAt(lineNumber).text))) {
+				axes.push(axis);
+				break;
+			}
+		}
+	}
+
+	return axes;
 }
 
 function maskVisionMacroText(line) {
@@ -405,6 +613,7 @@ function renderVisionHtml(document, mode, options, result) {
 		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
 	const summary = summarizeVisionRows(result.rows);
 	const macroVariables = getVisionMacroVariables(document);
+	const programAxes = getVisionProgramAxes(document);
 	const savedMacroInputs = visionContext && visionContext.workspaceState
 		? Object.assign({}, visionContext.workspaceState.get("kaijuVision.macroInputsByDocument", {})[getVisionDocumentKey(document)] || {})
 		: {};
@@ -413,7 +622,16 @@ function renderVisionHtml(document, mode, options, result) {
 		options,
 		rangeText,
 		sourceName: document.fileName || document.uri.toString(),
-		summary
+		summary,
+		macroVariables,
+		programAxes,
+		playback: result.executionTrace && Array.isArray(result.executionTrace.executionEntries)
+			? {
+				entries: result.executionTrace.executionEntries,
+				initialMacroValues: result.executionTrace.initialMacroValues || {},
+				autoStart: options.playbackAutoStart === true
+			}
+			: undefined
 	};
 
 	return `<!DOCTYPE html>
@@ -443,6 +661,8 @@ function renderVisionHtml(document, mode, options, result) {
 			display: flex;
 			flex-direction: column;
 		}
+
+		body.playback-macros-open { padding-right: 414px; }
 
 		.empty,
 		.note {
@@ -493,6 +713,69 @@ function renderVisionHtml(document, mode, options, result) {
 		button:hover {
 			background: var(--vscode-button-hoverBackground);
 		}
+
+		.playback-button {
+			display: inline-grid;
+			place-items: center;
+			margin-left: auto;
+			min-width: 32px;
+			height: 28px;
+			padding: 0 9px;
+			font-size: 15px;
+			line-height: 1;
+			font-family: var(--vscode-font-family);
+		}
+
+		.playback-button.stop {
+			background: var(--vscode-inputValidation-errorBackground, #a1260d);
+			color: var(--vscode-inputValidation-errorForeground, #ffffff);
+		}
+
+		.playback-button.stop:hover {
+			background: var(--vscode-inputValidation-errorBorder, #f14c4c);
+		}
+
+		.playback-button:focus-visible {
+			outline: 1px solid var(--vscode-focusBorder);
+			outline-offset: 2px;
+		}
+
+		.playback-panel {
+			display: none;
+			flex: 0 0 auto;
+			gap: 8px;
+			margin: 0 0 10px;
+			padding: 8px 10px;
+			border: 1px solid var(--vscode-panel-border);
+			border-radius: 4px;
+			background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+		}
+
+		.playback-panel.open { display: grid; }
+		.playback-actions { display: flex; align-items: center; gap: 6px; }
+		.playback-actions button { min-width: 30px; padding: 5px 8px; }
+		.playback-scrubber { flex: 1 1 160px; min-width: 100px; }
+		.playback-position { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
+		.playback-code { cursor: pointer; outline: none; }
+		.playback-code:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 3px; }
+		.playback-line { color: var(--vscode-descriptionForeground); font-size: 12px; }
+		.playback-context { display: grid; gap: 1px; font: 12px/1.45 var(--vscode-editor-font-family, monospace); }
+		.playback-context-line { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 8px; padding: 1px 5px; border-radius: 2px; color: var(--vscode-descriptionForeground); }
+		.playback-context-line code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.playback-context-line.current { color: var(--vscode-editor-foreground); background: var(--vscode-list-activeSelectionBackground); }
+		.playback-macro-panel { display: none; position: fixed; z-index: 8; top: 8px; right: 8px; bottom: 16px; box-sizing: border-box; width: 390px; overflow: auto; padding: 8px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+		.playback-macro-panel.open { display: block; animation: playback-macro-slide-in .12s ease-out; }
+		.playback-macro-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
+		.playback-macro-header strong { margin-right: auto; }
+		.playback-macro-header select { min-width: 0; padding: 3px 5px; font-size: 11px; }
+		.playback-macro-close { min-width: 24px; padding: 3px 7px; }
+		.playback-macro-panel table { width: 100%; min-width: max-content; font-size: 11px; }
+		.playback-macro-panel th { position: static; }
+		.playback-macro-panel td, .playback-macro-panel th { padding: 2px 5px; white-space: nowrap; }
+		.playback-macro-panel th:last-child, .playback-macro-panel td:last-child { width: 14ch; min-width: 14ch; text-align: right; }
+		@keyframes playback-macro-slide-in { from { transform: translateX(12px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+		@media (max-width: 700px) { body.playback-macros-open { padding-right: 294px; } .playback-macro-panel { width: 278px; } }
+		tr[data-playback-index] { cursor: pointer; }
 
 		.offset-panel {
 			display: none;
@@ -602,6 +885,12 @@ function renderVisionHtml(document, mode, options, result) {
 			align-items: center;
 		}
 
+		.zoom-readout {
+			color: var(--vscode-descriptionForeground);
+			font-variant-numeric: tabular-nums;
+			white-space: nowrap;
+		}
+
 		.trace-warning {
 			color: #DCDCAA;
 			cursor: help;
@@ -691,6 +980,27 @@ function renderVisionHtml(document, mode, options, result) {
 			line-height: 1.4;
 			pointer-events: none;
 		}
+
+		.playback-position-readout {
+			position: absolute;
+			display: none;
+			left: 10px;
+			bottom: 10px;
+			z-index: 9;
+			gap: 10px;
+			align-items: center;
+			padding: 6px 8px;
+			border: 1px solid var(--vscode-panel-border, #3c3c3c);
+			border-radius: 3px;
+			background: var(--vscode-editorHoverWidget-background, #252526);
+			color: var(--vscode-editorHoverWidget-foreground, #d4d4d4);
+			font: 12px var(--vscode-editor-font-family, monospace);
+			font-variant-numeric: tabular-nums;
+			pointer-events: none;
+		}
+
+		.playback-position-readout.open { display: flex; }
+		.playback-position-axis { white-space: nowrap; }
 
 		.marker-legend-row {
 			display: flex;
@@ -826,6 +1136,7 @@ function renderVisionHtml(document, mode, options, result) {
 				<option value="trace"${options.analysisMode === "trace" && options.showTraceLine ? " selected" : ""}>Trace output</option>
 			</select>
 		</label>
+		<label class="checkbox"><input type="checkbox" id="live"${options.live ? " checked" : ""}> Live</label>
 		<label>Plane
 			<select id="plane">
 				<option value="xy"${options.plane === "xy" ? " selected" : ""}>X-Y</option>
@@ -841,7 +1152,21 @@ function renderVisionHtml(document, mode, options, result) {
 		<button id="fit">Fit View</button>
 		<button id="zoomOut">Zoom -</button>
 		<button id="zoomIn">Zoom +</button>
-		<span id="zoomLabel" class="note">100%</span>
+		<button id="playbackToggle" class="playback-button" type="button" title="Play program" aria-label="Play program">&#9654;</button>
+	</section>
+
+	<section id="playbackPanel" class="playback-panel" aria-label="Program playback">
+		<div class="playback-actions">
+			<button id="playbackBack" type="button" title="Previous event" aria-label="Previous event">&#9664;</button>
+			<button id="playbackForward" type="button" title="Next event" aria-label="Next event">&#9654;</button>
+			<input id="playbackScrubber" class="playback-scrubber" type="range" min="1" value="1" aria-label="Playback position">
+			<span id="playbackPosition" class="playback-position"></span>
+			<button id="playbackMacrosToggle" type="button" title="Show macro values" aria-expanded="false" aria-controls="playbackMacroPanel">Macros</button>
+		</div>
+		<div id="playbackCode" class="playback-code" tabindex="0" title="Use arrows, Page Up/Down, Home/End, Space, or mouse wheel to navigate playback.">
+			<div id="playbackContext" class="playback-context"></div>
+		</div>
+		<aside id="playbackMacroPanel" class="playback-macro-panel" aria-label="Playback macro values"><div class="playback-macro-header"><strong>Macro values</strong><select id="playbackMacroSort" aria-label="Macro sort order"><option value="number">Number</option><option value="recent">Recently updated</option></select><button id="playbackMacroClose" class="playback-macro-close" type="button" title="Close macro values" aria-label="Close macro values">&#215;</button></div><table><thead><tr><th>Macro</th><th>Alias</th><th>Value</th></tr></thead><tbody id="playbackMacroValues"></tbody></table></aside>
 	</section>
 
 	${renderVisionViewPanel(options)}
@@ -853,14 +1178,16 @@ function renderVisionHtml(document, mode, options, result) {
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
 		<span>${escapeHtml(formatNumber(summary.totalDistance, options.humanFormat))} total distance</span>
 		${summary.unknownRows ? `<span>${escapeHtml(summary.unknownRows)} row(s) have incomplete path data</span>` : ""}
-		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span></span>
+		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span><span id="zoomLabel" class="zoom-readout" title="View zoom">100%</span></span>
 		${result.traceWarning ? `<span class="trace-warning" title="${escapeAttribute(result.traceWarning)}">⚠ TRACE WARNING</span>` : ""}
+		<span id="liveWarning" class="trace-warning" hidden></span>
 	</section>
 
 	<div id="viewerSlot" class="viewer-slot">
 		<div id="viewer" class="viewer"></div>
 		<div id="visionTooltip" class="vision-tooltip"></div>
 		<div id="markerLegend" class="vision-marker-legend"></div>
+		<div id="playbackPositionReadout" class="playback-position-readout" aria-live="polite"></div>
 	</div>
 	${renderRows(result.rows, options.humanFormat)}
 
@@ -871,6 +1198,20 @@ function renderVisionHtml(document, mode, options, result) {
 		const planeSelect = document.getElementById("plane");
 		const analysisModeSelect = document.getElementById("analysisMode");
 		const lineDataSelect = document.getElementById("lineData");
+		const liveInput = document.getElementById("live");
+		const playbackToggle = document.getElementById("playbackToggle");
+		const playbackPanel = document.getElementById("playbackPanel");
+		const playbackBack = document.getElementById("playbackBack");
+		const playbackForward = document.getElementById("playbackForward");
+		const playbackScrubber = document.getElementById("playbackScrubber");
+		const playbackPosition = document.getElementById("playbackPosition");
+		const playbackCode = document.getElementById("playbackCode");
+		const playbackContext = document.getElementById("playbackContext");
+		const playbackMacrosToggle = document.getElementById("playbackMacrosToggle");
+		const playbackMacroPanel = document.getElementById("playbackMacroPanel");
+		const playbackMacroSort = document.getElementById("playbackMacroSort");
+		const playbackMacroClose = document.getElementById("playbackMacroClose");
+		const playbackMacroValues = document.getElementById("playbackMacroValues");
 		const labelsInput = document.getElementById("labels");
 		const endpointsInput = document.getElementById("endpoints");
 		const zeroLinesInput = document.getElementById("zeroLines");
@@ -891,6 +1232,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const viewer = document.getElementById("viewer");
 		const tooltip = document.getElementById("visionTooltip");
 		const markerLegend = document.getElementById("markerLegend");
+		const playbackPositionReadout = document.getElementById("playbackPositionReadout");
 		const tableWrap = document.getElementById("visionTableWrap");
 		const tableBody = document.getElementById("visionTableBody");
 		const zoomLabel = document.getElementById("zoomLabel");
@@ -911,6 +1253,31 @@ function renderVisionHtml(document, mode, options, result) {
 		let currentLabelEntry;
 		const projectedPlaneCache = new Map();
 		let dragState;
+		let playbackMacroSortMode = "number";
+		function makePlaybackMotionState(rows) {
+			const motionExecutionIndexes = [];
+			const motionIndexByExecutionIndex = new Map();
+			for (const row of rows || []) {
+				if ((row.type === "motion" || row.type === "cycle") && Number.isFinite(row.executionIndex) && !motionIndexByExecutionIndex.has(row.executionIndex)) {
+					motionIndexByExecutionIndex.set(row.executionIndex, motionExecutionIndexes.length);
+					motionExecutionIndexes.push(row.executionIndex);
+				}
+			}
+			return { motionExecutionIndexes, motionIndexByExecutionIndex };
+		}
+
+		const playback = data.playback && Array.isArray(data.playback.entries) && data.playback.entries.length
+			? Object.assign({ entries: data.playback.entries, initialMacroValues: data.playback.initialMacroValues || {}, cursor: 0, active: false, playing: false, timer: undefined, macroValues: new Map(Object.entries(data.playback.initialMacroValues || {})), usedAxes: Array.isArray(data.programAxes) ? data.programAxes : getPlaybackUsedAxes(data.playback.entries) }, makePlaybackMotionState(data.rows))
+			: undefined;
+
+		function getPlaybackUsedAxes(entries) {
+			const axisPatterns = {
+				x: /X(?=[-+#.\\d\\[])/i,
+				y: /Y(?=[-+#.\\d\\[])/i,
+				z: /Z(?=[-+#.\\d\\[])/i
+			};
+			return Object.keys(axisPatterns).filter(axis => entries.some(entry => axisPatterns[axis].test(String(entry.sourceLine || ""))));
+		}
 		const planes = {
 			xy: makePlane("X-Y", getOrderedOrientation(data.options.xyOrientation, "xRightYUp", "x", "y"), "x", "y"),
 			yx: makePlane("Y-X", getOrderedOrientation(data.options.xyOrientation, "yRightXUp", "y", "x"), "y", "x"),
@@ -932,7 +1299,8 @@ function renderVisionHtml(document, mode, options, result) {
 				showEndpoints: endpointsInput.checked,
 				showZeroLines: zeroLinesInput.checked,
 				showMarkerLegend: markerLegendToggle.checked,
-				overrideProgramInitialValues: overrideProgramInitialValues.checked
+				overrideProgramInitialValues: overrideProgramInitialValues.checked,
+				live: liveInput.checked
 			};
 		}
 
@@ -1372,6 +1740,161 @@ function renderVisionHtml(document, mode, options, result) {
 			viewer.style.height = Math.max(1, Math.floor(rect.height)) + "px";
 		}
 
+		function makePlaybackCheckpoints() {
+			if (!playback) return new Map();
+			const checkpoints = new Map([[0, new Map(Object.entries(playback.initialMacroValues))]]);
+			const values = new Map(Object.entries(playback.initialMacroValues));
+			for (let index = 0; index < playback.entries.length; index++) {
+				applyPlaybackChanges(values, playback.entries[index].macroChanges);
+				if ((index + 1) % 200 === 0) checkpoints.set(index + 1, new Map(values));
+			}
+			return checkpoints;
+		}
+
+		function applyPlaybackChanges(values, changes, reverse = false) {
+			for (const change of changes || []) {
+				const value = reverse ? change.previous : change.current;
+				if (Number.isFinite(value)) values.set(change.macro, value);
+				else values.delete(change.macro);
+			}
+		}
+
+		function makePlaybackPrecisionCheckpoints() {
+			if (!playback) return new Map();
+			const checkpoints = new Map([[0, new Map()]]);
+			const precisions = new Map();
+			for (let index = 0; index < playback.entries.length; index++) {
+				applyPlaybackDisplayPrecisionChanges(precisions, playback.entries[index].macroDisplayPrecisionChanges);
+				if ((index + 1) % 200 === 0) checkpoints.set(index + 1, new Map(precisions));
+			}
+			return checkpoints;
+		}
+
+		function applyPlaybackDisplayPrecisionChanges(precisions, changes) {
+			for (const change of changes || []) {
+				precisions.set(change.macro, Math.max(0, Math.min(6, Number(change.precision) || 0)));
+			}
+		}
+
+		const playbackCheckpoints = makePlaybackCheckpoints();
+		const playbackPrecisionCheckpoints = makePlaybackPrecisionCheckpoints();
+
+		function restorePlaybackMacroValues(cursor) {
+			if (!playback) return;
+			const completedEntries = cursor + 1;
+			const checkpointIndex = Math.floor(completedEntries / 200) * 200;
+			const checkpoint = playbackCheckpoints.get(checkpointIndex) || playbackCheckpoints.get(0);
+			const precisionCheckpoint = playbackPrecisionCheckpoints.get(checkpointIndex) || playbackPrecisionCheckpoints.get(0);
+			playback.macroValues = new Map(checkpoint);
+			playback.macroDisplayPrecisions = new Map(precisionCheckpoint);
+			for (let index = checkpointIndex; index < completedEntries; index++) {
+				applyPlaybackChanges(playback.macroValues, playback.entries[index].macroChanges);
+				applyPlaybackDisplayPrecisionChanges(playback.macroDisplayPrecisions, playback.entries[index].macroDisplayPrecisionChanges);
+			}
+		}
+
+		function updatePlaybackPanel() {
+			if (!playback || !playback.active) return;
+			const entry = playback.entries[playback.cursor];
+			const showTrace = analysisModeSelect.value === "trace" && lineDataSelect.value === "trace";
+			playbackPosition.textContent = "Event " + (playback.cursor + 1) + " / " + playback.entries.length;
+			playbackScrubber.value = String(playback.cursor + 1);
+			const start = Math.max(0, playback.cursor - 2);
+			const end = Math.min(playback.entries.length, playback.cursor + 3);
+			playbackContext.innerHTML = playback.entries.slice(start, end).map((contextEntry, offset) => {
+				const index = start + offset;
+				const lineNumber = showTrace && Number.isFinite(contextEntry.decompositionLineNumber)
+					? contextEntry.decompositionLineNumber
+					: Number(contextEntry.lineNumber) + 1;
+				const code = showTrace ? (contextEntry.traceLine || contextEntry.sourceLine) : contextEntry.sourceLine;
+				return '<div class="playback-context-line' + (index === playback.cursor ? ' current' : '') + '" data-source-line="' + contextEntry.lineNumber + '" title="Open source line ' + (Number(contextEntry.lineNumber) + 1) + '"><span>' + (showTrace ? 'T' : 'S') + lineNumber + '</span><code>' + svgEscape(code || '') + '</code></div>';
+			}).join("");
+			const aliases = new Map((data.macroVariables || []).map(variable => [variable.macro, variable.label]));
+			const macroLastUpdates = getPlaybackMacroLastUpdates();
+			const values = [...playback.macroValues.entries()].filter(([, value]) => Number.isFinite(value)).sort(([left], [right]) => {
+				if (playbackMacroSortMode === "recent") {
+					const updateDifference = (macroLastUpdates.get(right) ?? -1) - (macroLastUpdates.get(left) ?? -1);
+					if (updateDifference) return updateDifference;
+				}
+				return left.localeCompare(right, undefined, { numeric: true });
+			});
+			playbackMacroValues.innerHTML = values.length
+				? values.map(([macro, value]) => '<tr><td><code>' + svgEscape(macro) + '</code></td><td>' + svgEscape(aliases.get(macro) || '—') + '</td><td><code>' + svgEscape(formatPlaybackMacroValue(value, playback.macroDisplayPrecisions.get(macro))) + '</code></td></tr>').join("")
+				: '<tr><td class="note" colspan="3">No resolved macro values yet.</td></tr>';
+		}
+
+		function formatPlaybackMacroValue(value, explicitPrecision) {
+			const numericValue = Number(value);
+			if (!Number.isFinite(numericValue)) return String(value);
+			const decimalPlaces = Math.max(3, Math.min(6, Number(explicitPrecision) || 0));
+			let formatted = numericValue.toFixed(decimalPlaces);
+			if (!data.options.playbackMacroSignificantFiguresOnly) return numericValue === 0 ? (0).toFixed(decimalPlaces) : formatted;
+			while (formatted.includes(".") && formatted.endsWith("0")) formatted = formatted.slice(0, -1);
+			if (formatted.endsWith(".")) formatted = formatted.slice(0, -1);
+			return formatted === "-0" ? "0" : formatted;
+		}
+
+		function getPlaybackMacroLastUpdates() {
+			const lastUpdates = new Map();
+			for (let index = 0; index <= playback.cursor; index++) {
+				for (const change of playback.entries[index].macroChanges || []) lastUpdates.set(change.macro, index);
+			}
+			return lastUpdates;
+		}
+
+		function setPlaybackMacroDockOpen(isOpen) {
+			playbackMacroPanel.classList.toggle("open", isOpen);
+			document.body.classList.toggle("playback-macros-open", isOpen);
+			playbackMacrosToggle.setAttribute("aria-expanded", String(isOpen));
+			render();
+		}
+
+		function setPlaybackCursor(nextCursor) {
+			if (!playback) return;
+			const next = Math.max(0, Math.min(playback.entries.length - 1, Math.round(nextCursor)));
+			if (next === playback.cursor) return;
+			playback.cursor = next;
+			restorePlaybackMacroValues(next);
+			updatePlaybackPanel();
+			updateVirtualTable(false);
+			render();
+		}
+
+		function setPlaybackPlaying(playing) {
+			if (!playback || !playback.active) return;
+			playback.playing = playing;
+			if (playback.timer) window.clearInterval(playback.timer);
+			playback.timer = undefined;
+			if (playing) {
+				playback.timer = window.setInterval(() => {
+					if (playback.cursor >= playback.entries.length - 1) {
+						setPlaybackPlaying(false);
+						return;
+					}
+					setPlaybackCursor(playback.cursor + 1);
+				}, 350);
+			}
+		}
+
+		function startPlayback() {
+			if (!playback) {
+				vscode.postMessage({ type: "startVisionPlayback" });
+				return;
+			}
+			playback.active = true;
+			playbackPanel.classList.add("open");
+			playbackToggle.textContent = "■";
+			playbackToggle.classList.add("stop");
+			playbackToggle.title = "Exit playback";
+			playbackToggle.setAttribute("aria-label", "Exit playback");
+			playbackScrubber.max = String(playback.entries.length);
+			restorePlaybackMacroValues(playback.cursor);
+			updatePlaybackPanel();
+			playbackCode.focus();
+			render();
+			setPlaybackPlaying(false);
+		}
+
 		function render() {
 			sizeViewer();
 			const planeKey = planeSelect.value;
@@ -1390,8 +1913,9 @@ function renderVisionHtml(document, mode, options, result) {
 			const viewportAspect = Math.max(1, viewerRect.width) / Math.max(1, viewerRect.height);
 			const bounds = zoomBounds(fitBounds, viewportAspect);
 			currentBounds = bounds;
-			const showLabels = labelsInput.checked;
-			const showEndpoints = endpointsInput.checked;
+			const playbackActive = playback && playback.active;
+			const showLabels = labelsInput.checked && !playbackActive;
+			const showEndpoints = endpointsInput.checked && !playbackActive;
 			const showZeroLines = zeroLinesInput.checked;
 			const useToolColors = toolColorsInput.checked;
 			const unitsPerPixel = bounds.height / Math.max(1, viewerRect.height);
@@ -1452,6 +1976,8 @@ function renderVisionHtml(document, mode, options, result) {
 			const drawBounds = expandBounds(bounds, Math.max(unitsPerPixel * 48, labelEntry.mergeDistance));
 			const canvasRows = rows.filter(row => rowBoundsIntersect(row.projectedBounds, drawBounds));
 			const canvasCycles = cycles.filter(cycle => rowBoundsIntersect(cycle.projectedBounds, drawBounds));
+			const currentPlaybackDot = getCurrentPlaybackDot(projected);
+			updatePlaybackPositionReadout(getCurrentPlaybackPosition(projected));
 			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, {
 				labelSize: labelEntry.labelSize,
 				labelOffset: labelEntry.labelOffset,
@@ -1478,7 +2004,9 @@ function renderVisionHtml(document, mode, options, result) {
 				endpointSize,
 				arrowSize,
 				unitsPerPixel,
-				lineScale
+				lineScale,
+				playback: playback && playback.active ? playback : undefined,
+				currentPlaybackDot
 			});
 		}
 
@@ -1806,10 +2334,11 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function renderVirtualTableRow(row) {
+			const playbackAttribute = Number.isFinite(row.executionIndex) ? ' data-playback-index="' + row.executionIndex + '"' : "";
 			if (row.type === "label") {
 				const comment = row.comment ? " " + row.comment : "";
 
-				return '<tr class="label-row">' +
+				return '<tr class="label-row"' + playbackAttribute + '>' +
 					renderTableToolMarkerCell(row) +
 					'<td class="tool-marker-gap"></td>' +
 					'<td>' + svgEscape(row.lineNumber) + '</td>' +
@@ -1817,7 +2346,7 @@ function renderVisionHtml(document, mode, options, result) {
 				'</tr>';
 			}
 
-			return '<tr>' +
+			return '<tr' + playbackAttribute + '>' +
 				renderTableToolMarkerCell(row) +
 				'<td class="tool-marker-gap"></td>' +
 				'<td>' + svgEscape(row.lineNumber) + '</td>' +
@@ -2324,6 +2853,83 @@ function renderVisionHtml(document, mode, options, result) {
 			drawMotionRows(context, state.rows, state, transform);
 			drawCycleRows(context, state.cycles, state, transform);
 			drawDirectionArrows(context, state.rows, state, transform);
+			drawCurrentPlaybackDot(context, state.currentPlaybackDot, transform);
+			context.restore();
+		}
+
+		function getCurrentPlaybackDot(projected) {
+			if (!playback || !playback.active) return undefined;
+			const currentEntry = playback.entries[playback.cursor];
+			const candidates = [
+				...(projected.rows || []),
+				...(projected.cycles || []),
+				...(projected.toolChanges || []),
+				...(projected.events || [])
+			].filter(row => Number.isFinite(row.executionIndex) && row.executionIndex <= playback.cursor)
+				.sort((left, right) => left.executionIndex - right.executionIndex);
+			let point;
+			for (const candidate of candidates) {
+				point = candidate.projectedEnd || candidate.projectedPoint || (candidate.projectedPoints && candidate.projectedPoints[candidate.projectedPoints.length - 1]) || point;
+			}
+			if (!point) return undefined;
+			const currentMotion = [...(projected.rows || []), ...(projected.cycles || [])].find(row => row.executionIndex === playback.cursor);
+			return { point, color: getPlaybackDotColor(currentEntry, currentMotion) };
+		}
+
+		function getCurrentPlaybackPosition(projected) {
+			if (!playback || !playback.active) return undefined;
+			const candidates = [
+				...(projected.rows || []),
+				...(projected.cycles || []),
+				...(projected.toolChanges || []),
+				...(projected.events || [])
+			].filter(row => Number.isFinite(row.executionIndex) && row.executionIndex <= playback.cursor)
+				.sort((left, right) => left.executionIndex - right.executionIndex);
+			let position;
+			for (const candidate of candidates) {
+				position = candidate.end || candidate.position || candidate.point || position;
+			}
+			return position;
+		}
+
+		function updatePlaybackPositionReadout(position) {
+			if (!playbackPositionReadout) return;
+			const axes = playback && playback.active ? playback.usedAxes : [];
+			if (!position || !axes.length) {
+				playbackPositionReadout.classList.remove("open");
+				playbackPositionReadout.textContent = "";
+				return;
+			}
+			playbackPositionReadout.innerHTML = axes.map(axis => {
+				const value = position[axis];
+				const text = Number.isFinite(value) ? formatAxisNumber(value, data.options.humanFormat) : "—";
+				return '<span class="playback-position-axis axis-' + axis + '"><span class="axis-letter">' + axis.toUpperCase() + '</span> ' + svgEscape(text) + '</span>';
+			}).join("");
+			playbackPositionReadout.classList.add("open");
+		}
+
+		function getPlaybackDotColor(entry, motionRow) {
+			const code = String(entry && entry.sourceLine || "");
+			if (/\\bT\\d+/i.test(code)) return "#88ff00";
+			if (motionRow) return motionRow.motionCode === 0 ? "#ff8800" : "#ffd500";
+			if (/#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)\\s*=/i.test(code)) return "#eb17e4";
+			if (/\\bS[-+]?\\d/i.test(code)) return "#ff2b2b";
+			if (/\\bM\\d+/i.test(code)) return "#9CDCFE";
+			if (/\\bG4[12]\\b/i.test(code)) return "#1f7a3a";
+			if (/\\bG40\\b/i.test(code)) return "#8e44ad";
+			return "#2F6DA5";
+		}
+
+		function drawCurrentPlaybackDot(context, currentDot, transform) {
+			if (!currentDot || !currentDot.point) return;
+			context.save();
+			context.beginPath();
+			context.arc(transform.x(currentDot.point), transform.y(currentDot.point), 5, 0, Math.PI * 2);
+			context.fillStyle = currentDot.color;
+			context.strokeStyle = "#1e1e1e";
+			context.lineWidth = 1.5;
+			context.fill();
+			context.stroke();
 			context.restore();
 		}
 
@@ -2338,13 +2944,16 @@ function renderVisionHtml(document, mode, options, result) {
 			const buckets = new Map();
 
 			for (const row of rows) {
+				const alpha = getPlaybackRowAlpha(row, state.playback);
+				if (alpha <= 0) continue;
 				const color = getMotionStrokeColor(row, state.useToolColors);
 				const width = (row.motionCode === 0 ? 1.1 : 1.4) * state.lineScale;
 				const dash = row.motionCode === 0 ? "8,6" : "";
-				const key = color + "|" + width + "|" + dash;
+				const key = color + "|" + width + "|" + dash + "|" + alpha;
 				const bucket = buckets.get(key) || {
 					color,
 					width,
+					alpha,
 					dash: row.motionCode === 0 ? [8, 6] : undefined,
 					rows: []
 				};
@@ -2361,12 +2970,15 @@ function renderVisionHtml(document, mode, options, result) {
 			const buckets = new Map();
 
 			for (const cycle of cycles) {
+				const alpha = getPlaybackRowAlpha(cycle, state.playback);
+				if (alpha <= 0) continue;
 				const color = state.useToolColors && cycle.toolColor ? boostToolColor(cycle.toolColor) : "#4fc3ff";
 				const width = 1.45 * state.lineScale;
-				const key = color + "|" + width;
+				const key = color + "|" + width + "|" + alpha;
 				const bucket = buckets.get(key) || {
 					color,
 					width,
+					alpha,
 					rows: []
 				};
 				bucket.rows.push(cycle.projectedPoints);
@@ -2380,6 +2992,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function drawPolylineBucket(context, pointSets, style, transform) {
 			context.save();
+			context.globalAlpha = Number.isFinite(style.alpha) ? style.alpha : 1;
 			context.beginPath();
 			context.strokeStyle = style.color;
 			context.lineWidth = Math.max(0.5, style.width || 1);
@@ -2407,6 +3020,8 @@ function renderVisionHtml(document, mode, options, result) {
 			const buckets = new Map();
 
 			for (const row of rows) {
+				const alpha = getPlaybackRowAlpha(row, state.playback);
+				if (alpha <= 0) continue;
 				const arrowSegment = makeDirectionArrowSegment(row.projectedPoints, state.endpointSize, state.arrowSize, state.unitsPerPixel);
 
 				if (!arrowSegment) {
@@ -2416,11 +3031,12 @@ function renderVisionHtml(document, mode, options, result) {
 				const color = getDirectionStrokeColor(row, state.useToolColors);
 				const width = 1.35 * state.lineScale;
 				const size = Math.max(6, state.arrowSize / Math.max(state.unitsPerPixel, 0.000001));
-				const key = color + "|" + width + "|" + size;
+				const key = color + "|" + width + "|" + size + "|" + alpha;
 				const bucket = buckets.get(key) || {
 					color,
 					width,
 					size,
+					alpha,
 					segments: []
 				};
 				bucket.segments.push(arrowSegment);
@@ -2434,6 +3050,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function drawArrowBucket(context, bucket, transform) {
 			context.save();
+			context.globalAlpha = Number.isFinite(bucket.alpha) ? bucket.alpha : 1;
 			context.strokeStyle = bucket.color;
 			context.fillStyle = bucket.color;
 			context.lineWidth = Math.max(0.5, bucket.width || 1);
@@ -2492,6 +3109,34 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			return row.motionCode === 0 ? "#ff8800" : "#ffd500";
+		}
+
+		function getPlaybackRowAlpha(row, playbackState) {
+			if (!playbackState || !Number.isFinite(row.executionIndex)) return 1;
+			const motionIndex = playbackState.motionIndexByExecutionIndex.get(row.executionIndex);
+			if (!Number.isFinite(motionIndex)) return 0;
+			const currentMotionIndex = getCurrentPlaybackMotionIndex(playbackState);
+			const age = currentMotionIndex - motionIndex;
+			if (age < 0) return 0;
+			if (age === 0) return 1;
+			return Math.max(0.06, 1 - age / 24);
+		}
+
+		function getCurrentPlaybackMotionIndex(playbackState) {
+			const indexes = playbackState.motionExecutionIndexes;
+			let low = 0;
+			let high = indexes.length - 1;
+			let result = -1;
+			while (low <= high) {
+				const middle = Math.floor((low + high) / 2);
+				if (indexes[middle] <= playbackState.cursor) {
+					result = middle;
+					low = middle + 1;
+				} else {
+					high = middle - 1;
+				}
+			}
+			return result;
 		}
 
 		function getDirectionStrokeColor(row, useToolColors) {
@@ -2656,6 +3301,43 @@ function renderVisionHtml(document, mode, options, result) {
 			if (lineDataSelect.disabled) lineDataSelect.value = "source";
 			vscode.postMessage({ type: "setVisionAnalysis", options: collectVisionOptions() });
 		});
+		liveInput.addEventListener("change", () => {
+			vscode.postMessage({ type: "setVisionLive", options: collectVisionOptions() });
+		});
+		playbackToggle.addEventListener("click", () => {
+			if (!playback || !playback.active) vscode.postMessage({ type: "startVisionPlayback" });
+			else {
+				setPlaybackPlaying(false);
+				vscode.postMessage({ type: "stopVisionPlayback" });
+			}
+		});
+		playbackBack.addEventListener("click", () => { if (playback && playback.active) setPlaybackCursor(playback.cursor - 1); });
+		playbackForward.addEventListener("click", () => { if (playback && playback.active) setPlaybackCursor(playback.cursor + 1); });
+		playbackScrubber.addEventListener("input", () => { if (playback && playback.active) setPlaybackCursor(Number(playbackScrubber.value) - 1); });
+		playbackMacrosToggle.addEventListener("click", () => setPlaybackMacroDockOpen(!playbackMacroPanel.classList.contains("open")));
+		playbackMacroClose.addEventListener("click", () => setPlaybackMacroDockOpen(false));
+		playbackMacroSort.addEventListener("change", () => {
+			playbackMacroSortMode = playbackMacroSort.value === "recent" ? "recent" : "number";
+			updatePlaybackPanel();
+		});
+		playbackCode.addEventListener("wheel", event => {
+			if (!playback || !playback.active) return;
+			event.preventDefault();
+			setPlaybackCursor(playback.cursor + (event.deltaY < 0 ? -1 : 1) * (event.shiftKey ? 10 : 1));
+		}, { passive: false });
+		playbackContext.addEventListener("click", event => {
+			const line = event.target && event.target.closest ? event.target.closest("[data-source-line]") : undefined;
+			if (line) vscode.postMessage({ type: "revealVisionSourceLine", lineNumber: Number(line.getAttribute("data-source-line")) });
+		});
+		document.addEventListener("keydown", event => {
+			if (!playback || !playback.active || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement && document.activeElement.tagName)) return;
+			const key = event.key;
+			const steps = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 5, ArrowUp: -5, PageDown: 50, PageUp: -50 };
+			if (key === " ") { event.preventDefault(); setPlaybackPlaying(!playback.playing); return; }
+			if (key === "Home") { event.preventDefault(); setPlaybackCursor(0); return; }
+			if (key === "End") { event.preventDefault(); setPlaybackCursor(playback.entries.length - 1); return; }
+			if (Object.prototype.hasOwnProperty.call(steps, key)) { event.preventDefault(); setPlaybackCursor(playback.cursor + steps[key]); }
+		});
 		lineDataSelect.addEventListener("change", () => {
 			projectedPlaneCache.clear();
 			labelCache.clear();
@@ -2672,6 +3354,12 @@ function renderVisionHtml(document, mode, options, result) {
 		document.querySelectorAll("[data-visibility-tool], [data-visibility-wcs]").forEach(input => input.addEventListener("change", render));
 		if (tableWrap) {
 			tableWrap.addEventListener("scroll", () => updateVirtualTable(false));
+		}
+		if (tableBody) {
+			tableBody.addEventListener("click", event => {
+				const row = event.target && event.target.closest ? event.target.closest("[data-playback-index]") : undefined;
+				if (playback && playback.active && row) setPlaybackCursor(Number(row.getAttribute("data-playback-index")));
+			});
 		}
 		function updateTooltip(event) {
 			if (!tooltip || dragState) {
@@ -2758,17 +3446,22 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function getCompleteMarkerLegendKeys() {
-			return ["programEnd", "optionalStop", "speedChange", "tool", "compensation", "compensationCancel"];
+			return ["programEnd", "optionalStop", "playbackRapid", "playbackCut", "tool", "playbackMacro", "playbackM", "speedChange", "compensation", "compensationCancel", "playbackFlow"];
 		}
 
 		function getMarkerLegendEntry(key) {
 			const entries = {
 				programEnd: { color: "#7f1d1d", label: "Program end" },
 				optionalStop: { color: "#dcdc6b", label: "M00 / M01 stop" },
+				playbackRapid: { color: "#ff8800", label: "Current G00 rapid" },
+				playbackCut: { color: "#ffd500", label: "Current G01/G02/G03 cut" },
 				speedChange: { color: "#ff2b2b", label: "Spindle speed change" },
 				tool: { color: "#88ff00", label: "Tool change" },
+				playbackMacro: { color: "#eb17e4", label: "Current macro maths" },
+				playbackM: { color: "#9CDCFE", label: "Current M command" },
 				compensation: { color: "#1f7a3a", label: "Compensation on" },
-				compensationCancel: { color: "#8e44ad", label: "Compensation off" }
+				compensationCancel: { color: "#8e44ad", label: "Compensation off" },
+				playbackFlow: { color: "#2F6DA5", label: "Current flow / modal" }
 			};
 
 			return entries[key];
@@ -2852,9 +3545,23 @@ function renderVisionHtml(document, mode, options, result) {
 		document.getElementById("saveOffsets").addEventListener("click", () => {
 			vscode.postMessage({ type: "saveOffsets", offsets: collectWorkOffsets(), options: collectVisionOptions() });
 		});
+		document.getElementById("resetOffsets").addEventListener("click", () => {
+			vscode.postMessage({ type: "resetOffsets", options: collectVisionOptions() });
+		});
 		window.addEventListener("resize", render);
+		window.addEventListener("message", event => {
+			const message = event.data;
+			if (!message || message.type !== "liveTraceWarning") return;
+			const warning = String(message.warning || "");
+			const liveWarning = document.getElementById("liveWarning");
+			if (!warning || !liveWarning) return;
+			liveWarning.textContent = "⚠ LIVE WARNING";
+			liveWarning.title = warning;
+			liveWarning.hidden = false;
+		});
 
-		render();
+		if (data.playback && data.playback.autoStart) startPlayback();
+		else render();
 	</script>
 </body>
 </html>`;
@@ -2888,7 +3595,7 @@ function renderVisionOffsetPanel(workOffsets) {
 			</thead>
 			<tbody>${rows}</tbody>
 		</table>
-		<div class="offset-actions"><button id="saveOffsets">Save Offsets</button></div>
+		<div class="offset-actions"><button id="saveOffsets">Apply</button><button id="resetOffsets">Reset to defaults</button></div>
 	</section>`;
 }
 

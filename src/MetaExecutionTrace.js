@@ -145,7 +145,8 @@ function getExecutionTraceOptions(document) {
 function buildExecutionTrace(document, options = {}) {
 	const traceOptions = {
 		maxExecutionSteps: clampInteger(options.maxExecutionSteps, DEFAULT_MAX_EXECUTION_STEPS, 1, 1000000),
-		comparisonTolerance: clampNumber(options.comparisonTolerance, DEFAULT_COMPARISON_TOLERANCE, 0)
+		comparisonTolerance: clampNumber(options.comparisonTolerance, DEFAULT_COMPARISON_TOLERANCE, 0),
+		includePlaybackData: options.includePlaybackData === true
 	};
 	const macroAliases = buildMacroAliasMap(document);
 	const context = {
@@ -175,6 +176,7 @@ function buildExecutionTrace(document, options = {}) {
 			setMacroValue(context.macroValues, macro, Number(value), macroAliases);
 		}
 	}
+	const initialMacroValues = traceOptions.includePlaybackData ? Object.fromEntries(context.macroValues) : undefined;
 	let lineNumber = 0;
 	let steps = 0;
 	let stopReason = "complete";
@@ -198,13 +200,14 @@ function buildExecutionTrace(document, options = {}) {
 			context.lineStates.set(lineNumber, previousStates);
 
 			const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
+			const macroValuesBeforeLine = traceOptions.includePlaybackData ? new Map(context.macroValues) : undefined;
 			const control = executeControlLine(codeLine, lineNumber, context);
 			if (!control.handled) {
 				applyAssignments(codeLine, lineNumber, context);
 			}
 
 			recordLineMacroValues(codeLine, lineNumber, context);
-			recordExecutionEntry(document.lineAt(lineNumber).text, codeLine, lineNumber, context);
+			recordExecutionEntry(document.lineAt(lineNumber).text, codeLine, lineNumber, context, macroValuesBeforeLine);
 
 			if (control.terminal || isMacroAlarmLine(codeLine) || isProgramEndLine(codeLine)) {
 				stopReason = control.terminal || isMacroAlarmLine(codeLine) ? "terminal" : "complete";
@@ -225,13 +228,14 @@ function buildExecutionTrace(document, options = {}) {
 		stopReason,
 		status: stopReason === "complete" ? (context.assumptions.size ? "assumed" : "ready") : stopReason,
 		lineMacroHistories: context.lineMacroHistories,
+		...(traceOptions.includePlaybackData ? { initialMacroValues } : {}),
 		executionEntries: context.executionEntries,
 		assumptions: context.assumptions,
 		problems: context.problems
 	};
 }
 
-function recordExecutionEntry(sourceLine, codeLine, lineNumber, context) {
+function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroValuesBeforeLine) {
 	const values = {};
 	for (const match of String(codeLine || "").matchAll(MACRO_REGEX)) {
 		const macro = normalizeMacro(match[0]);
@@ -242,12 +246,57 @@ function recordExecutionEntry(sourceLine, codeLine, lineNumber, context) {
 			values[resolved] = value;
 		}
 	}
-	context.executionEntries.push({
+	const entry = {
 		lineNumber,
 		sourceLine,
 		traceLine: renderTraceLine(sourceLine, context),
 		macroValues: values
-	});
+	};
+	if (context.options.includePlaybackData) {
+		entry.executionIndex = context.executionEntries.length;
+		entry.macroChanges = makeMacroChanges(macroValuesBeforeLine || new Map(), context.macroValues);
+		entry.macroDisplayPrecisionChanges = makeMacroDisplayPrecisionChanges(codeLine, context.macroAliases);
+	}
+	context.executionEntries.push(entry);
+}
+
+function makeMacroChanges(before, after) {
+	const macros = new Set([...before.keys(), ...after.keys()]);
+	const changes = [];
+
+	for (const macro of macros) {
+		const previous = before.get(macro);
+		const current = after.get(macro);
+		if (previous !== current) {
+			changes.push({ macro, previous: Number.isFinite(previous) ? previous : undefined, current: Number.isFinite(current) ? current : undefined });
+		}
+	}
+
+	return changes;
+}
+
+function makeMacroDisplayPrecisionChanges(codeLine, macroAliases) {
+	const precisionByMacro = new Map();
+
+	for (const assignment of findAssignments(codeLine)) {
+		const precision = getExplicitDecimalPrecision(assignment.value);
+		const normalized = normalizeMacro(assignment.macro);
+		const resolved = resolveMacroAlias(normalized, macroAliases);
+		precisionByMacro.set(normalized, precision);
+		precisionByMacro.set(resolved, precision);
+	}
+
+	return [...precisionByMacro].map(([macro, precision]) => ({ macro, precision }));
+}
+
+function getExplicitDecimalPrecision(expression) {
+	let precision = 0;
+
+	for (const match of String(expression || "").matchAll(/(?:\d+\.(\d*)|\.(\d+))(?:[Ee][-+]?\d+)?/g)) {
+		precision = Math.max(precision, (match[1] || match[2] || "").length);
+	}
+
+	return Math.min(6, precision);
 }
 
 function renderTraceLine(line, context) {
