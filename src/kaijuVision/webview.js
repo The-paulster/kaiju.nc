@@ -9,6 +9,8 @@ const {
 } = require("../MetaMotionEngine");
 const { buildExecutionTrace } = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
+const { MACRO_REGEX, buildAliasEntries, buildMacroAliasMap, normalizeMacro, resolveMacroAlias } = require("../MetaMacroEngine");
+const { getCommentRanges, getAngleBracketRanges } = require("../MetaTextRanges");
 const {
 	VISION_WORK_OFFSET_CODES,
 	getVisionOptions,
@@ -77,10 +79,21 @@ async function showVisionPanel(editor, mode, options) {
 			if (message.type === "setVisionAnalysis") {
 				const editor = getVisionSourceEditor();
 				if (editor) {
+					await saveDocumentVisionSettings(editor.document, message.options || {});
 					const options = makeVisionOptions(editor.document, message.options || {});
 					visionState = { documentUriText: editor.document.uri.toString(), mode: visionState.mode, options };
 					await renderVisionPanel(editor, visionState.mode, options);
 				}
+			}
+			if (message.type === "saveVisionSettings") {
+				const editor = getVisionSourceEditor();
+				if (editor) await saveDocumentVisionSettings(editor.document, message.options || {});
+			}
+			if (message.type === "saveMacroInputs") {
+				await saveMacroInputsFromWebview(message.macroInputs || {}, message.overrideProgramInitialValues === true, message.options || {});
+			}
+			if (message.type === "resetMacroInputs") {
+				await resetMacroInputsFromWebview(message.options || {});
 			}
 
 		});
@@ -117,11 +130,37 @@ async function saveOffsetsFromWebview(offsets, rawOptions) {
 }
 function makeVisionOptions(document, rawOptions = {}) {
 	const savedOffsets = getDocumentVisionWorkOffsets(document);
-	const options = getVisionOptions(document, Object.assign({}, rawOptions, {
+	const savedSettings = getDocumentVisionSettings(document);
+	const options = getVisionOptions(document, Object.assign({}, savedSettings, rawOptions, {
 		workOffsets: rawOptions.workOffsets || savedOffsets
 	}));
+	return Object.assign(options, normalizeVisionPanelSettings(Object.assign({}, savedSettings, rawOptions)));
+}
 
-	return options;
+function normalizeVisionPanelSettings(value = {}) {
+	return {
+		analysisMode: value.analysisMode === "asWritten" ? "asWritten" : "trace",
+		showTraceLine: value.showTraceLine !== false,
+		plane: value.plane,
+		useToolColors: value.useToolColors === true,
+		showLabels: value.showLabels !== false,
+		showEndpoints: value.showEndpoints !== false,
+		showZeroLines: value.showZeroLines === true,
+		showMarkerLegend: value.showMarkerLegend === true,
+		overrideProgramInitialValues: value.overrideProgramInitialValues === true
+	};
+}
+
+function getDocumentVisionSettings(document) {
+	const all = visionContext && visionContext.workspaceState ? visionContext.workspaceState.get("kaijuVision.settingsByDocument", {}) : {};
+	return Object.assign({}, all[getVisionDocumentKey(document)] || {});
+}
+
+async function saveDocumentVisionSettings(document, settings) {
+	if (!visionContext || !visionContext.workspaceState) return;
+	const all = Object.assign({}, visionContext.workspaceState.get("kaijuVision.settingsByDocument", {}));
+	all[getVisionDocumentKey(document)] = normalizeVisionPanelSettings(settings);
+	await visionContext.workspaceState.update("kaijuVision.settingsByDocument", all);
 }
 
 function getDocumentVisionWorkOffsets(document) {
@@ -179,7 +218,7 @@ async function renderVisionPanel(editor, mode, options) {
 	if (traceResult && traceResult.trace && traceResult.decomposition) {
 		attachDecompositionLineData(traceResult.trace, traceResult.decomposition.decompositionLines);
 	}
-	const analysisOptions = traceResult && traceResult.trace && traceResult.trace.status === "ready"
+	const analysisOptions = traceResult && traceResult.trace && isUsableVisionTrace(traceResult.trace)
 		? Object.assign({}, options, { executionTrace: traceResult.trace })
 		: options;
 	const result = analyzeVisionRange(editor.document, range, analysisOptions);
@@ -191,28 +230,34 @@ async function renderVisionPanel(editor, mode, options) {
 }
 
 async function getVisionTrace(document) {
-	let inputs = getDocumentVisionTraceInputs(document);
-	let trace = buildExecutionTrace(document, { initialMacroValues: inputs });
-	if (trace.assumptions.size) {
-		for (const macro of trace.assumptions.keys()) {
-			const entered = await vscode.window.showInputBox({ title: "KAIJU Vision Trace", prompt: `Enter a value for ${macro}`, value: Object.prototype.hasOwnProperty.call(inputs, macro) ? String(inputs[macro]) : "0" });
-			if (entered === undefined || !Number.isFinite(Number(entered))) return { trace, warning: "Trace input was cancelled; Vision is showing as-written motion." };
-			inputs[macro] = Number(entered);
-		}
-		await saveDocumentVisionTraceInputs(document, inputs);
-		trace = buildExecutionTrace(document, { initialMacroValues: inputs });
-	}
-	const decomposition = trace.status === "ready"
-		? await decomposeDocument(document, { initialMacroValues: inputs, promptForUnknownMacros: false })
+	const inputs = getDocumentVisionTraceInputs(document);
+	const trace = buildExecutionTrace(document, { initialMacroValues: inputs.initialValues, initialMacroOverrides: inputs.overrides });
+	const decomposition = isUsableVisionTrace(trace)
+		? await decomposeDocument(document, { initialMacroValues: inputs.initialValues, initialMacroOverrides: inputs.overrides, promptForUnknownMacros: false })
 		: undefined;
-	const decompositionWarning = decomposition && decomposition.warnings.length
-		? ` Decomposition line data has ${decomposition.warnings.length} warning${decomposition.warnings.length === 1 ? "" : "s"}.`
-		: "";
+	const warningItems = [];
+	if (trace.status === "assumed") {
+		warningItems.push("Trace used assumed-zero macro values.");
+		const assumedMacros = [...trace.assumptions.keys()];
+		if (assumedMacros.length) warningItems.push(`Assumed zero: ${assumedMacros.join(", ")}.`);
+		warningItems.push("Set values in Macro values to inspect a specific result.");
+	}
+	if (decomposition && decomposition.warnings.length) {
+		warningItems.push(`Decomposition line data has ${decomposition.warnings.length} warning${decomposition.warnings.length === 1 ? "" : "s"}.`);
+	}
+	if (!isUsableVisionTrace(trace)) {
+		warningItems.push(`Trace is ${trace.status}.`);
+		warningItems.push("Vision is showing as-written motion.");
+	}
 	return {
 		trace,
 		decomposition,
-		warning: trace.status === "ready" ? decompositionWarning.trim() : `Trace is ${trace.status}; Vision is showing as-written motion.`
+		warning: warningItems.length ? `• ${warningItems.join("\n• ")}` : ""
 	};
+}
+
+function isUsableVisionTrace(trace) {
+	return trace && (trace.status === "ready" || trace.status === "assumed");
 }
 
 function attachDecompositionLineData(trace, decompositionLines) {
@@ -233,15 +278,76 @@ function attachDecompositionLineData(trace, decompositionLines) {
 }
 
 function getDocumentVisionTraceInputs(document) {
-	const all = visionContext && visionContext.workspaceState ? visionContext.workspaceState.get("kaijuVision.traceInputsByDocument", {}) : {};
-	return Object.assign({}, all[getVisionDocumentKey(document)] || {});
+	const all = visionContext && visionContext.workspaceState ? visionContext.workspaceState.get("kaijuVision.macroInputsByDocument", {}) : {};
+	const saved = Object.assign({}, all[getVisionDocumentKey(document)] || {});
+	const initialValues = {};
+	const overrides = {};
+	for (const [macro, entry] of Object.entries(saved)) {
+		if (!entry || !Number.isFinite(Number(entry.value))) continue;
+		(entry.override ? overrides : initialValues)[macro] = Number(entry.value);
+	}
+	return { initialValues, overrides };
 }
 
-async function saveDocumentVisionTraceInputs(document, inputs) {
+function getVisionMacroVariables(document) {
+	const macros = new Set();
+	const initialized = new Set();
+	const aliases = buildMacroAliasMap(document);
+	const aliasEntries = buildAliasEntries(document);
+	const aliasLabels = new Map(aliasEntries.filter(entry => entry.alias).map(entry => [normalizeMacro(entry.macro), `#${entry.alias}`]));
+	let firstExecutableLine = document.lineCount;
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const code = maskVisionMacroText(document.lineAt(lineNumber).text);
+		if (firstExecutableLine === document.lineCount && /(^|[^A-Za-z0-9_])[GgMm]\d+/.test(code)) firstExecutableLine = lineNumber;
+		for (const match of code.matchAll(MACRO_REGEX)) macros.add(resolveMacroAlias(normalizeMacro(match[0]), aliases));
+		if (lineNumber < firstExecutableLine) {
+			for (const match of code.matchAll(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g)) initialized.add(resolveMacroAlias(normalizeMacro(match[0].match(MACRO_REGEX)[0]), aliases));
+		}
+	}
+	for (const entry of buildAliasEntries(document)) {
+		if (/\{\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)\s*\}\s*$/.test(String(entry.comment || ""))) {
+			initialized.add(resolveMacroAlias(normalizeMacro(entry.macro), aliases));
+		}
+	}
+	return [...macros].sort((left, right) => left.localeCompare(right, undefined, { numeric: true })).map(macro => ({ macro, label: aliasLabels.get(macro) || macro, initialized: initialized.has(macro) }));
+}
+
+function maskVisionMacroText(line) {
+	const characters = String(line || "").split("");
+	for (const range of [...getCommentRanges(line), ...getAngleBracketRanges(line)]) {
+		for (let index = range.start; index <= range.end; index++) characters[index] = " ";
+	}
+	return characters.join("");
+}
+
+async function saveMacroInputsFromWebview(inputs, overrideProgramInitialValues, rawOptions) {
+	const editor = getVisionSourceEditor();
+	if (!editor || editor.document.languageId !== "gcode") return;
 	if (!visionContext || !visionContext.workspaceState) return;
-	const all = Object.assign({}, visionContext.workspaceState.get("kaijuVision.traceInputsByDocument", {}));
-	all[getVisionDocumentKey(document)] = inputs;
-	await visionContext.workspaceState.update("kaijuVision.traceInputsByDocument", all);
+	const all = Object.assign({}, visionContext.workspaceState.get("kaijuVision.macroInputsByDocument", {}));
+	const valid = {};
+	for (const [macro, value] of Object.entries(inputs)) {
+		if (Number.isFinite(Number(value))) valid[normalizeMacro(macro)] = { value: Number(value), override: overrideProgramInitialValues };
+	}
+	all[getVisionDocumentKey(editor.document)] = valid;
+	await visionContext.workspaceState.update("kaijuVision.macroInputsByDocument", all);
+	await saveDocumentVisionSettings(editor.document, Object.assign({}, rawOptions, { overrideProgramInitialValues }));
+	const options = makeVisionOptions(editor.document, Object.assign({}, rawOptions, { overrideProgramInitialValues }));
+	visionState = { documentUriText: editor.document.uri.toString(), mode: visionState.mode, options };
+	await renderVisionPanel(editor, visionState.mode, options);
+}
+
+async function resetMacroInputsFromWebview(rawOptions) {
+	const editor = getVisionSourceEditor();
+	if (!editor || editor.document.languageId !== "gcode" || !visionContext || !visionContext.workspaceState) return;
+	const all = Object.assign({}, visionContext.workspaceState.get("kaijuVision.macroInputsByDocument", {}));
+	delete all[getVisionDocumentKey(editor.document)];
+	await visionContext.workspaceState.update("kaijuVision.macroInputsByDocument", all);
+	const settings = Object.assign({}, rawOptions, { overrideProgramInitialValues: false });
+	await saveDocumentVisionSettings(editor.document, settings);
+	const options = makeVisionOptions(editor.document, settings);
+	visionState = { documentUriText: editor.document.uri.toString(), mode: visionState.mode, options };
+	await renderVisionPanel(editor, visionState.mode, options);
 }
 
 function getRangeForMode(editor, mode) {
@@ -298,6 +404,10 @@ function renderVisionHtml(document, mode, options, result) {
 		? "Whole program"
 		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
 	const summary = summarizeVisionRows(result.rows);
+	const macroVariables = getVisionMacroVariables(document);
+	const savedMacroInputs = visionContext && visionContext.workspaceState
+		? Object.assign({}, visionContext.workspaceState.get("kaijuVision.macroInputsByDocument", {})[getVisionDocumentKey(document)] || {})
+		: {};
 	const payload = {
 		rows: result.rows,
 		options,
@@ -326,7 +436,7 @@ function renderVisionHtml(document, mode, options, result) {
 			color: var(--vscode-foreground);
 			background: var(--vscode-editor-background);
 			margin: 0;
-			padding: 16px;
+			padding: 6px 16px 16px;
 			box-sizing: border-box;
 			height: 100vh;
 			overflow: hidden;
@@ -432,6 +542,31 @@ function renderVisionHtml(document, mode, options, result) {
 			display: block;
 		}
 
+		.control-panel {
+			display: none;
+			border-top: 1px solid var(--vscode-panel-border);
+			border-bottom: 1px solid var(--vscode-panel-border);
+			padding: 10px 0;
+			margin: 0 0 12px;
+		}
+
+		.control-panel.open { display: block; }
+		.control-panel .offset-actions { margin-top: 0; }
+
+		.macro-panel {
+			display: none;
+			border-top: 1px solid var(--vscode-panel-border);
+			border-bottom: 1px solid var(--vscode-panel-border);
+			padding: 10px 0;
+			margin: 0 0 12px;
+			max-height: 45vh;
+			overflow: auto;
+		}
+
+		.macro-panel.open { display: block; }
+		.macro-panel input[type="number"] { width: 12ch; }
+		.macro-panel th { position: static; }
+
 		.visibility-groups {
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -465,6 +600,12 @@ function renderVisionHtml(document, mode, options, result) {
 			display: flex;
 			gap: 10px;
 			align-items: center;
+		}
+
+		.trace-warning {
+			color: #DCDCAA;
+			cursor: help;
+			font-weight: 600;
 		}
 
 		.swatch {
@@ -679,7 +820,12 @@ function renderVisionHtml(document, mode, options, result) {
 				<option value="asWritten"${options.analysisMode === "asWritten" ? " selected" : ""}>As written</option>
 			</select>
 		</label>
-		<label class="checkbox"><input id="traceLine" type="checkbox"${options.showTraceLine ? " checked" : ""}> Show trace line</label>
+		<label>Node line
+			<select id="lineData"${options.analysisMode === "asWritten" ? " disabled" : ""}>
+				<option value="source"${options.analysisMode !== "trace" || !options.showTraceLine ? " selected" : ""}>Source program</option>
+				<option value="trace"${options.analysisMode === "trace" && options.showTraceLine ? " selected" : ""}>Trace output</option>
+			</select>
+		</label>
 		<label>Plane
 			<select id="plane">
 				<option value="xy"${options.plane === "xy" ? " selected" : ""}>X-Y</option>
@@ -690,28 +836,26 @@ function renderVisionHtml(document, mode, options, result) {
 				<option value="zy"${options.plane === "zy" ? " selected" : ""}>Z-Y</option>
 			</select>
 		</label>
-		<label class="checkbox"><input id="labels" type="checkbox" checked> Labels</label>
-		<label class="checkbox"><input id="endpoints" type="checkbox" checked> Endpoints</label>
-		<label class="checkbox"><input id="zeroLines" type="checkbox"> Zero lines</label>
-		<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
-		<label class="checkbox"><input id="markerLegendToggle" type="checkbox"> Legend</label>
+		<button id="viewToggle">View</button>
+		<button id="dataToggle">Data</button>
 		<button id="fit">Fit View</button>
 		<button id="zoomOut">Zoom -</button>
 		<button id="zoomIn">Zoom +</button>
 		<span id="zoomLabel" class="note">100%</span>
-		<button id="offsetsToggle">Offsets</button>
-		<button id="visibilityToggle">Visibility</button>
 	</section>
 
+	${renderVisionViewPanel(options)}
+	${renderVisionDataPanel()}
 	${renderVisionOffsetPanel(options.workOffsets)}
 	${renderVisionVisibilityPanel(result.rows)}
+	${renderVisionMacroPanel(macroVariables, savedMacroInputs, options.overrideProgramInitialValues)}
 	<section class="summary">
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
 		<span>${escapeHtml(formatNumber(summary.totalDistance, options.humanFormat))} total distance</span>
 		${summary.unknownRows ? `<span>${escapeHtml(summary.unknownRows)} row(s) have incomplete path data</span>` : ""}
 		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span></span>
+		${result.traceWarning ? `<span class="trace-warning" title="${escapeAttribute(result.traceWarning)}">⚠ TRACE WARNING</span>` : ""}
 	</section>
-	${result.traceWarning ? `<p class="note">⚠ ${escapeHtml(result.traceWarning)}</p>` : ""}
 
 	<div id="viewerSlot" class="viewer-slot">
 		<div id="viewer" class="viewer"></div>
@@ -726,16 +870,23 @@ function renderVisionHtml(document, mode, options, result) {
 		const data = JSON.parse(document.getElementById("vision-data").textContent);
 		const planeSelect = document.getElementById("plane");
 		const analysisModeSelect = document.getElementById("analysisMode");
-		const traceLineToggle = document.getElementById("traceLine");
+		const lineDataSelect = document.getElementById("lineData");
 		const labelsInput = document.getElementById("labels");
 		const endpointsInput = document.getElementById("endpoints");
 		const zeroLinesInput = document.getElementById("zeroLines");
 		const toolColorsInput = document.getElementById("toolColors");
 		const markerLegendToggle = document.getElementById("markerLegendToggle");
+		const viewToggle = document.getElementById("viewToggle");
+		const viewPanel = document.getElementById("viewPanel");
+		const dataToggle = document.getElementById("dataToggle");
+		const dataPanel = document.getElementById("dataPanel");
 		const offsetsToggle = document.getElementById("offsetsToggle");
 		const offsetPanel = document.getElementById("offsetPanel");
 		const visibilityToggle = document.getElementById("visibilityToggle");
 		const visibilityPanel = document.getElementById("visibilityPanel");
+		const macrosToggle = document.getElementById("macrosToggle");
+		const macroPanel = document.getElementById("macroPanel");
+		const overrideProgramInitialValues = document.getElementById("overrideProgramInitialValues");
 		const viewerSlot = document.getElementById("viewerSlot");
 		const viewer = document.getElementById("viewer");
 		const tooltip = document.getElementById("visionTooltip");
@@ -773,11 +924,28 @@ function renderVisionHtml(document, mode, options, result) {
 		function collectVisionOptions() {
 			return {
 				analysisMode: analysisModeSelect.value,
-				showTraceLine: traceLineToggle.checked,
+				showTraceLine: lineDataSelect.value === "trace",
 				plane: planeSelect.value,
 				useToolColors: toolColorsInput.checked,
-				workOffsets: collectWorkOffsets()
+				workOffsets: collectWorkOffsets(),
+				showLabels: labelsInput.checked,
+				showEndpoints: endpointsInput.checked,
+				showZeroLines: zeroLinesInput.checked,
+				showMarkerLegend: markerLegendToggle.checked,
+				overrideProgramInitialValues: overrideProgramInitialValues.checked
 			};
+		}
+
+		function saveVisionSettings() {
+			vscode.postMessage({ type: "saveVisionSettings", options: collectVisionOptions() });
+		}
+
+		function collectMacroInputs() {
+			const values = {};
+			document.querySelectorAll("[data-macro-value]").forEach(input => {
+				if (input.value.trim() !== "" && Number.isFinite(Number(input.value))) values[input.getAttribute("data-macro-value")] = Number(input.value);
+			});
+			return values;
 		}
 
 		function collectWorkOffsets() {
@@ -1716,7 +1884,7 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function makePointHoverHtml(position, row) {
-			const showTraceLine = traceLineToggle.checked && row && row.traceLine && Number.isFinite(row.decompositionLineNumber);
+			const showTraceLine = analysisModeSelect.value === "trace" && lineDataSelect.value === "trace" && row && row.traceLine && Number.isFinite(row.decompositionLineNumber);
 			const displayedLineNumber = showTraceLine && Number.isFinite(row.decompositionLineNumber)
 				? row.decompositionLineNumber
 				: row && Number.isFinite(row.lineNumber) ? row.lineNumber : undefined;
@@ -2481,20 +2649,26 @@ function renderVisionHtml(document, mode, options, result) {
 
 		planeSelect.addEventListener("change", () => {
 			resetView();
+			saveVisionSettings();
 		});
-		analysisModeSelect.addEventListener("change", () => vscode.postMessage({ type: "setVisionAnalysis", options: collectVisionOptions() }));
-		traceLineToggle.addEventListener("change", () => {
+		analysisModeSelect.addEventListener("change", () => {
+			lineDataSelect.disabled = analysisModeSelect.value !== "trace";
+			if (lineDataSelect.disabled) lineDataSelect.value = "source";
+			vscode.postMessage({ type: "setVisionAnalysis", options: collectVisionOptions() });
+		});
+		lineDataSelect.addEventListener("change", () => {
 			projectedPlaneCache.clear();
 			labelCache.clear();
 			labelCacheBytes = 0;
 			labelCacheRunId++;
 			currentLabelEntry = undefined;
 			render();
+			saveVisionSettings();
 		});
-		labelsInput.addEventListener("change", render);
-		endpointsInput.addEventListener("change", render);
-		zeroLinesInput.addEventListener("change", render);
-		toolColorsInput.addEventListener("change", render);
+		labelsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
+		endpointsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
+		zeroLinesInput.addEventListener("change", () => { render(); saveVisionSettings(); });
+		toolColorsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		document.querySelectorAll("[data-visibility-tool], [data-visibility-wcs]").forEach(input => input.addEventListener("change", render));
 		if (tableWrap) {
 			tableWrap.addEventListener("scroll", () => updateVirtualTable(false));
@@ -2655,12 +2829,25 @@ function renderVisionHtml(document, mode, options, result) {
 			dragState = undefined;
 			viewer.classList.remove("dragging");
 		});
-		markerLegendToggle.addEventListener("change", () => updateMarkerLegend());
+		markerLegendToggle.addEventListener("change", () => { updateMarkerLegend(); saveVisionSettings(); });
+		viewToggle.addEventListener("click", () => viewPanel.classList.toggle("open"));
+		dataToggle.addEventListener("click", () => dataPanel.classList.toggle("open"));
 		offsetsToggle.addEventListener("click", () => {
 			offsetPanel.classList.toggle("open");
 		});
 		visibilityToggle.addEventListener("click", () => {
 			visibilityPanel.classList.toggle("open");
+		});
+		macrosToggle.addEventListener("click", () => macroPanel.classList.toggle("open"));
+		overrideProgramInitialValues.addEventListener("change", () => {
+			document.querySelectorAll("[data-macro-initialized='true']").forEach(row => row.hidden = !overrideProgramInitialValues.checked);
+			saveVisionSettings();
+		});
+		document.getElementById("saveMacroInputs").addEventListener("click", () => {
+			vscode.postMessage({ type: "saveMacroInputs", macroInputs: collectMacroInputs(), overrideProgramInitialValues: overrideProgramInitialValues.checked, options: collectVisionOptions() });
+		});
+		document.getElementById("resetMacroInputs").addEventListener("click", () => {
+			vscode.postMessage({ type: "resetMacroInputs", options: collectVisionOptions() });
 		});
 		document.getElementById("saveOffsets").addEventListener("click", () => {
 			vscode.postMessage({ type: "saveOffsets", offsets: collectWorkOffsets(), options: collectVisionOptions() });
@@ -2705,6 +2892,25 @@ function renderVisionOffsetPanel(workOffsets) {
 	</section>`;
 }
 
+function renderVisionViewPanel(options) {
+	return `<section id="viewPanel" class="control-panel">
+		<div class="visibility-options">
+			<label class="checkbox"><input id="labels" type="checkbox"${options.showLabels ? " checked" : ""}> Labels</label>
+			<label class="checkbox"><input id="endpoints" type="checkbox"${options.showEndpoints ? " checked" : ""}> Endpoints</label>
+			<label class="checkbox"><input id="zeroLines" type="checkbox"${options.showZeroLines ? " checked" : ""}> Zero lines</label>
+			<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
+			<label class="checkbox"><input id="markerLegendToggle" type="checkbox"${options.showMarkerLegend ? " checked" : ""}> Legend</label>
+			<button id="visibilityToggle">Visibility</button>
+		</div>
+	</section>`;
+}
+
+function renderVisionDataPanel() {
+	return `<section id="dataPanel" class="control-panel"><div class="offset-actions">
+		<button id="offsetsToggle">Offsets</button><button id="macrosToggle">Macro values</button>
+	</div></section>`;
+}
+
 function formatOffsetInputValue(value) {
 	return Number.isFinite(value) ? String(value) : "0";
 }
@@ -2717,6 +2923,23 @@ function renderVisionVisibilityPanel(rows) {
 			${renderVisibilityGroup("Tools", toolEntries, "tool")}
 			${renderVisibilityGroup("WCS", wcsEntries, "wcs")}
 		</div>
+	</section>`;
+}
+
+function renderVisionMacroPanel(macros, savedInputs, overrideProgramInitialValues) {
+	const rows = macros.map(entry => {
+		const saved = savedInputs[entry.macro];
+		const value = saved && Number.isFinite(Number(saved.value)) ? String(saved.value) : "";
+		const hidden = entry.initialized && !overrideProgramInitialValues ? " hidden" : "";
+		return `<tr data-macro-initialized="${entry.initialized ? "true" : "false"}"${hidden}>
+			<td><code>${escapeHtml(entry.label)}</code>${entry.label !== entry.macro ? ` <span class="note">${escapeHtml(entry.macro)}</span>` : ""}</td>
+			<td>${entry.initialized ? "Program initial value" : "No initial value"}</td>
+			<td><input data-macro-value="${escapeAttribute(entry.macro)}" type="number" step="any" value="${escapeAttribute(value)}"></td>
+		</tr>`;
+	}).join("");
+	return `<section id="macroPanel" class="macro-panel">
+		<div class="offset-actions"><button id="saveMacroInputs">Apply</button><button id="resetMacroInputs">Reset to defaults</button><label class="checkbox" title="Values replace header macro initialisations before the first executable G/M block. With override off, only macros without an initial value are shown."><input id="overrideProgramInitialValues" type="checkbox"${overrideProgramInitialValues ? " checked" : ""}> Override program initial values</label></div>
+		<table><thead><tr><th>Macro</th><th>Program state</th><th>Initial value</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="note">No macro variables in this program.</td></tr>'}</tbody></table>
 	</section>`;
 }
 

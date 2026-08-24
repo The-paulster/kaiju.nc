@@ -1051,18 +1051,6 @@
         "title": "KAIJU Warpaint"
       },
       {
-        "command": "kaijuNC.quickToggle.warpaint",
-        "title": "KAIJU Quick Toggle: Warpaint"
-      },
-      {
-        "command": "kaijuNC.quickToggle.warpaintOn",
-        "title": "Warpaint: On"
-      },
-      {
-        "command": "kaijuNC.quickToggle.warpaintOff",
-        "title": "Warpaint: Off"
-      },
-      {
         "command": "kaijuNC.quickToggle.sequenceNumberOrderOn",
         "title": "Out-of-Order N Alerts: On"
       },
@@ -1131,12 +1119,6 @@
         "key": "ctrl+alt+w",
         "mac": "cmd+alt+w",
         "when": "editorTextFocus && editorLangId == gcode"
-      },
-      {
-        "command": "kaijuNC.quickToggle.warpaint",
-        "key": "ctrl+alt+shift+w",
-        "mac": "cmd+alt+shift+w",
-        "when": "editorTextFocus && editorLangId == gcode"
       }
     ],
     "submenus": [
@@ -1188,11 +1170,6 @@
           "group": "0_kaiju@7"
         },
         {
-          "command": "kaijuNC.warpaint",
-          "when": "editorLangId == gcode",
-          "group": "0_kaiju@8"
-        },
-        {
           "submenu": "kaijuNC.machineModeMenu",
           "when": "editorLangId == gcode",
           "group": "z_kaijuMachineMode"
@@ -1205,24 +1182,14 @@
       ],
       "kaijuNC.quickTogglesMenu": [
         {
-          "command": "kaijuNC.quickToggle.warpaintOn",
-          "when": "editorLangId == gcode && kaijuNC.quickToggle.warpaintEnabled",
-          "group": "navigation@1"
-        },
-        {
-          "command": "kaijuNC.quickToggle.warpaintOff",
-          "when": "editorLangId == gcode && !kaijuNC.quickToggle.warpaintEnabled",
-          "group": "navigation@1"
-        },
-        {
           "command": "kaijuNC.quickToggle.sequenceNumberOrderOn",
           "when": "editorLangId == gcode && kaijuNC.quickToggle.sequenceNumberOrderEnabled",
-          "group": "navigation@2"
+          "group": "navigation@1"
         },
         {
           "command": "kaijuNC.quickToggle.sequenceNumberOrderOff",
           "when": "editorLangId == gcode && !kaijuNC.quickToggle.sequenceNumberOrderEnabled",
-          "group": "navigation@2"
+          "group": "navigation@1"
         }
       ],
       "kaijuNC.machineModeMenu": [

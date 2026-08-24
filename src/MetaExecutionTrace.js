@@ -25,10 +25,10 @@ const pendingRuns = new Map();
 const traceEvents = new EventEmitter();
 
 function registerExecutionTrace(context) {
-	const scheduleActive = () => {
+	const scheduleActive = (options) => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor && editor.document.languageId === "gcode") {
-			scheduleExecutionTrace(editor.document);
+			scheduleExecutionTrace(editor.document, options);
 		}
 	};
 
@@ -43,27 +43,33 @@ function registerExecutionTrace(context) {
 		vscode.workspace.onDidCloseTextDocument(document => clearExecutionTrace(document)),
 		vscode.workspace.onDidChangeConfiguration(event => {
 			if (event.affectsConfiguration("kaijuNC.trace")) {
-				scheduleActive();
+				scheduleActive({ force: true });
 			}
 		}),
 		{ dispose: () => disposeExecutionTraceService() }
 	);
 }
 
-function scheduleExecutionTrace(document) {
+function scheduleExecutionTrace(document, { force = false } = {}) {
 	if (!document || document.languageId !== "gcode") {
 		return;
 	}
 
 	const key = document.uri.toString();
 	const existing = pendingRuns.get(key);
+	const current = traceCache.get(key);
+
+	// Trace-state notifications are synchronous. A consumer that refreshes while
+	// the initial "running" state is announced must not restart that same run.
+	if (!force && existing && current && current.status === "running" && current.version === document.version) {
+		return;
+	}
 
 	if (existing) {
 		clearTimeout(existing.timer);
 	}
 
 	const options = getExecutionTraceOptions(document);
-	setTraceState(key, { status: "running", version: document.version, document });
 	const timer = setTimeout(() => {
 		pendingRuns.delete(key);
 		const trace = buildExecutionTrace(document, options);
@@ -78,6 +84,7 @@ function scheduleExecutionTrace(document) {
 	}, options.debounceMs);
 
 	pendingRuns.set(key, { timer });
+	setTraceState(key, { status: "running", version: document.version, document });
 }
 
 function getExecutionTrace(document) {
@@ -145,6 +152,8 @@ function buildExecutionTrace(document, options = {}) {
 		document,
 		macroAliases,
 		macroValues: buildInitialCommentDefaults(document, macroAliases),
+		initialOverrides: new Set(),
+		firstExecutableLine: findFirstExecutableGMLine(document),
 		labels: buildLabelMap(document),
 		loopStack: [],
 		lineStates: new Map(),
@@ -156,6 +165,13 @@ function buildExecutionTrace(document, options = {}) {
 	};
 	for (const [macro, value] of Object.entries(options.initialMacroValues || {})) {
 		if (Number.isFinite(Number(value))) {
+			setMacroValue(context.macroValues, macro, Number(value), macroAliases);
+		}
+	}
+	for (const [macro, value] of Object.entries(options.initialMacroOverrides || {})) {
+		if (Number.isFinite(Number(value))) {
+			const resolved = resolveMacroAlias(normalizeMacro(macro), macroAliases);
+			context.initialOverrides.add(resolved);
 			setMacroValue(context.macroValues, macro, Number(value), macroAliases);
 		}
 	}
@@ -331,9 +347,22 @@ function executeControlLine(codeLine, lineNumber, context) {
 
 function applyAssignments(codeLine, lineNumber, context) {
 	for (const assignment of findAssignments(codeLine)) {
+		const resolved = resolveMacroAlias(normalizeMacro(assignment.macro), context.macroAliases);
+		if (lineNumber < context.firstExecutableLine && context.initialOverrides.has(resolved)) {
+			continue;
+		}
 		const value = evaluateExpression(assignment.value, lineNumber, context);
 		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
 	}
+}
+
+function findFirstExecutableGMLine(document) {
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		if (/(^|[^A-Za-z0-9_])[GgMm]\d+/.test(maskProtectedRanges(document.lineAt(lineNumber).text))) {
+			return lineNumber;
+		}
+	}
+	return document.lineCount;
 }
 
 function evaluateCondition(conditionText, lineNumber, context) {

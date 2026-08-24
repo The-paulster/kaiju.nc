@@ -47,7 +47,7 @@ function updateKaijuTraceStatusBar(item) {
 
 	item.text = getTraceLabel(trace);
 	item.color = trace.status === "assumed" ? "#DCDCAA" : "#ff8800";
-	item.tooltip = makeTraceTooltip(trace);
+	item.tooltip = makeTraceTooltipMarkdown(trace);
 	item.show();
 }
 
@@ -71,6 +71,7 @@ function makeTraceTooltip(trace) {
 		for (const [macro, occurrences] of trace.assumptions) {
 			lines.push(`${macro}: ${formatLineNumbers(occurrences)}`);
 		}
+		lines.push("", "Tip: To set an assumed default for a macro variable, add a header comment such as (#100 {3.000}) before the first executable G/M block.");
 	}
 	if (trace.problems.length) {
 		lines.push("", "Trace problems:");
@@ -79,6 +80,20 @@ function makeTraceTooltip(trace) {
 		}
 	}
 	return lines.join("\n");
+}
+
+function makeTraceTooltipMarkdown(trace) {
+	const plainText = makeTraceTooltip(trace);
+	const tipIndex = plainText.indexOf("\n\nTip: ");
+
+	if (tipIndex === -1) {
+		return plainText;
+	}
+
+	const tooltip = new vscode.MarkdownString();
+	tooltip.appendText(plainText.slice(0, tipIndex));
+	tooltip.appendMarkdown(`\n\n*${plainText.slice(tipIndex + 2)}*`);
+	return tooltip;
 }
 
 function formatLineNumbers(occurrences) {

@@ -91,6 +91,8 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 		macroValues: new Map(commentDefaults),
 		assignedMacros: new Set(),
 		macroAliases,
+		initialOverrides: new Set(),
+		firstExecutableLine: findFirstExecutableGMLine(document),
 		macroAliasLabels: buildMacroAliasLabelMap(document),
 		commentDefaults,
 		manualInputs: new Map(),
@@ -107,6 +109,16 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 		if (Number.isFinite(value)) {
 			const normalizedMacro = normalizeMacro(macro);
 			const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
+			setMacroValue(context.macroValues, normalizedMacro, value, macroAliases);
+			context.manualInputs.set(resolvedMacro, value);
+		}
+	}
+	for (const [macro, rawValue] of Object.entries(runtimeOptions.initialMacroOverrides || {})) {
+		const value = Number(rawValue);
+		if (Number.isFinite(value)) {
+			const normalizedMacro = normalizeMacro(macro);
+			const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
+			context.initialOverrides.add(resolvedMacro);
 			setMacroValue(context.macroValues, normalizedMacro, value, macroAliases);
 			context.manualInputs.set(resolvedMacro, value);
 		}
@@ -338,6 +350,10 @@ async function variableTracker(codeLine, lineNumber, context) {
 	const comments = [];
 
 	for (const assignment of findAssignments(codeLine)) {
+		const resolved = resolveMacroAlias(normalizeMacro(assignment.macro), context.macroAliases);
+		if (lineNumber < context.firstExecutableLine && context.initialOverrides.has(resolved)) {
+			continue;
+		}
 		const value = await evaluateExpression(assignment.value, lineNumber, context);
 		markMacroAssigned(context, assignment.macro);
 		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
@@ -423,6 +439,15 @@ async function decomposeCodeSegment(segment, lineNumber, context) {
 async function evaluateCondition(conditionText, lineNumber, context) {
 	await promptForUnknownMacros(conditionText, lineNumber, context);
 	return evaluateConditionExpression(conditionText, lineNumber, context);
+}
+
+function findFirstExecutableGMLine(document) {
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		if (/(^|[^A-Za-z0-9_])[GgMm]\d+/.test(maskProtectedRanges(document.lineAt(lineNumber).text))) {
+			return lineNumber;
+		}
+	}
+	return document.lineCount;
 }
 
 function evaluateConditionExpression(conditionText, lineNumber, context) {

@@ -2,18 +2,6 @@
 const vscode = require("vscode");
 
 const TOGGLES = {
-	warpaint: {
-		commands: [
-			"kaijuNC.quickToggle.warpaint",
-			"kaijuNC.quickToggle.warpaintOn",
-			"kaijuNC.quickToggle.warpaintOff"
-		],
-		section: "kaijuNC.warpaint",
-		key: "enabled",
-		defaultValue: true,
-		contextKey: "kaijuNC.quickToggle.warpaintEnabled",
-		label: "Warpaint"
-	},
 	sequenceNumberOrder: {
 		commands: [
 			"kaijuNC.quickToggle.sequenceNumberOrderOn",
@@ -44,10 +32,7 @@ function registerKaijuQuickToggles(context) {
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(update),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (
-				event.affectsConfiguration("kaijuNC.warpaint.enabled")
-				|| event.affectsConfiguration("kaijuNC.alerts.sequenceNumberOrder.enabled")
-			) {
+			if (event.affectsConfiguration("kaijuNC.alerts.sequenceNumberOrder.enabled")) {
 				update();
 			}
 		})

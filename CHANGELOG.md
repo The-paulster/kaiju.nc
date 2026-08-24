@@ -2,6 +2,16 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+- Added saved per-program KAIJU Vision controls and a Macro values drawer for
+  saved missing initial values or optional header-initialisation overrides.
+
+- Removed Warpaint and its on/off toggle from the editor context menu while its
+  authoring workflow is being reconsidered; its Settings option and decoration
+  module remain available.
+
+- Fixed KAIJU Trace's status-bar indicator failing to appear because its
+  synchronous running-state notification could recursively restart the trace.
+
 - Improved KAIJU Vision node data so Source-line mode preserves authored macro
   expressions, while Trace-line mode shows the exact unique Decomposition output
   line number and fully substituted instruction for each execution occurrence;

@@ -13,7 +13,7 @@ rather than replicate its capabilities.
 | Component | Owns | Consumers |
 | --- | --- | --- |
 | `MetaMotionEngine.js` | Modal state, motion geometry, cycle/time analysis, shared report rows, and status-modal read model | Sense, Vision, Chronoblade |
-| `MetaExecutionTrace.js` | Debounced execution-trace cache, macro history, assumed-zero inputs, and control-flow safety state | Trace, Sense, future Alert consumers |
+| `MetaExecutionTrace.js` | Debounced execution-trace cache, macro history, initial-value overrides, assumed-zero inputs, and control-flow safety state | Trace, Sense, Vision, future Alert consumers |
 | `MetaMacroEngine.js` | Macro aliases, macro-expression evaluation, normalization, and value resolution | Alias, Sense, Decomposition, Orphan Killer, Tool Model, Motion Engine |
 | `MetaToolModel.js` | Tool identity/ranges and stable tool colors | Sense, Rangefinder, Warpaint, Motion Engine |
 | `MetaTextRanges.js` | Comment and angle-bracket protected ranges | Features that scan code text; Macro Engine |

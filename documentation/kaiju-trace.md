@@ -23,3 +23,7 @@ Trace status presents shared results; it does not implement macro parsing or
 control flow. The passive trace never prompts for values: unresolved macros are
 assumed to be zero and reported visibly, while execution caps and repeated
 states prevent an unresolved loop from running indefinitely.
+
+To supply a passive default, place an initial header comment before the first
+executable G/M block, for example `(#100 {3.000})`. The trailing numeric braces
+provide Trace's value for `#100`.
