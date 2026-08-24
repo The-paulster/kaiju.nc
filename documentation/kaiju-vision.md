@@ -41,8 +41,10 @@ unsafe or cannot be read, Vision retains the last usable report and shows a
 hoverable Live warning explaining that the report is not current.
 
 Changing KAIJU Machine Mode resets the active source program's saved Vision
-plane to X-Y for mill or X-Z for either lathe profile, while retaining its other
-Vision settings.
+plane to that machine profile's configured Vision default, while retaining its
+other Vision settings. With Vision plane set to Auto, the default settings are
+X-Y for Mill and Z-X for both lathe profiles; each profile's default can be
+changed independently in Settings.
 
 The Data > Offsets panel uses Apply to save its per-program work offsets and
 Reset to defaults to remove them, matching the Macro values panel's reset

@@ -239,7 +239,7 @@ function makeVisionOptions(document, rawOptions = {}) {
 
 async function resetVisionPlaneForMachineMode(document) {
 	if (!document || document.languageId !== "gcode") return;
-	const plane = getVisionOptions(document).machineMode === "mill" ? "xy" : "xz";
+	const plane = getVisionOptions(document).plane;
 	const settings = Object.assign({}, getDocumentVisionSettings(document), { plane });
 	await saveDocumentVisionSettings(document, settings);
 

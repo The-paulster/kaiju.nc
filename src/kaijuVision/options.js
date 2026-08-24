@@ -14,7 +14,7 @@ function getVisionOptions(document, rawOptions = {}) {
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
 	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
 	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
-	const defaultPlane = getDefaultVisionPlane(profile);
+	const defaultPlane = getDefaultVisionPlane(config, profile);
 
 	return {
 		analysisMode: rawOptions.analysisMode === "asWritten" ? "asWritten" : "trace",
@@ -86,8 +86,15 @@ function normalizeOffsetAxis(value) {
 
 	return Number.isFinite(number) ? number : 0;
 }
-function getDefaultVisionPlane(profile) {
-	return profile && profile.id === "mill" ? "xy" : "xz";
+function getDefaultVisionPlane(config, profile) {
+	const profileSetting = {
+		mill: "defaultPlaneMill",
+		latheRadius: "defaultPlaneLatheRadius",
+		latheDiameter: "defaultPlaneLatheDiameter"
+	}[profile && profile.id] || "defaultPlaneLatheDiameter";
+	const fallback = profile && profile.id === "mill" ? "xy" : "zx";
+
+	return normalizeVisionPlane(config.get(profileSetting, fallback), fallback);
 }
 
 function normalizeVisionPlane(value, fallback = "zx") {

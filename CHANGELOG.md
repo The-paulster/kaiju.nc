@@ -1,5 +1,8 @@
 # Changelog
 
+- Added independent KAIJU Vision default-plane settings for Mill, Lathe
+  (Radius), and Lathe (Diameter). Vision now defaults to Z-X for lathe modes.
+
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 - Added Chronoblade Trace/As-written motion, Source/Trace line identifiers, and

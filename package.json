@@ -743,7 +743,46 @@
               "zy"
             ],
             "default": "auto",
-            "description": "Default 2D plane used by KAIJU Vision. Auto uses X-Y for mill mode and X-Z for lathe modes."
+            "description": "2D plane used by KAIJU Vision. Auto uses the configured default plane for the current machine profile."
+          },
+          "kaijuNC.vision.defaultPlaneMill": {
+            "type": "string",
+            "enum": [
+              "xy",
+              "yx",
+              "xz",
+              "zx",
+              "yz",
+              "zy"
+            ],
+            "default": "xy",
+            "description": "Default KAIJU Vision plane for the Mill machine profile when Vision plane is Auto."
+          },
+          "kaijuNC.vision.defaultPlaneLatheRadius": {
+            "type": "string",
+            "enum": [
+              "xy",
+              "yx",
+              "xz",
+              "zx",
+              "yz",
+              "zy"
+            ],
+            "default": "zx",
+            "description": "Default KAIJU Vision plane for the Lathe (Radius) machine profile when Vision plane is Auto."
+          },
+          "kaijuNC.vision.defaultPlaneLatheDiameter": {
+            "type": "string",
+            "enum": [
+              "xy",
+              "yx",
+              "xz",
+              "zx",
+              "yz",
+              "zy"
+            ],
+            "default": "zx",
+            "description": "Default KAIJU Vision plane for the Lathe (Diameter) machine profile when Vision plane is Auto."
           },
           "kaijuNC.vision.xAxisMode": {
             "type": "string",
