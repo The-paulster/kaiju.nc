@@ -2289,10 +2289,12 @@ function summarizeChronobladeRows(rows) {
 		totalTimeSeconds: 0,
 		unknownTimeRows: 0,
 		totalDistance: 0,
+		cuttingDistance: 0,
 		rapidTimeSeconds: 0,
 		cuttingTimeSeconds: 0,
 		dwellTimeSeconds: 0,
-		toolTimeSeconds: 0
+		toolTimeSeconds: 0,
+		otherTimeSeconds: 0
 	};
 
 	for (const row of rows) {
@@ -2302,6 +2304,9 @@ function summarizeChronobladeRows(rows) {
 
 		if (Number.isFinite(row.distance)) {
 			summary.totalDistance += row.distance;
+			if (row.type === "motion" && row.instruction !== "G0") {
+				summary.cuttingDistance += row.distance;
+			}
 		}
 
 		if (!Number.isFinite(row.timeSeconds)) {

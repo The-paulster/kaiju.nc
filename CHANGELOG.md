@@ -2,6 +2,32 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+- Simplified the KAIJU Chronoblade report header by removing redundant range,
+  source-file, whole-program, selection metadata, and the duplicate in-panel
+  title.
+
+- Removed Chronoblade's obsolete Send Whole Program and Send Selection buttons.
+
+- Moved Chronoblade timing guidance into hover tooltips for its G0 rate, G0
+  summary, tool-swap time, and extra-station time.
+
+- Compacted Chronoblade's timing controls and display toggles into side-by-side
+  vertical stacks with concise labels and explanatory hover text.
+
+- Fixed Chronoblade's compact toggle layout so checkbox labels no longer wrap
+  into fragments and both control columns align at the top.
+
+- Moved Chronoblade's summary cards beside its controls in a two-row grid, and
+  added Cutting distance plus an `Other` time placeholder.
+
+- Moved Chronoblade's equal-width, non-wrapping summary cards to the left of
+  its timing controls and shortened their minute notation to `m`.
+
+- Tightened Chronoblade's timing-input label column so its value fields no
+  longer drift away from their labels.
+
+- Reduced Chronoblade's top webview inset to a minimal 2px.
+
 ## [0.5.0]
 
 - Added compact KAIJU Vision playback with a classic Play control, automatic and manual execution
@@ -40,6 +66,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 - Added `kaijuNC.alerts.illegalArcs.tolerance`, defaulting to `0.001` program units, so small
   centre-offset and R-radius rounding differences do not appear as illegal-arc errors.
+
+- Fixed KAIJU Chronoblade exhausting memory on large programs by virtualising its report table.
+  It now renders only the visible rows while preserving scrolling, N-label collapse controls,
+  accumulated totals, and display toggles.
 
 - Added a saved KAIJU Vision Live toggle that refreshes the open report after its source program's
   Trace recompiles. If a new Trace cannot be used, Vision keeps the last usable report and shows a

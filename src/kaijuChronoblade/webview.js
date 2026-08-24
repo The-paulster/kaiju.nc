@@ -2,7 +2,6 @@
 // motion interpretation in MetaMotionEngine.js and machine defaults in
 // MetaMachineMode.js.
 const vscode = require("vscode");
-const path = require("path");
 const {
 	analyzeChronobladeRange,
 	formatNumber,
@@ -11,7 +10,6 @@ const {
 const { getChronobladeOptions } = require("./options");
 
 let chronobladePanel;
-let chronobladeState;
 
 function registerChronobladeWebview(context) {
 	context.subscriptions.push(
@@ -36,12 +34,6 @@ async function runChronoblade() {
 }
 
 async function showChronobladePanel(editor, mode, options) {
-	chronobladeState = {
-		documentUriText: editor.document.uri.toString(),
-		mode,
-		options
-	};
-
 	if (!chronobladePanel) {
 		chronobladePanel = vscode.window.createWebviewPanel(
 			"kaijuChronoblade",
@@ -55,53 +47,13 @@ async function showChronobladePanel(editor, mode, options) {
 
 		chronobladePanel.onDidDispose(() => {
 			chronobladePanel = undefined;
-			chronobladeState = undefined;
 		});
 
-		chronobladePanel.webview.onDidReceiveMessage(async message => {
-			if (!message || !["whole", "selection"].includes(message.type)) {
-				return;
-			}
-
-			await renderFromActiveEditor(message.type, message.options || {});
-		});
 	} else {
 		chronobladePanel.reveal(vscode.ViewColumn.Beside);
 	}
 
 	await renderChronobladePanel(editor, mode, options);
-}
-
-async function renderFromActiveEditor(mode, rawOptions) {
-	const editor = getChronobladeSourceEditor();
-
-	if (!editor || editor.document.languageId !== "gcode") {
-		vscode.window.showWarningMessage("Focus a G-code document before sending it to Chronoblade.");
-		return;
-	}
-
-	const options = getChronobladeOptions(editor.document, rawOptions);
-
-	chronobladeState = {
-		documentUriText: editor.document.uri.toString(),
-		mode,
-		options
-	};
-
-	await renderChronobladePanel(editor, mode, options);
-}
-
-function getChronobladeSourceEditor() {
-	const stateUriText = chronobladeState && chronobladeState.documentUriText;
-	const visibleEditor = stateUriText
-		? vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === stateUriText)
-		: undefined;
-
-	if (visibleEditor) {
-		return visibleEditor;
-	}
-
-	return vscode.window.activeTextEditor;
 }
 
 async function renderChronobladePanel(editor, mode, options) {
@@ -115,7 +67,7 @@ async function renderChronobladePanel(editor, mode, options) {
 	const result = analyzeChronobladeRange(editor.document, range, options);
 
 	chronobladePanel.title = "KAIJU Chronoblade";
-	chronobladePanel.webview.html = renderChronobladeHtml(editor.document, mode, options, result);
+	chronobladePanel.webview.html = renderChronobladeHtml(options, result);
 	await compactChronobladePanelEditorGroup(options);
 }
 
@@ -168,12 +120,7 @@ function isSimpleSideBySideLayout(layout) {
 		&& layout.groups.every(group => !Array.isArray(group.groups));
 }
 
-function renderChronobladeHtml(document, mode, options, result) {
-	const rangeText = result.range.startLine === 0 && result.range.endLine === document.lineCount - 1
-		? "Whole program"
-		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
-	const sourceName = getChronobladeSourceName(document);
-	const reportLabel = mode === "selection" ? "Selection report" : "Whole program report";
+function renderChronobladeHtml(options, result) {
 	const summary = result.summary;
 
 	return `<!DOCTYPE html>
@@ -187,38 +134,33 @@ function renderChronobladeHtml(document, mode, options, result) {
 			color: var(--vscode-foreground);
 			background: var(--vscode-editor-background);
 			margin: 0;
-			padding: 16px;
+			padding: 2px 16px 16px;
 		}
 
-		header {
-			border-bottom: 1px solid var(--vscode-panel-border);
-			padding-bottom: 12px;
-			margin-bottom: 14px;
-		}
-
-		h1 {
-			font-size: 18px;
-			margin: 0 0 4px;
-		}
-
-		.meta,
 		.empty,
 		.note {
 			color: var(--vscode-descriptionForeground);
 			font-size: 12px;
 		}
 
-		.meta-line {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
-
 		.controls {
-			display: grid;
-			grid-template-columns: repeat(3, minmax(120px, 1fr));
+			display: flex;
+			align-items: flex-start;
 			gap: 10px;
 			margin: 14px 0;
+		}
+
+		.timing-controls {
+			display: grid;
+			gap: 6px;
+			flex: 0 0 188px;
+		}
+
+		label.timing-control {
+			display: grid;
+			grid-template-columns: 84px 96px;
+			align-items: center;
+			gap: 8px;
 		}
 
 		label {
@@ -237,13 +179,6 @@ function renderChronobladeHtml(document, mode, options, result) {
 			padding: 5px 6px;
 		}
 
-		.actions {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 8px;
-			margin-bottom: 14px;
-		}
-
 		button {
 			color: var(--vscode-button-foreground);
 			background: var(--vscode-button-background);
@@ -259,9 +194,10 @@ function renderChronobladeHtml(document, mode, options, result) {
 
 		.summary {
 			display: grid;
-			grid-template-columns: repeat(6, minmax(0, 1fr));
+			grid-template-columns: repeat(4, minmax(88px, 1fr));
 			gap: 8px;
-			margin-bottom: 14px;
+			min-width: 0;
+			flex: 1 1 360px;
 		}
 
 		.metric {
@@ -273,19 +209,23 @@ function renderChronobladeHtml(document, mode, options, result) {
 		.metric-value {
 			font-size: 14px;
 			font-weight: 600;
+			white-space: nowrap;
 		}
 
 		.metric-label {
 			color: var(--vscode-descriptionForeground);
 			font-size: 11px;
 			margin-top: 2px;
+			white-space: nowrap;
 		}
 
 		.report-toggles {
 			display: flex;
-			flex-wrap: wrap;
-			gap: 14px;
-			margin: -6px 0 14px;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 6px;
+			flex: 0 0 112px;
+			margin: 0;
 		}
 
 		.checkbox {
@@ -293,12 +233,23 @@ function renderChronobladeHtml(document, mode, options, result) {
 			align-items: center;
 			gap: 6px;
 			min-height: 28px;
+			white-space: nowrap;
 		}
 
 		.table-wrap {
 			overflow: auto;
 			max-height: 68vh;
 			border-top: 1px solid var(--vscode-panel-border);
+		}
+
+		.chronoblade-spacer td {
+			border: 0;
+			padding: 0;
+			height: var(--chronoblade-spacer-height, 0px);
+		}
+
+		#chronobladeTableBody tr.chronoblade-spacer {
+			height: 0;
 		}
 
 		table {
@@ -326,6 +277,10 @@ function renderChronobladeHtml(document, mode, options, result) {
 			padding: 7px 10px 7px 0;
 			vertical-align: top;
 			white-space: nowrap;
+		}
+
+		#chronobladeTableBody tr {
+			height: 35px;
 		}
 
 		th.tool-marker-header,
@@ -423,70 +378,55 @@ function renderChronobladeHtml(document, mode, options, result) {
 
 		@media (max-width: 720px) {
 			.controls {
-				grid-template-columns: 1fr;
+				align-items: stretch;
+				flex-direction: column;
 			}
+
 		}
 	</style>
 </head>
 <body>
-	<header>
-		<h1>KAIJU Chronoblade</h1>
-		<div class="meta meta-line" title="${escapeAttribute(`${rangeText} from ${sourceName}`)}">${escapeHtml(rangeText)} from ${escapeHtml(sourceName)}</div>
-		<div class="meta meta-line" title="${escapeAttribute(reportLabel)}">${escapeHtml(reportLabel)}</div>
-	</header>
-
 	<section class="controls">
-		<label>G0 rate
-			<input id="rapidRate" type="number" min="0" step="100" value="${escapeHtml(options.rapidRate)}">
-		</label>
-		<label>Tool swap time
-			<input id="toolChangeSeconds" type="number" min="0" step="0.1" value="${escapeHtml(options.toolChangeSeconds)}">
-		</label>
-		<label>Extra station time
-			<input id="extraStationSeconds" type="number" min="0" step="0.1" value="${escapeHtml(options.extraStationSeconds)}">
-		</label>
+		<section class="summary">
+			${renderMetric("Total", formatChronobladeMetricTime(summary.totalTimeSeconds))}
+			${renderMetric("Cutting", formatChronobladeMetricTime(summary.cuttingTimeSeconds))}
+			${renderMetric("G0", formatChronobladeMetricTime(summary.rapidTimeSeconds), "Total estimated G0 rapid-traverse time.")}
+			${renderMetric("Dwell", formatChronobladeMetricTime(summary.dwellTimeSeconds))}
+			${renderMetric("Tool", formatChronobladeMetricTime(summary.toolTimeSeconds))}
+			${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat))}
+			${renderMetric("Cut distance", formatNumber(summary.cuttingDistance, options.humanFormat), "Total distance of non-G0 cutting moves.")}
+			${renderMetric("Other", formatChronobladeMetricTime(summary.otherTimeSeconds), "Reserved for future time categories not currently tracked by Chronoblade.")}
+		</section>
+		<div class="timing-controls">
+			<label class="timing-control">G0 rate
+				<input id="rapidRate" type="number" min="0" step="100" value="${escapeHtml(options.rapidRate)}" title="Rapid-traverse rate used to estimate G0 moves, in program units per minute.">
+			</label>
+			<label class="timing-control">Tool swap
+				<input id="toolChangeSeconds" type="number" min="0" step="0.1" value="${escapeHtml(options.toolChangeSeconds)}" title="Base time added for each tool change, in seconds.">
+			</label>
+			<label class="timing-control">Extra station
+				<input id="extraStationSeconds" type="number" min="0" step="0.1" value="${escapeHtml(options.extraStationSeconds)}" title="Additional time for each turret station beyond an adjacent tool swap, in seconds.">
+			</label>
+		</div>
+		<div class="report-toggles">
+			<label class="checkbox" title="Show values without insignificant trailing fractional zeros while retaining a decimal point."><input id="significantFigures" type="checkbox"${options.significantFiguresOnly ? " checked" : ""}> Trim zeros</label>
+			<label class="checkbox" title="Hide N-label sections whose total estimated time is zero."><input id="hideZeroTimeLabels" type="checkbox"${options.hideZeroTimeLabels ? " checked" : ""}> Hide zero labels</label>
+		</div>
 	</section>
-
-	<div class="actions">
-		<button id="whole">Send Whole Program</button>
-		<button id="selection">Send Selection</button>
-		<span class="note">G0 rate uses program units per minute. Tool times are seconds.</span>
-	</div>
-
-	<section class="summary">
-		${renderMetric("Total", formatChronobladeTime(summary.totalTimeSeconds))}
-		${renderMetric("Cutting", formatChronobladeTime(summary.cuttingTimeSeconds))}
-		${renderMetric("G0", formatChronobladeTime(summary.rapidTimeSeconds))}
-		${renderMetric("Dwell", formatChronobladeTime(summary.dwellTimeSeconds))}
-		${renderMetric("Tool", formatChronobladeTime(summary.toolTimeSeconds))}
-		${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat))}
-	</section>
-
-	<div class="report-toggles">
-		<label class="checkbox"><input id="significantFigures" type="checkbox"${options.significantFiguresOnly ? " checked" : ""}> Significant figures only</label>
-		<label class="checkbox"><input id="hideZeroTimeLabels" type="checkbox"${options.hideZeroTimeLabels ? " checked" : ""}> Hide labels with zero time</label>
-	</div>
 
 	${renderRows(result.rows, options.humanFormat)}
+	<script type="application/json" id="chronoblade-data">${escapeScriptJson({ rows: result.rows, humanFormat: options.humanFormat })}</script>
 
 	<script>
-		const vscode = acquireVsCodeApi();
+		const chronobladeData = JSON.parse(document.getElementById("chronoblade-data").textContent);
 		const significantFiguresInput = document.getElementById("significantFigures");
 		const hideZeroTimeLabelsInput = document.getElementById("hideZeroTimeLabels");
-		const readOptions = () => ({
-			rapidRate: document.getElementById("rapidRate").value,
-			toolChangeSeconds: document.getElementById("toolChangeSeconds").value,
-			extraStationSeconds: document.getElementById("extraStationSeconds").value
-		});
-
-		document.getElementById("whole").addEventListener("click", () => {
-			vscode.postMessage({ type: "whole", options: readOptions() });
-		});
-
-		document.getElementById("selection").addEventListener("click", () => {
-			vscode.postMessage({ type: "selection", options: readOptions() });
-		});
-
+		const tableWrap = document.getElementById("chronobladeTableWrap");
+		const tableBody = document.getElementById("chronobladeTableBody");
+		const ROW_HEIGHT = 35;
+		const ROW_OVERSCAN = 14;
+		const collapsedSections = new Set();
+		let visibleRows = [];
 		const formatSignificantFigures = value => value.replace(/(-?\\d+)\\.(\\d+)/g, (_match, whole, fraction) => whole + "." + fraction.replace(/0+$/, ""));
 		const updateSignificantFigures = () => {
 			document.querySelectorAll("[data-significant-figures]").forEach(element => {
@@ -494,9 +434,10 @@ function renderChronobladeHtml(document, mode, options, result) {
 				element.dataset.fullValue = fullValue;
 				element.textContent = significantFiguresInput.checked ? formatSignificantFigures(fullValue) : fullValue;
 			});
+			renderVirtualRows();
 		};
 		const updateZeroTimeLabels = () => {
-			document.body.classList.toggle("hide-zero-time-labels", hideZeroTimeLabelsInput.checked);
+			rebuildVisibleRows();
 		};
 
 		significantFiguresInput.addEventListener("change", updateSignificantFigures);
@@ -504,40 +445,143 @@ function renderChronobladeHtml(document, mode, options, result) {
 		updateSignificantFigures();
 		updateZeroTimeLabels();
 
-		document.querySelector(".chronoblade-table")?.addEventListener("click", event => {
+		tableBody?.addEventListener("click", event => {
 			const labelRow = event.target.closest(".label-row");
 			if (!labelRow) {
 				return;
 			}
 
-			const toggle = labelRow.querySelector(".section-toggle");
-			const group = labelRow.closest(".section-group");
-			const isCollapsed = group.classList.toggle("is-collapsed");
-
-			toggle.setAttribute("aria-expanded", String(!isCollapsed));
-			toggle.querySelector(".section-chevron").textContent = String.fromCharCode(isCollapsed ? 9654 : 9660);
+			const sectionId = Number(labelRow.dataset.sectionId);
+			if (!Number.isFinite(sectionId)) return;
+			if (collapsedSections.has(sectionId)) collapsedSections.delete(sectionId);
+			else collapsedSections.add(sectionId);
+			rebuildVisibleRows();
 		});
+
+		tableWrap?.addEventListener("scroll", renderVirtualRows);
+		window.addEventListener("resize", renderVirtualRows);
+
+		function rebuildVisibleRows() {
+			const nextRows = [];
+			let activeSectionId = -1;
+			let hideActiveSection = false;
+			let accumulatedTimeSeconds = 0;
+			let accumulatedLabelTimeSeconds = 0;
+
+			for (const row of chronobladeData.rows || []) {
+				if (row.type === "label") {
+					activeSectionId++;
+					if (Number.isFinite(row.labelTotalTimeSeconds)) accumulatedLabelTimeSeconds += row.labelTotalTimeSeconds;
+					hideActiveSection = hideZeroTimeLabelsInput.checked && Math.abs(Number(row.labelTotalTimeSeconds) || 0) < 0.000000001;
+					if (!hideActiveSection) nextRows.push({ kind: "label", row, sectionId: activeSectionId, accumulatedLabelTimeSeconds });
+					continue;
+				}
+
+				if (Number.isFinite(row.timeSeconds)) accumulatedTimeSeconds += row.timeSeconds;
+				if (!hideActiveSection && !collapsedSections.has(activeSectionId)) nextRows.push({ kind: "row", row, accumulatedTimeSeconds });
+			}
+
+			visibleRows = nextRows;
+			if (tableWrap) tableWrap.scrollTop = Math.min(tableWrap.scrollTop, Math.max(0, visibleRows.length * ROW_HEIGHT - tableWrap.clientHeight));
+			renderVirtualRows();
+		}
+
+		function renderVirtualRows() {
+			if (!tableWrap || !tableBody) return;
+			const first = Math.max(0, Math.floor(tableWrap.scrollTop / ROW_HEIGHT) - ROW_OVERSCAN);
+			const count = Math.ceil(tableWrap.clientHeight / ROW_HEIGHT) + ROW_OVERSCAN * 2;
+			const last = Math.min(visibleRows.length, first + Math.max(1, count));
+			const rows = visibleRows.slice(first, last).map(renderVirtualRow).join("");
+			tableBody.innerHTML = renderSpacerRow(first * ROW_HEIGHT) + rows + renderSpacerRow((visibleRows.length - last) * ROW_HEIGHT);
+		}
+
+		function renderVirtualRow(entry) {
+			return entry.kind === "label" ? renderVirtualLabelRow(entry) : renderVirtualReportRow(entry);
+		}
+
+		function renderVirtualReportRow(entry) {
+			const row = entry.row;
+			return '<tr class="section-content">' + renderVirtualToolMarkerCell(row) + '<td class="tool-marker-gap"></td>' +
+				'<td class="line-cell">' + escapeHtml(row.lineNumber) + '</td><td class="instruction-cell" title="' + escapeAttribute(row.instruction) + '"><code>' + escapeHtml(row.instruction) + '</code></td>' +
+				'<td class="position-cell"><span class="cell-value">' + renderVirtualPositionCell(row.start) + '</span></td><td class="position-cell"><span class="cell-value">' + renderVirtualPositionCell(row.end) + '</span></td>' +
+				'<td><span class="cell-value">' + escapeHtml(formatVirtualDistance(row)) + '</span></td><td><span class="cell-value">' + escapeHtml(formatVirtualFeed(row)) + '</span></td>' +
+				'<td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(row.spindle || '-')) + '</span></td><td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(row.rpmUsed || '-')) + '</span></td>' +
+				'<td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(formatVirtualTime(row.timeSeconds))) + '</span></td><td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(formatVirtualAccumulatedTime(entry.accumulatedTimeSeconds))) + '</span></td></tr>';
+		}
+
+		function renderVirtualLabelRow(entry) {
+			const row = entry.row;
+			const collapsed = collapsedSections.has(entry.sectionId);
+			const total = Number.isFinite(entry.accumulatedLabelTimeSeconds) ? ' Total: ' + formatVirtualTime(entry.accumulatedLabelTimeSeconds) : '';
+			return '<tr class="label-row" data-section-id="' + entry.sectionId + '">' + renderVirtualToolMarkerCell(row) + '<td class="tool-marker-gap"></td><td class="line-cell">' + escapeHtml(row.lineNumber) + '</td>' +
+				'<td colspan="9"><button class="section-toggle" type="button" aria-expanded="' + String(!collapsed) + '" title="Collapse this label section"><span class="section-chevron" aria-hidden="true">' + (collapsed ? '&#9654;' : '&#9660;') + '</span><code>' + escapeHtml(row.instruction) + '</code>' + escapeHtml(row.comment ? ' ' + row.comment : '') + escapeHtml(total) + '</button></td></tr>';
+		}
+
+		function renderSpacerRow(height) {
+			return height > 0 ? '<tr class="chronoblade-spacer" style="--chronoblade-spacer-height:' + Math.round(height) + 'px"><td colspan="12"></td></tr>' : '';
+		}
+
+		function renderVirtualToolMarkerCell(row) {
+			return '<td class="tool-marker-cell"' + (row.toolColor ? ' style="background:' + escapeAttribute(row.toolColor) + '"' : '') + '></td>';
+		}
+
+		function renderVirtualPositionCell(positionText) {
+			if (!positionText) return '-';
+			return escapeHtml(formatVirtualSignificant(String(positionText))).replace(/([XYZ])([^XYZ\\s]+)/gi, (_match, axis, value) => '<span class="coord axis-' + axis.toLowerCase() + '"><span class="axis-letter">' + axis.toUpperCase() + '</span>' + value + '</span>');
+		}
+
+		function formatVirtualDistance(row) {
+			if (row.type === 'tool') return 'Tool change';
+			if (Number.isFinite(row.distance) && Math.abs(row.distance) < 0.000000001) return '0.00';
+			return Number.isFinite(row.distance) ? formatVirtualNumber(row.distance) : 'unknown';
+		}
+
+		function formatVirtualFeed(row) {
+			return Number.isFinite(row.feed) ? (row.feedMode === 'perRev' ? 'G95' : 'G94') + ' F' + formatVirtualNumber(row.feed) : '-';
+		}
+
+		function formatVirtualAccumulatedTime(seconds) {
+			return Number.isFinite(seconds) && seconds > 0 ? formatVirtualTime(seconds) : '-';
+		}
+
+		function formatVirtualTime(seconds) {
+			if (!Number.isFinite(seconds)) return '-';
+			if (seconds < 60) return seconds.toFixed(2) + ' s';
+			const minutes = Math.floor(seconds / 60);
+			return minutes + ' min ' + (seconds - minutes * 60).toFixed(1) + ' s';
+		}
+
+		function formatVirtualNumber(value) {
+			const minimum = Math.max(0, Math.min(9, Math.trunc(Number(chronobladeData.humanFormat.minimumDecimalPlaces) || 0)));
+			const maximum = Math.max(minimum, Math.min(9, Math.trunc(Number(chronobladeData.humanFormat.maximumDecimalPlaces) || minimum)));
+			const rounded = Number(value).toFixed(maximum);
+			if (maximum === minimum) return minimum === 0 ? rounded + '.' : rounded;
+			const parts = rounded.split('.');
+			const fraction = parts[1].replace(/0+$/, '').padEnd(minimum, '0');
+			return fraction ? parts[0] + '.' + fraction : (minimum === 0 ? parts[0] + '.' : parts[0]);
+		}
+
+		function formatVirtualSignificant(value) {
+			return significantFiguresInput.checked ? formatSignificantFigures(String(value)) : String(value);
+		}
+
+		function escapeHtml(text) {
+			return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+		}
+
+		function escapeAttribute(text) { return escapeHtml(text); }
+
+		rebuildVisibleRows();
 	</script>
 </body>
 </html>`;
 }
 
-function renderMetric(label, value) {
-	return `<div class="metric">
+function renderMetric(label, value, tooltip = "") {
+	return `<div class="metric"${tooltip ? ` title="${escapeAttribute(tooltip)}"` : ""}>
 		<div class="metric-value" data-significant-figures>${escapeHtml(value)}</div>
 		<div class="metric-label">${escapeHtml(label)}</div>
 	</div>`;
-}
-
-function getChronobladeSourceName(document) {
-	if (document.fileName) {
-		return path.basename(document.fileName).replace(/\.decomposition\.gcode$/i, "");
-	}
-
-	const uriText = document.uri && document.uri.toString ? document.uri.toString() : "";
-	const uriTail = uriText.split(/[\\/]/).pop() || uriText;
-
-	return uriTail.replace(/\.decomposition\.gcode$/i, "") || "untitled";
 }
 
 function renderRows(rows, humanFormat) {
@@ -545,50 +589,7 @@ function renderRows(rows, humanFormat) {
 		return "<p class=\"empty\">No motion or tool-change rows found.</p>";
 	}
 
-	let accumulatedTimeSeconds = 0;
-	const unlabelledRows = [];
-	const sections = [];
-	let activeSection;
-
-	for (const row of rows) {
-		if (row.type === "label") {
-			activeSection = { label: row, rows: [] };
-			sections.push(activeSection);
-			continue;
-		}
-
-		if (Number.isFinite(row.timeSeconds)) {
-			accumulatedTimeSeconds += row.timeSeconds;
-		}
-
-		const renderedRow = `<tr class="section-content">
-			${renderToolMarkerCell(row)}
-			<td class="tool-marker-gap"></td>
-			<td class="line-cell">${escapeHtml(row.lineNumber)}</td>
-			<td class="instruction-cell" title="${escapeAttribute(row.instruction)}"><code>${escapeHtml(row.instruction)}</code></td>
-			<td class="position-cell"><span class="cell-value">${renderPositionCell(row.start)}</span></td>
-			<td class="position-cell"><span class="cell-value">${renderPositionCell(row.end)}</span></td>
-			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatDistance(row, humanFormat))}</span></td>
-			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatFeed(row, humanFormat))}</span></td>
-			<td><span class="cell-value" data-significant-figures>${escapeHtml(row.spindle || "-")}</span></td>
-			<td><span class="cell-value" data-significant-figures>${escapeHtml(row.rpmUsed || "-")}</span></td>
-			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatChronobladeTime(row.timeSeconds))}</span></td>
-			<td><span class="cell-value" data-significant-figures>${escapeHtml(formatAccumulatedTime(accumulatedTimeSeconds))}</span></td>
-		</tr>`;
-
-		if (activeSection) {
-			activeSection.rows.push(renderedRow);
-		} else {
-			unlabelledRows.push(renderedRow);
-		}
-	}
-
-	const body = [
-		unlabelledRows.length ? `<tbody>${unlabelledRows.join("")}</tbody>` : "",
-		...renderSectionGroups(sections)
-	].join("");
-
-	return `<div class="table-wrap">
+	return `<div id="chronobladeTableWrap" class="table-wrap">
 		<table class="chronoblade-table">
 			<colgroup>
 				<col class="tool-marker-header">
@@ -620,7 +621,7 @@ function renderRows(rows, humanFormat) {
 					<th>Total</th>
 				</tr>
 			</thead>
-			${body}
+			<tbody id="chronobladeTableBody"></tbody>
 		</table>
 	</div>`;
 }
@@ -708,6 +709,17 @@ function formatChronobladeTime(seconds) {
 	return Number.isFinite(seconds) ? formatTime(seconds) : "-";
 }
 
+function formatChronobladeMetricTime(seconds) {
+	if (!Number.isFinite(seconds)) {
+		return "-";
+	}
+	if (seconds < 60) {
+		return `${seconds.toFixed(2)} s`;
+	}
+	const minutes = Math.floor(seconds / 60);
+	return `${minutes} m ${(seconds - minutes * 60).toFixed(1)} s`;
+}
+
 function formatDistance(row, humanFormat) {
 	if (row.type === "tool") {
 		return "Tool change";
@@ -735,6 +747,10 @@ function escapeHtml(text) {
 
 function escapeAttribute(text) {
 	return escapeHtml(text);
+}
+
+function escapeScriptJson(value) {
+	return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 module.exports = {
