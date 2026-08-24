@@ -227,7 +227,13 @@ function makeVisionOptions(document, rawOptions = {}) {
 	const options = getVisionOptions(document, Object.assign({}, savedSettings, rawOptions, {
 		workOffsets: rawOptions.workOffsets || savedOffsets
 	}));
-	return Object.assign(options, normalizeVisionPanelSettings(Object.assign({}, savedSettings, rawOptions)));
+	const panelSettings = normalizeVisionPanelSettings(Object.assign({}, savedSettings, rawOptions));
+
+	// getVisionOptions resolves the selected plane from the machine profile when
+	// this document has no saved plane. Do not replace that resolved value with
+	// the panel normalizer's undefined placeholder, or the select falls back to
+	// its first (X-Y) option.
+	return Object.assign(options, panelSettings, { plane: options.plane });
 }
 
 async function resetVisionPlaneForMachineMode(document) {
@@ -418,6 +424,7 @@ async function getVisionTrace(document, includePlaybackData = false) {
 	const trace = buildExecutionTrace(document, {
 		initialMacroValues: inputs.initialValues,
 		initialMacroOverrides: inputs.overrides,
+		includeExecutionEntries: true,
 		includePlaybackData
 	});
 	const decomposition = isUsableVisionTrace(trace)

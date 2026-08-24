@@ -27,6 +27,20 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 - Changed KAIJU Vision's machine-mode plane default to X-Y for mill and X-Z for lathe, and reset
   the active program's saved Vision plane when its machine mode changes.
 
+- Fixed fresh KAIJU Vision reports falling back to X-Y when no per-program plane had been saved;
+  mill now opens in X-Y and either lathe mode opens in X-Z as configured.
+
+- Improved large-program responsiveness: passive KAIJU Trace runs no longer create rendered
+  per-occurrence execution records during file opening. The full trace remains available on demand
+  for Vision and Playback, while Trace health and Sense macro history remain current.
+
+- Fixed KAIJU Alert causing long file-open stalls on milling programs by validating every explicit
+  arc in one forward modal-state pass instead of replaying the program from the beginning for each
+  source line.
+
+- Added `kaijuNC.alerts.illegalArcs.tolerance`, defaulting to `0.001` program units, so small
+  centre-offset and R-radius rounding differences do not appear as illegal-arc errors.
+
 - Added a saved KAIJU Vision Live toggle that refreshes the open report after its source program's
   Trace recompiles. If a new Trace cannot be used, Vision keeps the last usable report and shows a
   hoverable Live warning that it is not current.

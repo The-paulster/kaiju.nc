@@ -436,6 +436,13 @@
             "type": "boolean",
             "default": true,
             "description": "Show an error when an explicit G2/G3 arc is geometrically impossible or has no usable arc definition."
+          },
+          "kaijuNC.alerts.illegalArcs.tolerance": {
+            "type": "number",
+            "default": 0.001,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Maximum permitted arc radius mismatch in program units before KAIJU Alert reports an explicit G2/G3 centre-offset or R-radius error."
           }
         }
       },

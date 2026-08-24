@@ -22,9 +22,16 @@ function getAlertOptions(document) {
 		warnUndefinedAliases: config.get("undefinedAliases.enabled", true),
 		warnUnresolvedGotos: syntaxConfig.get("unresolvedGotos.enabled", true),
 		warnIllegalArcs: config.get("illegalArcs.enabled", true),
+		arcTolerance: clampNumber(config.get("illegalArcs.tolerance", 0.001), 0, 10, 0.001),
 		defaultFeedMode: profile.defaultFeedMode,
 		xAxisMode: getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)
 	};
+}
+
+function clampNumber(value, minimum, maximum, fallback) {
+	const number = Number(value);
+
+	return Number.isFinite(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback;
 }
 
 module.exports = {

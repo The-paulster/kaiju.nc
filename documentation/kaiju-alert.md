@@ -13,8 +13,9 @@ messages, refresh lifecycle, and false-positive avoidance.
 - Uses `MetaTextRanges` to exclude comments and angle-bracket text before
   scanning.
 - Consults Alias state/options where alias-aware diagnostics need that context.
-- Consumes `MetaMotionEngine` arc geometry validation for explicit `G2`/`G3`
-  diagnostics, using the configured machine profile's X radius/diameter mode.
+- Consumes `MetaMotionEngine`'s one-pass document arc geometry validation for
+  explicit `G2`/`G3` diagnostics, using the configured machine profile's X
+  radius/diameter mode.
 - Is activated by the Extension Host; Quick Toggles can change one of its
   settings but do not create Alert diagnostics.
 
@@ -27,5 +28,8 @@ positive cases and near-miss false positives.
 
 The `illegalArcs.enabled` alert reports only definite geometry errors: missing
 or conflicting arc definitions, impossible `R` geometry, and centre-offset
-radius mismatches. It deliberately does not claim a controller-specific arc
-format is illegal when the active profile lacks that controller convention.
+radius mismatches. `illegalArcs.tolerance` controls the permitted radius
+difference in program units and defaults to `0.001`, preventing routine
+rounding noise from becoming an error. It deliberately does not claim a
+controller-specific arc format is illegal when the active profile lacks that
+controller convention.

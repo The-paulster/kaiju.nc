@@ -11,7 +11,7 @@ const {
 	getUndefinedAliasOccurrences
 } = require("../kaijuAlias");
 const { getAliasOptions } = require("../kaijuAlias/options");
-const { analyzeArcAtLine } = require("../MetaMotionEngine");
+const { analyzeArcsInDocument } = require("../MetaMotionEngine");
 const { getAlertOptions } = require("./options");
 
 const DIAGNOSTIC_SOURCE = "Kaiju Alert";
@@ -67,6 +67,7 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	const options = getAlertOptions(document);
 	const seenSequenceNumbers = new Map();
 	const sequenceNumberOrder = { previous: null };
+	const arcAnalyses = options.warnIllegalArcs ? analyzeArcsInDocument(document, options) : new Map();
 
 	if (options.warnUnresolvedGotos) {
 		warnings.push(...makeUnresolvedGotoTargetWarnings(document));
@@ -105,7 +106,7 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 			warnings.push(...makeAdjacentOperatorWarnings(line, lineNumber, ignoreRanges));
 		}
 		if (options.warnIllegalArcs) {
-			warnings.push(...makeIllegalArcWarnings(document, lineNumber, options));
+			warnings.push(...makeIllegalArcWarnings(lineNumber, arcAnalyses.get(lineNumber)));
 		}
 
 		const directAddressRegex = /\b([XYZUVWABCIJKRFxyzuvwabcijkrf])([-+]?\d+)(?![.\d])/g;
@@ -166,9 +167,7 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	diagnostics.set(document.uri, warnings);
 }
 
-function makeIllegalArcWarnings(document, lineNumber, options) {
-	const arc = analyzeArcAtLine(document, lineNumber, options);
-
+function makeIllegalArcWarnings(lineNumber, arc) {
 	if (!arc || !arc.validation || arc.validation.valid !== false) {
 		return [];
 	}

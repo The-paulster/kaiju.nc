@@ -347,28 +347,60 @@ function analyzeArcAtLine(document, targetLineNumber, options = {}) {
 		applyModalState(words, motionCode, state);
 
 		if (lineNumber === targetLineNumber) {
-			if (motionCode !== 2 && motionCode !== 3) {
-				return undefined;
-			}
-
-			const motionWord = [...words].reverse().find(word => word.letter === "G"
-				&& Number.isFinite(word.value)
-				&& Math.trunc(word.value) === motionCode);
-			const start = clonePosition(state.position);
-			const end = makeEndPosition(start, words, state.distanceMode, options);
-
-			return {
-				motionCode,
-				arcPlane: state.arcPlane,
-				motionRange: motionWord ? { start: motionWord.start, end: motionWord.end } : undefined,
-				validation: validateArcGeometry(words, start, end, state.arcPlane, options)
-			};
+			return analyzeArcWords(words, motionCode, state, options);
 		}
 
 		applyPositionUpdate(words, state, options);
 	}
 
 	return undefined;
+}
+
+// Whole-document arc validation for batch consumers such as KAIJU Alert.
+// Modal and macro state advance once through the source rather than replaying
+// the program from line zero for every diagnostic candidate.
+function analyzeArcsInDocument(document, options = {}) {
+	const state = makeInitialState(options);
+	const macroValues = new Map();
+	const macroAliases = buildMacroAliasMap(document);
+	const arcs = new Map();
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
+		trackMacroAssignments(codeLine, macroValues, macroAliases);
+
+		const words = parseWords(codeLine, macroValues, macroAliases);
+		const motionCode = getMotionCode(words);
+		applyModalState(words, motionCode, state);
+
+		const arc = analyzeArcWords(words, motionCode, state, options);
+		if (arc) {
+			arcs.set(lineNumber, arc);
+		}
+
+		applyPositionUpdate(words, state, options);
+	}
+
+	return arcs;
+}
+
+function analyzeArcWords(words, motionCode, state, options) {
+	if (motionCode !== 2 && motionCode !== 3) {
+		return undefined;
+	}
+
+	const motionWord = [...words].reverse().find(word => word.letter === "G"
+		&& Number.isFinite(word.value)
+		&& Math.trunc(word.value) === motionCode);
+	const start = clonePosition(state.position);
+	const end = makeEndPosition(start, words, state.distanceMode, options);
+
+	return {
+		motionCode,
+		arcPlane: state.arcPlane,
+		motionRange: motionWord ? { start: motionWord.start, end: motionWord.end } : undefined,
+		validation: validateArcGeometry(words, start, end, state.arcPlane, options)
+	};
 }
 
 function makeCannedCycleState(cycleCode, words, state) {
@@ -1054,7 +1086,7 @@ function validateArcGeometry(words, start, end, arcPlane, options) {
 			return makeInvalidArc("ambiguousRadiusCircle", "R cannot define a full circle; use centre offsets instead.");
 		}
 
-		if (chordLength / 2 > radius + getArcTolerance(radius, chordLength)) {
+		if (chordLength / 2 > radius + getArcTolerance([radius, chordLength], options)) {
 			return makeInvalidArc("radiusTooSmall", `Arc chord ${formatArcValue(chordLength)} is longer than diameter ${formatArcValue(radius * 2)} allowed by R${formatArcValue(rWord.value)}.`);
 		}
 
@@ -1075,7 +1107,7 @@ function validateArcGeometry(words, start, end, arcPlane, options) {
 
 	const mismatch = Math.abs(startRadius - endRadius);
 
-	if (mismatch > getArcTolerance(startRadius, endRadius)) {
+	if (mismatch > getArcTolerance([startRadius, endRadius], options)) {
 		return makeInvalidArc("centerRadiusMismatch", `Arc centre offsets give start radius ${formatArcValue(startRadius)} and end radius ${formatArcValue(endRadius)} (difference ${formatArcValue(mismatch)}).`);
 	}
 
@@ -1097,12 +1129,18 @@ function toPhysicalAxisDistance(axis, value, options) {
 	return axis === "x" && options.xAxisMode === "diameter" ? value / 2 : value;
 }
 
-function getArcTolerance(...values) {
-	return Math.max(0.000001, ...values.map(value => Math.abs(value) * 0.000001));
+function getArcTolerance(values, options = {}) {
+	const numericValues = Array.isArray(values) ? values : [values];
+	const configuredTolerance = Number(options && options.arcTolerance);
+	const absoluteTolerance = Number.isFinite(configuredTolerance)
+		? Math.max(0, configuredTolerance)
+		: 0;
+
+	return Math.max(0.000001, absoluteTolerance, ...numericValues.map(value => Math.abs(value) * 0.000001));
 }
 
 function isNearlyZero(value, scale) {
-	return Math.abs(value) <= getArcTolerance(value, scale);
+	return Math.abs(value) <= getArcTolerance([value, scale]);
 }
 
 function formatArcValue(value) {
@@ -2338,6 +2376,7 @@ function formatTime(seconds) {
 module.exports = {
 	estimateMotionAtLine,
 	analyzeArcAtLine,
+	analyzeArcsInDocument,
 	// Read-only modal snapshot for the KAIJU Sense status bar.
 	getModalStateAtLine,
 	formatModalStateStatus,

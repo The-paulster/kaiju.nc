@@ -146,7 +146,11 @@ function buildExecutionTrace(document, options = {}) {
 	const traceOptions = {
 		maxExecutionSteps: clampInteger(options.maxExecutionSteps, DEFAULT_MAX_EXECUTION_STEPS, 1, 1000000),
 		comparisonTolerance: clampNumber(options.comparisonTolerance, DEFAULT_COMPARISON_TOLERANCE, 0),
-		includePlaybackData: options.includePlaybackData === true
+		includePlaybackData: options.includePlaybackData === true,
+		// The passive file-open trace only feeds health and Sense macro history.
+		// Construct per-occurrence source/trace records only for an explicit
+		// inspection consumer such as Vision or Playback.
+		includeExecutionEntries: options.includeExecutionEntries === true || options.includePlaybackData === true
 	};
 	const macroAliases = buildMacroAliasMap(document);
 	const context = {
@@ -207,7 +211,9 @@ function buildExecutionTrace(document, options = {}) {
 			}
 
 			recordLineMacroValues(codeLine, lineNumber, context);
-			recordExecutionEntry(document.lineAt(lineNumber).text, codeLine, lineNumber, context, macroValuesBeforeLine);
+			if (traceOptions.includeExecutionEntries) {
+				recordExecutionEntry(document.lineAt(lineNumber).text, codeLine, lineNumber, context, macroValuesBeforeLine);
+			}
 
 			if (control.terminal || isMacroAlarmLine(codeLine) || isProgramEndLine(codeLine)) {
 				stopReason = control.terminal || isMacroAlarmLine(codeLine) ? "terminal" : "complete";
