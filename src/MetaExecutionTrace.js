@@ -5,13 +5,14 @@ const vscode = require("vscode");
 const { EventEmitter } = require("events");
 const {
 	getCommentRanges,
-	getAngleBracketRanges
+	maskProtectedRanges
 } = require("./MetaTextRanges");
 const {
 	MACRO_REGEX,
-	buildAliasEntries,
 	buildMacroAliasMap,
+	buildInitialMacroDefaults,
 	evaluateNumericExpression,
+	findMacroAssignments,
 	normalizeMacro,
 	resolveMacroAlias,
 	setMacroValue
@@ -147,16 +148,19 @@ function buildExecutionTrace(document, options = {}) {
 		maxExecutionSteps: clampInteger(options.maxExecutionSteps, DEFAULT_MAX_EXECUTION_STEPS, 1, 1000000),
 		comparisonTolerance: clampNumber(options.comparisonTolerance, DEFAULT_COMPARISON_TOLERANCE, 0),
 		includePlaybackData: options.includePlaybackData === true,
+		includeDecompositionData: options.includeDecompositionData === true,
 		// The passive file-open trace only feeds health and Sense macro history.
 		// Construct per-occurrence source/trace records only for an explicit
 		// inspection consumer such as Vision or Playback.
-		includeExecutionEntries: options.includeExecutionEntries === true || options.includePlaybackData === true
+		includeExecutionEntries: options.includeExecutionEntries === true
+			|| options.includePlaybackData === true
+			|| options.includeDecompositionData === true
 	};
 	const macroAliases = buildMacroAliasMap(document);
 	const context = {
 		document,
 		macroAliases,
-		macroValues: buildInitialCommentDefaults(document, macroAliases),
+		macroValues: buildInitialMacroDefaults(document, macroAliases),
 		initialOverrides: new Set(),
 		firstExecutableLine: findFirstExecutableGMLine(document),
 		labels: buildLabelMap(document),
@@ -204,19 +208,32 @@ function buildExecutionTrace(document, options = {}) {
 			context.lineStates.set(lineNumber, previousStates);
 
 			const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
-			const macroValuesBeforeLine = traceOptions.includePlaybackData ? new Map(context.macroValues) : undefined;
+			const macroValuesBeforeLine = traceOptions.includePlaybackData || traceOptions.includeDecompositionData
+				? new Map(context.macroValues)
+				: undefined;
 			const control = executeControlLine(codeLine, lineNumber, context);
-			if (!control.handled) {
-				applyAssignments(codeLine, lineNumber, context);
-			}
+			const assignments = control.handled
+				? control.assignments || []
+				: applyAssignments(codeLine, lineNumber, context);
+			const macroAlarm = control.handled ? control.terminal === true : isMacroAlarmLine(codeLine);
+			const programEnd = isProgramEndLine(codeLine);
 
 			recordLineMacroValues(codeLine, lineNumber, context);
 			if (traceOptions.includeExecutionEntries) {
-				recordExecutionEntry(document.lineAt(lineNumber).text, codeLine, lineNumber, context, macroValuesBeforeLine);
+				recordExecutionEntry(
+					document.lineAt(lineNumber).text,
+					codeLine,
+					lineNumber,
+					context,
+					macroValuesBeforeLine,
+					control,
+					assignments,
+					{ macroAlarm, programEnd }
+				);
 			}
 
-			if (control.terminal || isMacroAlarmLine(codeLine) || isProgramEndLine(codeLine)) {
-				stopReason = control.terminal || isMacroAlarmLine(codeLine) ? "terminal" : "complete";
+			if (macroAlarm || programEnd) {
+				stopReason = macroAlarm ? "terminal" : "complete";
 				break;
 			}
 
@@ -241,7 +258,7 @@ function buildExecutionTrace(document, options = {}) {
 	};
 }
 
-function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroValuesBeforeLine) {
+function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroValuesBeforeLine, control, assignments, termination) {
 	const values = {};
 	for (const match of String(codeLine || "").matchAll(MACRO_REGEX)) {
 		const macro = normalizeMacro(match[0]);
@@ -262,6 +279,12 @@ function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroVa
 	if (context.options.includePlaybackData) {
 		entry.macroChanges = makeMacroChanges(macroValuesBeforeLine || new Map(), context.macroValues);
 		entry.macroDisplayPrecisionChanges = makeMacroDisplayPrecisionChanges(codeLine, context.macroAliases);
+	}
+	if (context.options.includeDecompositionData) {
+		entry.codeLine = codeLine;
+		entry.control = control.detail;
+		entry.assignments = assignments;
+		entry.termination = termination;
 	}
 	context.executionEntries.push(entry);
 }
@@ -284,7 +307,7 @@ function makeMacroChanges(before, after) {
 function makeMacroDisplayPrecisionChanges(codeLine, macroAliases) {
 	const precisionByMacro = new Map();
 
-	for (const assignment of findAssignments(codeLine)) {
+	for (const assignment of findMacroAssignments(codeLine)) {
 		const precision = getExplicitDecimalPrecision(assignment.value);
 		const normalized = normalizeMacro(assignment.macro);
 		const resolved = resolveMacroAlias(normalized, macroAliases);
@@ -352,33 +375,50 @@ function formatTraceNumber(value) {
 function executeControlLine(codeLine, lineNumber, context) {
 	const ifGoto = findIfGoto(codeLine);
 	if (ifGoto) {
-		if (evaluateCondition(ifGoto.condition, lineNumber, context)) {
-			return { handled: true, nextLine: resolveTargetLabel(ifGoto.target, lineNumber, context) };
-		}
-		return { handled: true };
+		const condition = evaluateConditionDetails(ifGoto.condition, lineNumber, context);
+		const targetLine = condition.value ? resolveTargetLabel(ifGoto.target, lineNumber, context) : undefined;
+		return {
+			handled: true,
+			nextLine: targetLine,
+			detail: { kind: "ifGoto", condition, body: ifGoto.body, target: ifGoto.target, taken: condition.value }
+		};
 	}
 
 	const ifThen = findIfThen(codeLine);
 	if (ifThen) {
-		const condition = evaluateCondition(ifThen.condition, lineNumber, context);
-		if (condition) {
-			applyAssignments(ifThen.body, lineNumber, context);
-		}
-		return { handled: true, terminal: condition && isMacroAlarmLine(ifThen.body) };
+		const condition = evaluateConditionDetails(ifThen.condition, lineNumber, context);
+		const assignments = condition.value ? applyAssignments(ifThen.body, lineNumber, context) : [];
+		return {
+			handled: true,
+			assignments,
+			terminal: condition.value && isMacroAlarmLine(ifThen.body),
+			detail: { kind: "ifThen", condition, body: ifThen.body, taken: condition.value }
+		};
 	}
 
 	const whileStart = findWhileStart(codeLine);
 	if (whileStart) {
-		if (evaluateCondition(whileStart.condition, lineNumber, context)) {
+		const condition = evaluateConditionDetails(whileStart.condition, lineNumber, context);
+		if (condition.value) {
 			context.loopStack.push({ doNumber: whileStart.doNumber, startLine: lineNumber });
-			return { handled: true };
+			return {
+				handled: true,
+				detail: { kind: "while", condition, body: `DO${whileStart.doNumber}`, doNumber: whileStart.doNumber, taken: true }
+			};
 		}
 		const endLine = findMatchingEnd(context.document, lineNumber, whileStart.doNumber);
 		if (endLine === undefined) {
 			addProblem(context, lineNumber, `Could not find matching END${whileStart.doNumber}.`);
-			return { handled: true };
+			return {
+				handled: true,
+				detail: { kind: "while", condition, body: `DO${whileStart.doNumber}`, doNumber: whileStart.doNumber, taken: false }
+			};
 		}
-		return { handled: true, nextLine: endLine + 1 };
+		return {
+			handled: true,
+			nextLine: endLine + 1,
+			detail: { kind: "while", condition, body: `DO${whileStart.doNumber}`, doNumber: whileStart.doNumber, taken: false }
+		};
 	}
 
 	const loopEnd = findLoopEnd(codeLine);
@@ -386,29 +426,41 @@ function executeControlLine(codeLine, lineNumber, context) {
 		const loop = findOpenLoop(context.loopStack, loopEnd.doNumber);
 		if (!loop) {
 			addProblem(context, lineNumber, `END${loopEnd.doNumber} has no active WHILE DO${loopEnd.doNumber}.`);
-			return { handled: true };
+			return { handled: true, detail: { kind: "loopEnd", doNumber: loopEnd.doNumber } };
 		}
 		context.loopStack.splice(context.loopStack.indexOf(loop), 1);
-		return { handled: true, nextLine: loop.startLine };
+		return {
+			handled: true,
+			nextLine: loop.startLine,
+			detail: { kind: "loopEnd", doNumber: loopEnd.doNumber, targetLine: loop.startLine }
+		};
 	}
 
 	const gotoTarget = findGoto(codeLine);
 	if (gotoTarget !== undefined) {
-		return { handled: true, nextLine: resolveTargetLabel(gotoTarget, lineNumber, context) };
+		const targetLine = resolveTargetLabel(gotoTarget, lineNumber, context);
+		return {
+			handled: true,
+			nextLine: targetLine,
+			detail: { kind: "goto", target: gotoTarget, targetLine }
+		};
 	}
 
-	return { handled: false };
+	return { handled: false, detail: undefined };
 }
 
 function applyAssignments(codeLine, lineNumber, context) {
-	for (const assignment of findAssignments(codeLine)) {
+	const assignments = [];
+	for (const assignment of findMacroAssignments(codeLine)) {
 		const resolved = resolveMacroAlias(normalizeMacro(assignment.macro), context.macroAliases);
 		if (lineNumber < context.firstExecutableLine && context.initialOverrides.has(resolved)) {
 			continue;
 		}
 		const value = evaluateExpression(assignment.value, lineNumber, context);
 		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
+		assignments.push({ macro: assignment.macro, value: assignment.value, resolvedValue: value });
 	}
+	return assignments;
 }
 
 function findFirstExecutableGMLine(document) {
@@ -420,15 +472,31 @@ function findFirstExecutableGMLine(document) {
 	return document.lineCount;
 }
 
-function evaluateCondition(conditionText, lineNumber, context) {
+function evaluateConditionDetails(conditionText, lineNumber, context) {
+	assumeUnknownMacros(conditionText, lineNumber, context);
+	return {
+		text: conditionText,
+		value: evaluateConditionExpression(conditionText, context),
+		macroValues: captureExpressionMacroValues(conditionText, context)
+	};
+}
+
+function evaluateConditionExpression(conditionText, context) {
 	const expression = stripOuterBrackets(conditionText);
+	const andParts = splitTopLevelLogicalAnd(expression);
+	if (andParts) {
+		return andParts.every(part => evaluateConditionExpression(part, context));
+	}
 	const comparison = splitComparison(expression);
 	if (!comparison) {
-		return evaluateExpression(expression, lineNumber, context) !== 0;
+		const value = evaluateNumericExpression(expression, context.macroValues, context.macroAliases);
+		return Number.isFinite(value) && value !== 0;
 	}
-	const left = evaluateExpression(comparison.left, lineNumber, context);
-	const right = evaluateExpression(comparison.right, lineNumber, context);
-	return compareValues(left, right, comparison.operator, context.options.comparisonTolerance);
+	const left = evaluateNumericExpression(comparison.left, context.macroValues, context.macroAliases);
+	const right = evaluateNumericExpression(comparison.right, context.macroValues, context.macroAliases);
+	return Number.isFinite(left)
+		&& Number.isFinite(right)
+		&& compareValues(left, right, comparison.operator, context.options.comparisonTolerance);
 }
 
 function evaluateExpression(expression, lineNumber, context) {
@@ -450,6 +518,20 @@ function assumeUnknownMacros(expression, lineNumber, context) {
 		}
 		context.assumptions.get(resolved).add(lineNumber);
 	}
+}
+
+function captureExpressionMacroValues(expression, context) {
+	const values = {};
+	for (const match of String(expression || "").matchAll(MACRO_REGEX)) {
+		const macro = normalizeMacro(match[0]);
+		const resolved = resolveMacroAlias(macro, context.macroAliases);
+		const value = context.macroValues.get(resolved);
+		if (Number.isFinite(value)) {
+			values[macro] = value;
+			values[resolved] = value;
+		}
+	}
+	return values;
 }
 
 function recordLineMacroValues(codeLine, lineNumber, context) {
@@ -486,32 +568,10 @@ function getMacroHistory(trace, lineNumber, macro, macroAliases = new Map()) {
 	return trace.lineMacroHistories.get(`${lineNumber}:${resolved}`);
 }
 
-function buildInitialCommentDefaults(document, macroAliases) {
-	const defaults = new Map();
-	for (const entry of buildAliasEntries(document)) {
-		const match = String(entry.comment || "").match(/\{\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s*\}\s*$/);
-		if (match) {
-			setMacroValue(defaults, entry.macro, Number(match[1]), macroAliases);
-		}
-	}
-	return defaults;
-}
-
-function findAssignments(codeLine) {
-	const matches = [...String(codeLine || "").matchAll(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g)];
-	return matches.map((match, index) => {
-		const next = matches[index + 1];
-		const valueStart = match.index + match[0].length;
-		const semicolon = codeLine.indexOf(";", valueStart);
-		const valueEnd = Math.min(next ? next.index : codeLine.length, semicolon === -1 ? codeLine.length : semicolon);
-		return { macro: normalizeMacro(match[0].match(MACRO_REGEX)[0]), value: codeLine.slice(valueStart, valueEnd).trim() };
-	});
-}
-
 function findIfGoto(codeLine) {
 	const statement = readConditionalStatement(codeLine, "IF");
 	const match = statement && statement.rest.match(/^\s*GOTO\s*N?(\d+)/i);
-	return match ? { condition: statement.condition, target: match[1] } : undefined;
+	return match ? { condition: statement.condition, target: match[1], body: `GOTO ${match[1]}` } : undefined;
 }
 
 function findIfThen(codeLine) {
@@ -592,6 +652,36 @@ function splitComparison(expression) {
 	return match ? { left: match[1].trim(), operator: match[2].toUpperCase(), right: match[3].trim() } : undefined;
 }
 
+function splitTopLevelLogicalAnd(expression) {
+	const parts = [];
+	let depth = 0;
+	let partStart = 0;
+
+	for (let index = 0; index < expression.length; index++) {
+		if (expression[index] === "[") {
+			depth++;
+			continue;
+		}
+		if (expression[index] === "]") {
+			depth--;
+			continue;
+		}
+		if (depth !== 0 || expression.slice(index, index + 3).toUpperCase() !== "AND") continue;
+
+		const before = expression[index - 1];
+		const after = expression[index + 3];
+		if ((before && /[A-Za-z0-9_]/.test(before)) || (after && /[A-Za-z0-9_]/.test(after))) continue;
+
+		parts.push(expression.slice(partStart, index).trim());
+		partStart = index + 3;
+		index += 2;
+	}
+
+	if (!parts.length) return undefined;
+	parts.push(expression.slice(partStart).trim());
+	return parts;
+}
+
 function compareValues(left, right, operator, tolerance) {
 	const delta = left - right;
 	return operator === "EQ" ? Math.abs(delta) <= tolerance
@@ -649,14 +739,6 @@ function attachTraceOutputLines(trace, decompositionLines) {
 		entry.traceLine = line.line;
 	}
 	return trace;
-}
-
-function maskProtectedRanges(line) {
-	const characters = String(line || "").split("");
-	for (const range of [...getCommentRanges(line), ...getAngleBracketRanges(line)]) {
-		for (let index = range.start; index <= range.end; index++) characters[index] = " ";
-	}
-	return characters.join("");
 }
 
 function addProblem(context, lineNumber, message) {

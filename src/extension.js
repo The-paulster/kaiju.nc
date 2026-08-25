@@ -9,7 +9,7 @@ const { registerDiagnostics } = require("./kaijuAlert/diagnostics");
 const { registerChronobladeWebview } = require("./kaijuChronoblade/webview");
 const { registerKaijuVisionWebview } = require("./kaijuVision/webview");
 const { registerKaijuDecomposition } = require("./kaijuDecomposition");
-const { registerMachineModeCommands } = require("./MetaMachineMode");
+const { registerKaijuMachineMode } = require("./kaijuMachineMode");
 const { registerExecutionTrace } = require("./MetaExecutionTrace");
 const { registerKaijuTrace } = require("./kaijuTrace");
 const { registerKaijuRangefinder } = require("./kaijuRangefinder");
@@ -26,7 +26,7 @@ function activate(context) {
 	registerChronobladeWebview(context);
 	registerKaijuVisionWebview(context);
 	registerKaijuDecomposition(context);
-	registerMachineModeCommands(context);
+	registerKaijuMachineMode(context);
 	registerExecutionTrace(context);
 	registerKaijuTrace(context);
 	registerKaijuRangefinder(context);

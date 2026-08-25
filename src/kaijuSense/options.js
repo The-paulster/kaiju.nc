@@ -3,15 +3,15 @@
 // of this file.
 const vscode = require("vscode");
 const {
-	getConfiguredValue,
-	getMachineModeProfile
+	getMachineModeForDocument
 } = require("../MetaMachineMode");
 
 function getSenseOptions(document) {
 	const senseConfig = vscode.workspace.getConfiguration("kaijuNC.sense", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
 	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
-	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
+	const machineMode = getMachineModeForDocument(document);
+	const profile = machineMode.profile;
 
 	return {
 		enabled: senseConfig.get("enabled", chronobladeConfig.get("enabled", true)),
@@ -20,8 +20,9 @@ function getSenseOptions(document) {
 		modalNames: getModalNames(senseConfig.get("modalNames", {})),
 		syntaxColoredHoverValues: senseConfig.get("syntaxColoredHoverValues", false),
 		machineMode: profile.id,
+		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: getConfiguredValue(senseConfig, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
+		xAxisMode: machineMode.xAxisMode,
 		cssSurfaceSpeedUnit: senseConfig.get("cssSurfaceSpeedUnit", chronobladeConfig.get("cssSurfaceSpeedUnit", "mPerMin")),
 		samples: clampNumber(senseConfig.get("samples", chronobladeConfig.get("samples", 96)), 12, 500),
 		rapidRate: clampNumber(senseConfig.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY),

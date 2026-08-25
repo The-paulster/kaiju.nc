@@ -14,8 +14,10 @@ messages, refresh lifecycle, and false-positive avoidance.
   scanning.
 - Consults Alias state/options where alias-aware diagnostics need that context.
 - Consumes `MetaMotionEngine`'s one-pass document arc geometry validation for
-  explicit `G2`/`G3` diagnostics, using the configured machine profile's X
+  explicit `G2`/`G3` diagnostics, using the active program's machine profile X
   radius/diameter mode.
+- Uses the active program's shared G-code dialect through `MetaMotionEngine`;
+  Alert does not maintain controller-code mappings.
 - Is activated by the Extension Host; Quick Toggles can change one of its
   settings but do not create Alert diagnostics.
 

@@ -1,6 +1,11 @@
 // Role: own KAIJU Reconstructor document formatting rules. Keep default options
 // in options.js and command-palette option UI in command.js.
 const vscode = require("vscode");
+const {
+	getCommentRanges,
+	getAngleBracketRanges,
+	isInsideRange
+} = require("../MetaTextRanges");
 
 function registerFormatter(context) {
 	const disposable = vscode.languages.registerDocumentFormattingEditProvider(
@@ -814,42 +819,6 @@ function clampNumber(value, min, max) {
 
 function escapeForCharClass(text) {
 	return String(text).replace(/[-\\\]^]/g, "\\$&");
-}
-
-function getCommentRanges(line) {
-	const ranges = [];
-	let start = -1;
-
-	for (let i = 0; i < line.length; i++) {
-		if (line[i] === "(" && start === -1) {
-			start = i;
-		} else if (line[i] === ")" && start !== -1) {
-			ranges.push({ start, end: i });
-			start = -1;
-		}
-	}
-
-	return ranges;
-}
-
-function getAngleBracketRanges(line) {
-	const ranges = [];
-	let start = -1;
-
-	for (let i = 0; i < line.length; i++) {
-		if (line[i] === "<" && start === -1) {
-			start = i;
-		} else if (line[i] === ">" && start !== -1) {
-			ranges.push({ start, end: i });
-			start = -1;
-		}
-	}
-
-	return ranges;
-}
-
-function isInsideRange(index, ranges) {
-	return ranges.some(range => index >= range.start && index <= range.end);
 }
 
 module.exports = {

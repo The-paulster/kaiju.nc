@@ -1,6 +1,12 @@
 // Role: parse and model tool ranges/colors for Sense, Vision, and Rangefinder features.
 // Keep editor decorations in kaijuSense/tool.js.
-const { buildAliasEntries } = require("./MetaMacroEngine");
+const { maskProtectedRanges } = require("./MetaTextRanges");
+const {
+	buildMacroAliasMap,
+	evaluateNumericExpression,
+	findMacroAssignments,
+	setMacroValue
+} = require("./MetaMacroEngine");
 
 const TOOL_COLORS = [
 	"#8f4f4f",
@@ -25,11 +31,11 @@ function getToolRanges(document) {
 	const toolCalls = [];
 	const toolColorIndexes = new Map();
 	const macroValues = new Map();
-	const aliasMacrosByNumber = buildToolAliasMap(document);
+	const macroAliases = buildMacroAliasMap(document);
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
-		const tool = findToolCall(codeLine, macroValues);
+		const tool = findToolCall(codeLine, macroValues, macroAliases);
 
 		if (tool) {
 			if (!toolColorIndexes.has(tool)) {
@@ -43,7 +49,7 @@ function getToolRanges(document) {
 			});
 		}
 
-		trackMacroAssignments(codeLine, macroValues, aliasMacrosByNumber);
+		trackMacroAssignments(codeLine, macroValues, macroAliases);
 	}
 
 	return toolCalls.map((toolCall, index) => {
@@ -58,36 +64,19 @@ function getToolRanges(document) {
 	});
 }
 
-function buildToolAliasMap(document) {
-	const aliasMacrosByNumber = new Map();
-
-	for (const entry of buildAliasEntries(document)) {
-		if (!entry.alias) {
-			continue;
-		}
-
-		aliasMacrosByNumber.set(
-			entry.macro.toUpperCase(),
-			`#${entry.alias}`.toUpperCase()
-		);
-	}
-
-	return aliasMacrosByNumber;
-}
-
-function findToolCall(codeLine, macroValues) {
+function findToolCall(codeLine, macroValues, macroAliases) {
 	const match = codeLine.match(/\bT\s*(\d{1,4}|[-+]?#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)|\[[^\]]+\])/i);
 
 	if (!match) {
 		return "";
 	}
 
-	const toolCode = resolveToolCode(match[1], macroValues);
+	const toolCode = resolveToolCode(match[1], macroValues, macroAliases);
 
 	return toolCode ? `T${toolCode}` : "";
 }
 
-function resolveToolCode(toolText, macroValues) {
+function resolveToolCode(toolText, macroValues, macroAliases) {
 	const trimmedToolText = toolText.trim();
 
 	if (/^\d{1,4}$/.test(trimmedToolText)) {
@@ -97,7 +86,7 @@ function resolveToolCode(toolText, macroValues) {
 	const expression = trimmedToolText.startsWith("[") && trimmedToolText.endsWith("]")
 		? trimmedToolText.slice(1, -1)
 		: trimmedToolText;
-	const numericValue = evaluateNumericExpression(expression, macroValues);
+	const numericValue = evaluateNumericExpression(expression, macroValues, macroAliases);
 
 	if (!Number.isFinite(numericValue)) {
 		return trimmedToolText;
@@ -114,107 +103,11 @@ function normalizeToolDigits(digits) {
 	return digits.slice(-4);
 }
 
-function trackMacroAssignments(codeLine, macroValues, aliasMacrosByNumber) {
-	for (const assignment of findAssignments(codeLine)) {
-		const numericValue = evaluateNumericExpression(assignment.value, macroValues);
-		const aliasMacro = aliasMacrosByNumber.get(assignment.macro);
-
-		if (Number.isFinite(numericValue)) {
-			macroValues.set(assignment.macro, numericValue);
-
-			if (aliasMacro) {
-				macroValues.set(aliasMacro, numericValue);
-			}
-		} else {
-			macroValues.delete(assignment.macro);
-
-			if (aliasMacro) {
-				macroValues.delete(aliasMacro);
-			}
-		}
+function trackMacroAssignments(codeLine, macroValues, macroAliases) {
+	for (const assignment of findMacroAssignments(codeLine)) {
+		const numericValue = evaluateNumericExpression(assignment.value, macroValues, macroAliases);
+		setMacroValue(macroValues, assignment.macro, numericValue, macroAliases);
 	}
-}
-
-function findAssignments(codeLine) {
-	const assignmentRegex = /#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g;
-	const matches = [...codeLine.matchAll(assignmentRegex)];
-
-	return matches.map((match, index) => {
-		const nextMatch = matches[index + 1];
-		const valueStart = match.index + match[0].length;
-		const semicolonStart = codeLine.indexOf(";", valueStart);
-		const valueEnd = Math.min(
-			nextMatch ? nextMatch.index : codeLine.length,
-			semicolonStart === -1 ? codeLine.length : semicolonStart
-		);
-
-		return {
-			macro: match[0].match(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/)[0].toUpperCase(),
-			value: codeLine.slice(valueStart, valueEnd).trim()
-		};
-	});
-}
-
-function evaluateNumericExpression(expression, macroValues) {
-	const jsExpression = expression
-		.replace(/\[/g, "(")
-		.replace(/\]/g, ")")
-		.replace(/\bMOD\b/gi, "%")
-		.replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/g, macro => {
-			const value = macroValues.get(macro.toUpperCase());
-			return Number.isFinite(value) ? String(value) : "NaN";
-		});
-
-	if (jsExpression.includes("NaN")) {
-		return NaN;
-	}
-
-	if (!/^[\d+\-*/%().\s]+$/.test(jsExpression)) {
-		return NaN;
-	}
-
-	if (/^\s*[-+]?\d+(?:\.\d*)?\s*$/.test(jsExpression)) {
-		return Number(jsExpression);
-	}
-
-	try {
-		const value = Function(`"use strict"; return (${jsExpression});`)();
-		return Number.isFinite(value) ? value : NaN;
-	} catch {
-		return NaN;
-	}
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getWrappedRanges(line, "(", ")"),
-		...getWrappedRanges(line, "<", ">")
-	];
-
-	for (const range of protectedRanges) {
-		for (let i = range.start; i <= range.end; i++) {
-			characters[i] = " ";
-		}
-	}
-
-	return characters.join("");
-}
-
-function getWrappedRanges(line, openChar, closeChar) {
-	const ranges = [];
-	let start = -1;
-
-	for (let i = 0; i < line.length; i++) {
-		if (line[i] === openChar && start === -1) {
-			start = i;
-		} else if (line[i] === closeChar && start !== -1) {
-			ranges.push({ start, end: i });
-			start = -1;
-		}
-	}
-
-	return ranges;
 }
 
 module.exports = {

@@ -4,29 +4,29 @@
 const vscode = require("vscode");
 const {
 	getCommentRanges,
-	getAngleBracketRanges
+	getAngleBracketRanges,
+	maskProtectedRanges
 } = require("../MetaTextRanges");
 const {
 	MACRO_REGEX,
 	buildAliasEntries,
 	buildMacroAliasMap,
+	buildInitialMacroDefaults,
 	evaluateNumericExpression,
 	normalizeMacro,
-	resolveMacroAlias,
-	setMacroValue
+	resolveMacroAlias
 } = require("../MetaMacroEngine");
 const {
 	getFormattingOptions,
 	formatDocumentText
 } = require("../kaijuReconstructor/formatter");
+const { buildExecutionTrace } = require("../MetaExecutionTrace");
 const {
 	getDecompositionOptions
 } = require("./options");
 
 const DECOMPOSITION_SCHEME = "kaiju-decomposition";
 const decompositionDocuments = new Map();
-
-class DecompositionCancelled extends Error {}
 
 function registerKaijuDecomposition(context) {
 	context.subscriptions.push(
@@ -85,136 +85,77 @@ async function runKaijuDecompositionCommand() {
 async function decomposeDocument(document, runtimeOptions = {}) {
 	const sourceName = document.fileName ? document.fileName.split(/[\\/]/).pop() : document.uri.toString();
 	const macroAliases = buildMacroAliasMap(document);
-	const commentDefaults = buildInitialCommentDefaults(document, macroAliases);
+	const commentDefaults = buildInitialMacroDefaults(document, macroAliases);
+	const options = getDecompositionOptions(document);
 	const context = {
 		document,
-		macroValues: new Map(commentDefaults),
-		assignedMacros: new Set(),
+		macroValues: new Map(),
 		macroAliases,
-		initialOverrides: new Set(),
-		firstExecutableLine: findFirstExecutableGMLine(document),
 		macroAliasLabels: buildMacroAliasLabelMap(document),
 		commentDefaults,
 		manualInputs: new Map(),
-		promptForUnknownMacros: runtimeOptions.promptForUnknownMacros !== false,
 		warnings: [],
-		labels: buildLabelMap(document),
 		seenOutputLabels: new Set(),
-		loopStack: [],
-		lineStates: new Map(),
-		options: getDecompositionOptions(document)
+		promptForUnknownMacros: false,
+		options
 	};
-	for (const [macro, rawValue] of Object.entries(runtimeOptions.initialMacroValues || {})) {
-		const value = Number(rawValue);
-		if (Number.isFinite(value)) {
-			const normalizedMacro = normalizeMacro(macro);
-			const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
-			setMacroValue(context.macroValues, normalizedMacro, value, macroAliases);
-			context.manualInputs.set(resolvedMacro, value);
+	const traceInputs = collectRuntimeMacroInputs(runtimeOptions, macroAliases, context.manualInputs);
+	const trace = runtimeOptions.executionTrace
+		|| await buildResolvedDecompositionTrace(document, runtimeOptions, traceInputs, context);
+	if (!trace) return undefined;
+	if (runtimeOptions.executionTrace && runtimeOptions.promptForUnknownMacros === false) {
+		for (const [macro, lines] of trace.assumptions || []) {
+			const lineNumber = Math.min(...lines);
+			context.manualInputs.set(macro, 0);
+			addWarning(context, lineNumber, `Assumed 0 for ${formatMacroPromptTarget(macro, macro, context)} while building trace line data.`);
 		}
 	}
-	for (const [macro, rawValue] of Object.entries(runtimeOptions.initialMacroOverrides || {})) {
-		const value = Number(rawValue);
-		if (Number.isFinite(value)) {
-			const normalizedMacro = normalizeMacro(macro);
-			const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
-			context.initialOverrides.add(resolvedMacro);
-			setMacroValue(context.macroValues, normalizedMacro, value, macroAliases);
-			context.manualInputs.set(resolvedMacro, value);
-		}
-	}
+	for (const problem of trace.problems || []) addWarning(context, problem.lineNumber, problem.message);
+
 	const outputLines = [];
 	const decomposedLineEntries = [];
-	let lineNumber = 0;
-	let steps = 0;
 
-	try {
-		while (lineNumber < document.lineCount) {
-			if (++steps > context.options.maxExecutionSteps) {
-				addWarning(context, lineNumber, `Stopped after ${context.options.maxExecutionSteps} execution steps. Check for an unresolved loop or jump.`);
-				break;
-			}
-
-			if (outputLines.length > context.options.maxOutputLines) {
-				addWarning(context, lineNumber, `Stopped after ${context.options.maxOutputLines} output lines.`);
-				break;
-			}
-
-			const stateKey = makeExecutionStateKey(context.macroValues);
-			const previousStates = context.lineStates.get(lineNumber) || new Set();
-
-			if (previousStates.has(stateKey)) {
-				addWarning(context, lineNumber, "Stopped after reaching this line again with the same macro values. Check for an unresolved or self-repeating control-flow loop.");
-				break;
-			}
-
-			previousStates.add(stateKey);
-			context.lineStates.set(lineNumber, previousStates);
-
-			const line = document.lineAt(lineNumber).text;
-			const codeLine = maskProtectedRanges(line);
-			const labelLine = makeFirstVisitLabelLine(line, codeLine, lineNumber, context);
-
-			if (labelLine) {
-				outputLines.push(labelLine);
-			}
-
-			const controlResult = await handleControlLine(codeLine, lineNumber, context);
-
-			if (controlResult.cancelled) {
-				return undefined;
-			}
-
-			if (controlResult.comment) {
-				outputLines.push(controlResult.comment);
-			}
-
-			if (controlResult.comments) {
-				outputLines.push(...controlResult.comments);
-			}
-
-			if (controlResult.terminal) {
-				outputLines.push(makeFlowComment(lineNumber, "#3000 alarm, stopped execution"));
-				break;
-			}
-
-			if (controlResult.nextLine !== undefined) {
-				lineNumber = controlResult.nextLine;
-				continue;
-			}
-
-			outputLines.push(...await variableTracker(codeLine, lineNumber, context));
-
-			if (isMacroAlarmLine(codeLine)) {
-				outputLines.push(makeFlowComment(lineNumber, "#3000 alarm, stopped execution"));
-				break;
-			}
-
-			if (isOutputLine(codeLine)) {
-				const decomposedLine = await decomposeLine(line, lineNumber, context);
-
-				if (decomposedLine !== undefined && decomposedLine.trim()) {
-					decomposedLineEntries.push({
-						sourceLineNumber: lineNumber,
-						outputLineIndex: outputLines.length
-					});
-					outputLines.push(decomposedLine);
-				}
-			}
-
-			if (isProgramEndLine(codeLine)) {
-				outputLines.push(makeFlowComment(lineNumber, "Program end, stopped execution"));
-				break;
-			}
-
-			lineNumber++;
+	for (const entry of trace.executionEntries || []) {
+		if (outputLines.length > options.maxOutputLines) {
+			addWarning(context, entry.lineNumber, `Stopped after ${options.maxOutputLines} output lines.`);
+			break;
 		}
-	} catch (error) {
-		if (error instanceof DecompositionCancelled) {
-			return undefined;
+		const lineNumber = entry.lineNumber;
+		const line = entry.sourceLine;
+		const codeLine = entry.codeLine || maskProtectedRanges(line);
+		context.macroValues = new Map(Object.entries(entry.macroValues || {}));
+
+		const labelLine = makeFirstVisitLabelLine(line, codeLine, lineNumber, context);
+		if (labelLine) outputLines.push(labelLine);
+
+		const controlComment = makeTraceControlComment(entry.control, lineNumber, context);
+		if (controlComment) outputLines.push(controlComment);
+		for (const assignment of entry.assignments || []) {
+			outputLines.push(makeMacroAssignmentComment(
+				{ macro: assignment.macro, value: assignment.value },
+				assignment.resolvedValue,
+				lineNumber
+			));
 		}
 
-		throw error;
+		const isControl = Boolean(entry.control);
+		if (entry.termination && entry.termination.macroAlarm) {
+			outputLines.push(makeFlowComment(lineNumber, "#3000 alarm, stopped execution"));
+			break;
+		}
+
+		if (!isControl && isOutputLine(codeLine)) {
+			const decomposedLine = await decomposeLine(line, lineNumber, context);
+			if (decomposedLine !== undefined && decomposedLine.trim()) {
+				decomposedLineEntries.push({ sourceLineNumber: lineNumber, outputLineIndex: outputLines.length });
+				outputLines.push(decomposedLine);
+			}
+		}
+
+		if (entry.termination && entry.termination.programEnd) {
+			outputLines.push(makeFlowComment(lineNumber, "Program end, stopped execution"));
+			break;
+		}
 	}
 
 	const outputDocumentLines = makeOutputLines(sourceName, context, outputLines);
@@ -238,132 +179,70 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 	};
 }
 
-async function handleControlLine(codeLine, lineNumber, context) {
-	const ifGoto = findIfGoto(codeLine);
-
-	if (ifGoto) {
-		const condition = await evaluateCondition(ifGoto.condition, lineNumber, context);
-
-		if (condition.cancelled) {
-			return { cancelled: true };
-		}
-
-		if (condition.value) {
-			const targetLine = resolveTargetLabel(ifGoto.target, lineNumber, context);
-
-			if (targetLine !== undefined) {
-				return {
-					comment: makeComparisonComment(lineNumber, ifGoto.condition, condition, ifGoto.body, context),
-					nextLine: targetLine
-				};
-			}
-		}
-
-		return {
-			comment: makeComparisonComment(lineNumber, ifGoto.condition, condition, ifGoto.body, context)
-		};
-	}
-
-	const ifThen = findIfThen(codeLine);
-
-	if (ifThen) {
-		const condition = await evaluateCondition(ifThen.condition, lineNumber, context);
-		const assignmentComments = condition.value
-			? await variableTracker(ifThen.body, lineNumber, context)
-			: [];
-
-		return {
-			comment: makeComparisonComment(lineNumber, ifThen.condition, condition, ifThen.body, context),
-			comments: assignmentComments,
-			terminal: condition.value && isMacroAlarmLine(ifThen.body),
-			nextLine: lineNumber + 1
-		};
-	}
-
-	const whileStart = findWhileStart(codeLine);
-
-	if (whileStart) {
-		const condition = await evaluateCondition(whileStart.condition, lineNumber, context);
-
-		if (condition.cancelled) {
-			return { cancelled: true };
-		}
-
-		if (condition.value) {
-			context.loopStack.push({
-				doNumber: whileStart.doNumber,
-				startLine: lineNumber,
-				condition: whileStart.condition
-			});
-			return {
-				comment: makeComparisonComment(lineNumber, whileStart.condition, condition, `DO${whileStart.doNumber}`, context)
-			};
-		}
-
-		const endLine = findMatchingEnd(context.document, lineNumber, whileStart.doNumber);
-
-		if (endLine === undefined) {
-			addWarning(context, lineNumber, `Could not find matching END${whileStart.doNumber}.`);
-			return {};
-		}
-
-		return {
-			comment: makeComparisonComment(lineNumber, whileStart.condition, condition, `DO${whileStart.doNumber}`, context),
-			nextLine: endLine + 1
-		};
-	}
-
-	const loopEnd = findLoopEnd(codeLine);
-
-	if (loopEnd) {
-		const loop = findOpenLoop(context.loopStack, loopEnd.doNumber);
-
-		if (!loop) {
-			addWarning(context, lineNumber, `END${loopEnd.doNumber} has no active WHILE DO${loopEnd.doNumber}.`);
-			return {};
-		}
-
-		context.loopStack.splice(context.loopStack.indexOf(loop), 1);
-		return {
-			comment: makeFlowComment(lineNumber, `END${loopEnd.doNumber}; return to L${loop.startLine + 1}`),
-			nextLine: loop.startLine
-		};
-	}
-
-	const gotoTarget = findGoto(codeLine);
-
-	if (gotoTarget !== undefined) {
-		const targetLine = resolveTargetLabel(gotoTarget, lineNumber, context);
-
-		if (targetLine !== undefined) {
-			return {
-				comment: makeFlowComment(lineNumber, `GOTO ${gotoTarget}`),
-				nextLine: targetLine
-			};
+function collectRuntimeMacroInputs(runtimeOptions, macroAliases, manualInputs) {
+	const values = {};
+	for (const source of [runtimeOptions.initialMacroValues || {}, runtimeOptions.initialMacroOverrides || {}]) {
+		for (const [macro, rawValue] of Object.entries(source)) {
+			const value = Number(rawValue);
+			if (!Number.isFinite(value)) continue;
+			const resolved = resolveMacroAlias(normalizeMacro(macro), macroAliases);
+			values[resolved] = value;
+			manualInputs.set(resolved, value);
 		}
 	}
-
-	return {};
+	return values;
 }
 
-async function variableTracker(codeLine, lineNumber, context) {
-	const comments = [];
+async function buildResolvedDecompositionTrace(document, runtimeOptions, traceInputs, context) {
+	while (true) {
+		const trace = buildExecutionTrace(document, {
+			initialMacroValues: traceInputs,
+			initialMacroOverrides: runtimeOptions.initialMacroOverrides,
+			includeDecompositionData: true,
+			maxExecutionSteps: context.options.maxExecutionSteps,
+			comparisonTolerance: context.options.comparisonTolerance
+		});
+		const unknowns = [...trace.assumptions.entries()].filter(([macro]) => !Object.prototype.hasOwnProperty.call(traceInputs, macro));
+		if (!unknowns.length) return trace;
 
-	for (const assignment of findAssignments(codeLine)) {
-		const resolved = resolveMacroAlias(normalizeMacro(assignment.macro), context.macroAliases);
-		if (lineNumber < context.firstExecutableLine && context.initialOverrides.has(resolved)) {
-			continue;
-		}
-		const value = await evaluateExpression(assignment.value, lineNumber, context);
-		markMacroAssigned(context, assignment.macro);
-		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
-
-		if (Number.isFinite(value)) {
-			comments.push(makeMacroAssignmentComment(assignment, value, lineNumber));
+		for (const [macro, lines] of unknowns) {
+			const lineNumber = Math.min(...lines);
+			if (runtimeOptions.promptForUnknownMacros === false) {
+				traceInputs[macro] = 0;
+				context.manualInputs.set(macro, 0);
+				addWarning(context, lineNumber, `Assumed 0 for ${formatMacroPromptTarget(macro, macro, context)} while building trace line data.`);
+				continue;
+			}
+			const entered = await vscode.window.showInputBox({
+				title: "KAIJU Decomposition",
+				prompt: `Line ${lineNumber + 1}: enter a numeric value for ${formatMacroPromptTarget(macro, macro, context)}`,
+				placeHolder: "Example: 12.5",
+				validateInput: value => Number.isFinite(Number(value.trim())) ? undefined : "Enter a numeric value."
+			});
+			if (entered === undefined) return undefined;
+			const value = Number(entered.trim());
+			traceInputs[macro] = value;
+			context.manualInputs.set(macro, value);
 		}
 	}
+}
 
-	return comments;
+function makeTraceControlComment(control, lineNumber, context) {
+	if (!control) return undefined;
+	if (["ifGoto", "ifThen", "while"].includes(control.kind)) {
+		const previousValues = context.macroValues;
+		context.macroValues = new Map(Object.entries(control.condition.macroValues || {}));
+		const comment = makeComparisonComment(lineNumber, control.condition.text, control.condition, control.body, context);
+		context.macroValues = previousValues;
+		return comment;
+	}
+	if (control.kind === "loopEnd" && Number.isFinite(control.targetLine)) {
+		return makeFlowComment(lineNumber, `END${control.doNumber}; return to L${control.targetLine + 1}`);
+	}
+	if (control.kind === "goto" && Number.isFinite(control.targetLine)) {
+		return makeFlowComment(lineNumber, `GOTO ${control.target}`);
+	}
+	return undefined;
 }
 
 async function decomposeLine(line, lineNumber, context) {
@@ -436,55 +315,7 @@ async function decomposeCodeSegment(segment, lineNumber, context) {
 	return applyReplacements(text, replacements);
 }
 
-async function evaluateCondition(conditionText, lineNumber, context) {
-	await promptForUnknownMacros(conditionText, lineNumber, context);
-	return evaluateConditionExpression(conditionText, lineNumber, context);
-}
-
-function findFirstExecutableGMLine(document) {
-	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-		if (/(^|[^A-Za-z0-9_])[GgMm]\d+/.test(maskProtectedRanges(document.lineAt(lineNumber).text))) {
-			return lineNumber;
-		}
-	}
-	return document.lineCount;
-}
-
-function evaluateConditionExpression(conditionText, lineNumber, context) {
-	const expression = stripOuterBrackets(conditionText);
-	const andParts = splitTopLevelLogicalAnd(expression);
-
-	if (andParts) {
-		for (const part of andParts) {
-			if (!evaluateConditionExpression(part, lineNumber, context).value) {
-				return { value: false };
-			}
-		}
-
-		return { value: true };
-	}
-
-	const comparison = splitComparison(expression);
-
-	if (!comparison) {
-		const value = evaluateNumericExpression(expression, context.macroValues, context.macroAliases);
-
-		return { value: Number.isFinite(value) && value !== 0 };
-	}
-
-	const left = evaluateNumericExpression(comparison.left, context.macroValues, context.macroAliases);
-	const right = evaluateNumericExpression(comparison.right, context.macroValues, context.macroAliases);
-
-	if (!Number.isFinite(left) || !Number.isFinite(right)) {
-		addWarning(context, lineNumber, `Could not resolve condition [${expression}].`);
-		return { value: false };
-	}
-
-	return { value: compareValues(left, right, comparison.operator, context.options.comparisonTolerance) };
-}
-
 async function evaluateExpression(expression, lineNumber, context) {
-	await promptForUnknownMacros(expression, lineNumber, context);
 	const value = evaluateNumericExpression(expression, context.macroValues, context.macroAliases);
 
 	if (!Number.isFinite(value)) {
@@ -492,49 +323,6 @@ async function evaluateExpression(expression, lineNumber, context) {
 	}
 
 	return value;
-}
-
-async function promptForUnknownMacros(expression, lineNumber, context) {
-	const macros = [...String(expression || "").matchAll(MACRO_REGEX)]
-		.map(match => normalizeMacro(match[0]));
-
-	for (const macro of macros) {
-		const resolvedMacro = resolveMacroAlias(macro, context.macroAliases);
-
-		if (hasMacroValue(context.macroValues, macro, resolvedMacro)) {
-			continue;
-		}
-
-		if (hasAssignedMacro(context.assignedMacros, macro, resolvedMacro)) {
-			continue;
-		}
-
-		if (!context.promptForUnknownMacros) {
-			setMacroValue(context.macroValues, macro, 0, context.macroAliases);
-			context.manualInputs.set(resolvedMacro, 0);
-			addWarning(context, lineNumber, `Assumed 0 for ${formatMacroPromptTarget(macro, resolvedMacro, context)} while building trace line data.`);
-			continue;
-		}
-
-		const entered = await vscode.window.showInputBox({
-			title: "KAIJU Decomposition",
-			prompt: `Line ${lineNumber + 1}: enter a numeric value for ${formatMacroPromptTarget(macro, resolvedMacro, context)}`,
-			placeHolder: "Example: 12.5",
-			validateInput: value => Number.isFinite(Number(value.trim()))
-				? undefined
-				: "Enter a numeric value."
-		});
-
-		if (entered === undefined) {
-			throw new DecompositionCancelled();
-		}
-
-		const value = Number(entered.trim());
-		setMacroValue(context.macroValues, macro, value, context.macroAliases);
-		context.manualInputs.set(resolvedMacro, value);
-	}
-
-	return {};
 }
 
 function buildMacroAliasLabelMap(document) {
@@ -558,28 +346,6 @@ function buildMacroAliasLabelMap(document) {
 	return labels;
 }
 
-function buildInitialCommentDefaults(document, macroAliases) {
-	const defaults = new Map();
-
-	for (const entry of buildAliasEntries(document)) {
-		const value = getTrailingCommentDefault(entry.comment);
-
-		if (!Number.isFinite(value)) {
-			continue;
-		}
-
-		setMacroValue(defaults, entry.macro, value, macroAliases);
-	}
-
-	return defaults;
-}
-
-function getTrailingCommentDefault(comment) {
-	const match = String(comment || "").match(/\{\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s*\}\s*$/);
-
-	return match ? Number(match[1]) : NaN;
-}
-
 function getMacroAliasLabel(macro, resolvedMacro, context) {
 	const labels = context.macroAliasLabels || new Map();
 	const normalizedMacro = normalizeMacro(macro);
@@ -597,14 +363,6 @@ function formatMacroPromptTarget(macro, resolvedMacro, context) {
 		: `${normalizedMacro} (${normalizedResolvedMacro})`;
 
 	return label ? `${target} - ${label}` : target;
-}
-
-function markMacroAssigned(context, macro) {
-	const normalizedMacro = normalizeMacro(macro);
-	const resolvedMacro = resolveMacroAlias(normalizedMacro, context.macroAliases);
-
-	context.assignedMacros.add(normalizedMacro);
-	context.assignedMacros.add(resolvedMacro);
 }
 
 function skipWhitespace(text, index) {
@@ -656,42 +414,6 @@ function readBracketToken(text, start) {
 	return undefined;
 }
 
-function hasMacroValue(macroValues, macro, resolvedMacro) {
-	return Number.isFinite(macroValues.get(macro)) || Number.isFinite(macroValues.get(resolvedMacro));
-}
-
-function hasAssignedMacro(assignedMacros, macro, resolvedMacro) {
-	return assignedMacros.has(macro) || assignedMacros.has(resolvedMacro);
-}
-
-function makeExecutionStateKey(macroValues) {
-	return [...macroValues.entries()]
-		.filter(([, value]) => Number.isFinite(value))
-		.sort(([left], [right]) => left.localeCompare(right))
-		.map(([macro, value]) => `${macro}=${formatNumber(value)}`)
-		.join("|");
-}
-
-function findAssignments(codeLine) {
-	const assignmentRegex = /#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g;
-	const matches = [...codeLine.matchAll(assignmentRegex)];
-
-	return matches.map((match, index) => {
-		const nextMatch = matches[index + 1];
-		const valueStart = match.index + match[0].length;
-		const semicolonStart = codeLine.indexOf(";", valueStart);
-		const valueEnd = Math.min(
-			nextMatch ? nextMatch.index : codeLine.length,
-			semicolonStart === -1 ? codeLine.length : semicolonStart
-		);
-
-		return {
-			macro: normalizeMacro(match[0].match(MACRO_REGEX)[0]),
-			value: codeLine.slice(valueStart, valueEnd).trim()
-		};
-	});
-}
-
 function removeAssignments(text) {
 	return text.replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=\s*[^;]+;?/g, "");
 }
@@ -708,132 +430,7 @@ function isOutputLine(codeLine) {
 		return false;
 	}
 
-	if (findIfGoto(codeLine) || findIfThen(codeLine) || findWhileStart(codeLine) || findLoopEnd(codeLine) || findGoto(codeLine) !== undefined) {
-		return false;
-	}
-
 	return /[A-Za-z]/.test(withoutLabel);
-}
-
-function isMacroAlarmLine(codeLine) {
-	return /#\s*3000\s*=/.test(codeLine);
-}
-
-function isProgramEndLine(codeLine) {
-	return /\bM\s*(?:0?2|30)(?![.\d])/i.test(codeLine);
-}
-
-function findIfGoto(codeLine) {
-	const statement = readConditionalStatement(codeLine, "IF");
-	const match = statement ? statement.rest.match(/^\s*GOTO\s*N?(\d+)/i) : undefined;
-
-	return match
-		? { condition: statement.condition, target: match[1], body: `GOTO ${match[1]}` }
-		: undefined;
-}
-
-function findIfThen(codeLine) {
-	const statement = readConditionalStatement(codeLine, "IF");
-	const match = statement ? statement.rest.match(/^\s*THEN\s+(.+)$/i) : undefined;
-
-	return match
-		? { condition: statement.condition, body: match[1].trim() }
-		: undefined;
-}
-
-function findGoto(codeLine) {
-	const match = codeLine.match(/\bGOTO\s*N?(\d+)/i);
-
-	return match ? match[1] : undefined;
-}
-
-function findWhileStart(codeLine) {
-	const statement = readConditionalStatement(codeLine, "WHILE");
-	const match = statement ? statement.rest.match(/^\s*DO\s*(\d+)/i) : undefined;
-
-	return match
-		? { condition: statement.condition, doNumber: match[1] }
-		: undefined;
-}
-
-function readConditionalStatement(codeLine, keyword) {
-	const keywordMatch = codeLine.match(new RegExp(`\\b${keyword}\\b`, "i"));
-
-	if (!keywordMatch) {
-		return undefined;
-	}
-
-	const conditionStart = skipWhitespace(codeLine, keywordMatch.index + keywordMatch[0].length);
-	const condition = readBracketToken(codeLine, conditionStart);
-
-	if (!condition) {
-		return undefined;
-	}
-
-	return {
-		condition: condition.text,
-		rest: codeLine.slice(condition.end)
-	};
-}
-
-function findLoopEnd(codeLine) {
-	const match = codeLine.match(/\bEND\s*(\d+)/i);
-
-	return match ? { doNumber: match[1] } : undefined;
-}
-
-function findMatchingEnd(document, startLine, doNumber) {
-	let depth = 0;
-
-	for (let lineNumber = startLine + 1; lineNumber < document.lineCount; lineNumber++) {
-		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
-		const nestedWhile = findWhileStart(codeLine);
-		const end = findLoopEnd(codeLine);
-
-		if (nestedWhile && nestedWhile.doNumber === doNumber) {
-			depth++;
-			continue;
-		}
-
-		if (end && end.doNumber === doNumber) {
-			if (depth === 0) {
-				return lineNumber;
-			}
-
-			depth--;
-		}
-	}
-
-	return undefined;
-}
-
-function findOpenLoop(loopStack, doNumber) {
-	for (let index = loopStack.length - 1; index >= 0; index--) {
-		if (loopStack[index].doNumber === doNumber) {
-			return loopStack[index];
-		}
-	}
-
-	return undefined;
-}
-
-function buildLabelMap(document) {
-	const labels = new Map();
-
-	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
-		const match = codeLine.match(/^\s*N(\d+)/i);
-
-		if (match) {
-			const label = normalizeSequenceNumber(match[1]);
-
-			if (!labels.has(label)) {
-				labels.set(label, lineNumber);
-			}
-		}
-	}
-
-	return labels;
 }
 
 function makeFirstVisitLabelLine(line, codeLine, lineNumber, context) {
@@ -855,20 +452,6 @@ function makeFirstVisitLabelLine(line, codeLine, lineNumber, context) {
 		.filter(Boolean);
 
 	return [label, ...comments].join(" ");
-}
-
-function normalizeSequenceNumber(text) {
-	return String(Number.parseInt(text, 10));
-}
-
-function resolveTargetLabel(target, lineNumber, context) {
-	const targetLine = context.labels.get(normalizeSequenceNumber(target));
-
-	if (targetLine === undefined) {
-		addWarning(context, lineNumber, `Could not find target N${target}.`);
-	}
-
-	return targetLine;
 }
 
 function splitComparison(expression) {
@@ -925,44 +508,6 @@ function splitTopLevelLogicalAnd(expression) {
 	return parts;
 }
 
-function compareValues(left, right, operator, tolerance = DEFAULT_COMPARISON_TOLERANCE) {
-	const delta = left - right;
-
-	if (operator === "EQ") {
-		return Math.abs(delta) <= tolerance;
-	}
-
-	if (operator === "NE") {
-		return Math.abs(delta) > tolerance;
-	}
-
-	if (operator === "GT") {
-		return delta > tolerance;
-	}
-
-	if (operator === "GE") {
-		return delta >= -tolerance;
-	}
-
-	if (operator === "LT") {
-		return delta < -tolerance;
-	}
-
-	if (operator === "LE") {
-		return delta <= tolerance;
-	}
-
-	return false;
-}
-
-function stripOuterBrackets(text) {
-	const trimmed = String(text || "").trim();
-
-	return trimmed.startsWith("[") && trimmed.endsWith("]")
-		? trimmed.slice(1, -1).trim()
-		: trimmed;
-}
-
 function needsEvaluation(token) {
 	return token.includes("#") || token.includes("[");
 }
@@ -976,22 +521,6 @@ function applyReplacements(text, replacements) {
 	}
 
 	return result;
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let index = range.start; index <= range.end; index++) {
-			characters[index] = " ";
-		}
-	}
-
-	return characters.join("");
 }
 
 function addWarning(context, lineNumber, message) {

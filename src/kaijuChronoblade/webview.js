@@ -15,6 +15,7 @@ const {
 	attachTraceOutputLines
 } = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
+const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { getChronobladeOptions } = require("./options");
 
 let chronobladePanel;
@@ -30,6 +31,9 @@ function registerChronobladeWebview(context) {
 		}),
 		onDidChangeExecutionTrace(document => {
 			void refreshLiveChronoblade(document);
+		}),
+		onDidChangeMachineMode(document => {
+			void refreshMachineModeChronoblade(document);
 		})
 	);
 }
@@ -175,6 +179,15 @@ async function refreshLiveChronoblade(document) {
 	await renderChronobladePanel(editor, chronobladeState.mode, options);
 }
 
+async function refreshMachineModeChronoblade(document) {
+	if (!chronobladePanel || !chronobladeState || !document || document.uri.toString() !== chronobladeState.documentUriText) return;
+	const editor = getChronobladeSourceEditor();
+	if (!editor || editor.document.uri.toString() !== document.uri.toString()) return;
+	const options = makeChronobladeOptions(document, chronobladeState.options);
+	chronobladeState = { documentUriText: document.uri.toString(), mode: chronobladeState.mode, options };
+	await renderChronobladePanel(editor, chronobladeState.mode, options);
+}
+
 function showChronobladeLiveWarning(trace) {
 	if (!chronobladePanel || !trace) return;
 	const details = [`The newest Trace is ${trace.status}.`];
@@ -183,9 +196,9 @@ function showChronobladeLiveWarning(trace) {
 }
 
 async function getChronobladeTrace(document) {
-	const trace = buildExecutionTrace(document, { includeExecutionEntries: true });
+	const trace = buildExecutionTrace(document, { includeDecompositionData: true });
 	const decomposition = isUsableChronobladeTrace(trace)
-		? await decomposeDocument(document, { promptForUnknownMacros: false })
+		? await decomposeDocument(document, { promptForUnknownMacros: false, executionTrace: trace })
 		: undefined;
 	if (decomposition) attachTraceOutputLines(trace, decomposition.decompositionLines);
 	return {
@@ -871,7 +884,7 @@ function renderChronobladeHtml(options, result) {
 		}
 
 		function formatVirtualFeed(row) {
-			return Number.isFinite(row.feed) ? (row.feedMode === 'perRev' ? 'G95' : 'G94') + ' F' + formatVirtualNumber(row.feed) : '-';
+			return Number.isFinite(row.feed) ? (row.feedModeWord || (row.feedMode === 'perRev' ? 'Feed/rev' : 'Feed/min')) + ' F' + formatVirtualNumber(row.feed) : '-';
 		}
 
 		function formatVirtualAccumulatedTime(seconds) {
@@ -1032,7 +1045,7 @@ function formatFeed(row, humanFormat) {
 		return "-";
 	}
 
-	return `${row.feedMode === "perRev" ? "G95" : "G94"} F${formatNumber(row.feed, humanFormat)}`;
+	return `${row.feedModeWord || (row.feedMode === "perRev" ? "Feed/rev" : "Feed/min")} F${formatNumber(row.feed, humanFormat)}`;
 }
 
 function formatAccumulatedTime(seconds) {

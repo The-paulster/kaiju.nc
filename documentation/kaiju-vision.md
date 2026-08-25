@@ -18,12 +18,15 @@ options.
   stream. Its per-program Macro values drawer saves missing initial values and,
   when explicitly enabled, substitutes header initialisations before the first
   executable G/M block.
-- Uses the shared Decomposition formatted-output mapping for Trace-line node details, so
-  repeated executions show unique generated-document line numbers and fully
+- Passes its enriched `MetaExecutionTrace` snapshot to Decomposition for
+  formatted Trace-line node details, without executing the program again.
+  Repeated executions show unique generated-document line numbers and fully
   substituted instructions. The Node line control selects that Trace output or
   the authored Source program details; Source program is used for As-written
   motion.
 - Its options use `MetaMachineMode` defaults.
+- Its motion rows and legend use profile-resolved `instruction` and
+  `motionDisplayWords` data returned by `MetaMotionEngine`.
 - It shares interpretation with Chronoblade and Sense, but provides its own
   inspection-first rendering.
 
@@ -39,6 +42,10 @@ in that program. Its optional Live control refreshes the open report after its
 source program's passive Trace completes successfully. If the newest Trace is
 unsafe or cannot be read, Vision retains the last usable report and shows a
 hoverable Live warning explaining that the report is not current.
+
+Vision also uses the source program's saved Machine Mode profile, with the
+global Machine Mode setting as the fallback. Changing that profile refreshes an
+open Vision report and resets only that program's saved Auto-plane choice.
 
 Changing KAIJU Machine Mode resets the active source program's saved Vision
 plane to that machine profile's configured Vision default, while retaining its

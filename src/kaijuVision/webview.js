@@ -15,8 +15,9 @@ const {
 	attachTraceOutputLines
 } = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
+const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { MACRO_REGEX, buildAliasEntries, buildMacroAliasMap, normalizeMacro, resolveMacroAlias } = require("../MetaMacroEngine");
-const { getCommentRanges, getAngleBracketRanges } = require("../MetaTextRanges");
+const { maskProtectedRanges } = require("../MetaTextRanges");
 const {
 	VISION_WORK_OFFSET_CODES,
 	getVisionOptions,
@@ -36,8 +37,11 @@ function registerKaijuVisionWebview(context) {
 		onDidChangeExecutionTrace(document => {
 			void refreshLiveVision(document);
 		}),
+		onDidChangeMachineMode(document => {
+			void resetVisionPlaneForMachineMode(document);
+		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.chronoblade.machineMode")) {
+			if (event.affectsConfiguration("kaijuNC.chronoblade.machineMode") || event.affectsConfiguration("kaijuNC.chronoblade.gCodeDialect")) {
 				const editor = vscode.window.activeTextEditor;
 				if (editor && editor.document.languageId === "gcode") {
 					void resetVisionPlaneForMachineMode(editor.document);
@@ -426,10 +430,11 @@ async function getVisionTrace(document, includePlaybackData = false) {
 		initialMacroValues: inputs.initialValues,
 		initialMacroOverrides: inputs.overrides,
 		includeExecutionEntries: true,
-		includePlaybackData
+		includePlaybackData,
+		includeDecompositionData: true
 	});
 	const decomposition = isUsableVisionTrace(trace)
-		? await decomposeDocument(document, { initialMacroValues: inputs.initialValues, initialMacroOverrides: inputs.overrides, promptForUnknownMacros: false })
+		? await decomposeDocument(document, { initialMacroValues: inputs.initialValues, initialMacroOverrides: inputs.overrides, promptForUnknownMacros: false, executionTrace: trace })
 		: undefined;
 	const warningItems = [];
 	if (trace.status === "assumed") {
@@ -512,11 +517,7 @@ function getVisionProgramAxes(document) {
 }
 
 function maskVisionMacroText(line) {
-	const characters = String(line || "").split("");
-	for (const range of [...getCommentRanges(line), ...getAngleBracketRanges(line)]) {
-		for (let index = range.start; index <= range.end; index++) characters[index] = " ";
-	}
-	return characters.join("");
+	return maskProtectedRanges(line);
 }
 
 async function saveMacroInputsFromWebview(inputs, overrideProgramInitialValues, rawOptions) {
@@ -603,6 +604,10 @@ function renderVisionHtml(document, mode, options, result) {
 		? "Whole program"
 		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
 	const summary = summarizeVisionRows(result.rows);
+	const rapidMotionLabel = result.motionDisplayWords && result.motionDisplayWords.rapid || "Rapid";
+	const cuttingMotionLabel = result.motionDisplayWords && result.motionDisplayWords.cutting.length
+		? result.motionDisplayWords.cutting.join("/")
+		: "Cutting";
 	const macroVariables = getVisionMacroVariables(document);
 	const programAxes = getVisionProgramAxes(document);
 	const savedMacroInputs = visionContext && visionContext.workspaceState
@@ -1169,7 +1174,7 @@ function renderVisionHtml(document, mode, options, result) {
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
 		<span>${escapeHtml(formatNumber(summary.totalDistance, options.humanFormat))} total distance</span>
 		${summary.unknownRows ? `<span>${escapeHtml(summary.unknownRows)} row(s) have incomplete path data</span>` : ""}
-		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>G0</span><span><span class="swatch" style="background: var(--cut)"></span>G1/G2/G3</span><span id="zoomLabel" class="zoom-readout" title="View zoom">100%</span></span>
+		<span class="legend"><span><span class="swatch" style="background: var(--rapid)"></span>${escapeHtml(rapidMotionLabel)}</span><span><span class="swatch" style="background: var(--cut)"></span>${escapeHtml(cuttingMotionLabel)}</span><span id="zoomLabel" class="zoom-readout" title="View zoom">100%</span></span>
 		${result.traceWarning ? `<span class="trace-warning" title="${escapeAttribute(result.traceWarning)}">⚠ TRACE WARNING</span>` : ""}
 		<span id="liveWarning" class="trace-warning" hidden></span>
 	</section>

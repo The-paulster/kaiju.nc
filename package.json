@@ -2,7 +2,10 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.5.0",
+  "version": "0.5.1",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PaulCGilesLawson",
   "license": "MIT",
@@ -993,6 +996,36 @@
         }
       },
       {
+        "title": "KAIJU.NC: G-code Profiles",
+        "properties": {
+          "kaijuNC.gCodeDialect.customProfiles": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "label",
+                "bindings"
+              ],
+              "properties": {
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "description": { "type": "string" },
+                "bindings": {
+                  "type": "object",
+                  "properties": {
+                    "mill": { "type": "object" },
+                    "lathe": { "type": "object" }
+                  }
+                }
+              }
+            },
+            "description": "Custom controller G-code profiles. Use KAIJU Manage G-code Profiles to edit their separate mill and lathe keybinding tables."
+          }
+        }
+      },
+      {
         "title": "KAIJU.NC: Chronoblade",
         "properties": {
           "kaijuNC.chronoblade.machineMode": {
@@ -1003,7 +1036,12 @@
               "latheDiameter"
             ],
             "default": "latheDiameter",
-            "description": "Machine mode used by KAIJU Chronoblade, Sense, and Vision. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
+            "description": "Fallback machine mode used until a program is assigned its own KAIJU Machine Mode. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
+          },
+          "kaijuNC.chronoblade.gCodeDialect": {
+            "type": "string",
+            "default": "auto",
+            "description": "Fallback G-code interpretation profile ID used until a program is assigned its own profile. Use auto for FANUC / ISO Mill and DMG MORI Lathe defaults, or select a custom profile in KAIJU Manage G-code Profiles."
           },
           "kaijuNC.chronoblade.xAxisMode": {
             "type": "string",
@@ -1139,6 +1177,18 @@
       {
         "command": "kaijuNC.machineMode.latheDiameter",
         "title": "KAIJU Machine Mode: Lathe (Diameter)"
+      },
+      {
+        "command": "kaijuNC.gCodeDialect.fanucIso",
+        "title": "KAIJU G-code Profile: FANUC / ISO"
+      },
+      {
+        "command": "kaijuNC.gCodeDialect.dmgMori",
+        "title": "KAIJU G-code Profile: DMG MORI"
+      },
+      {
+        "command": "kaijuNC.gCodeDialect.manage",
+        "title": "KAIJU Manage G-code Profiles"
       }
     ],
     "keybindings": [
@@ -1197,6 +1247,10 @@
         "label": "KAIJU Machine Mode"
       },
       {
+        "id": "kaijuNC.gCodeDialectMenu",
+        "label": "KAIJU G-code Profile"
+      },
+      {
         "id": "kaijuNC.quickTogglesMenu",
         "label": "KAIJU Quick Toggles"
       }
@@ -1245,6 +1299,11 @@
           "group": "z_kaijuMachineMode"
         },
         {
+          "submenu": "kaijuNC.gCodeDialectMenu",
+          "when": "editorLangId == gcode",
+          "group": "z_kaijuGCodeDialect"
+        },
+        {
           "submenu": "kaijuNC.quickTogglesMenu",
           "when": "editorLangId == gcode",
           "group": "z_kaijuQuickToggles"
@@ -1277,6 +1336,23 @@
           "command": "kaijuNC.machineMode.latheDiameter",
           "when": "editorLangId == gcode",
           "group": "navigation@3"
+        }
+      ],
+      "kaijuNC.gCodeDialectMenu": [
+        {
+          "command": "kaijuNC.gCodeDialect.fanucIso",
+          "when": "editorLangId == gcode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kaijuNC.gCodeDialect.dmgMori",
+          "when": "editorLangId == gcode",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kaijuNC.gCodeDialect.manage",
+          "when": "editorLangId == gcode",
+          "group": "navigation@9"
         }
       ]
     }

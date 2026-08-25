@@ -2,10 +2,7 @@
 // MetaToolModel.js and protected-text parsing in MetaTextRanges.js.
 const vscode = require("vscode");
 const { getToolRanges } = require("../MetaToolModel");
-const {
-	getCommentRanges,
-	getAngleBracketRanges
-} = require("../MetaTextRanges");
+const { maskProtectedRanges } = require("../MetaTextRanges");
 
 function registerKaijuRangefinder(context) {
 	context.subscriptions.push(
@@ -224,22 +221,6 @@ function formatLineSpan(startLine, endLine) {
 function getLinePreview(document, lineNumber) {
 	const preview = document.lineAt(lineNumber).text.trim();
 	return preview.length > 120 ? `${preview.slice(0, 117)}...` : preview;
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const ranges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of ranges) {
-		for (let index = range.start; index <= range.end; index++) {
-			characters[index] = " ";
-		}
-	}
-
-	return characters.join("");
 }
 
 module.exports = {

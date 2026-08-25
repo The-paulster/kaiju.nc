@@ -4,7 +4,8 @@ const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges,
-	isInsideRange
+	isInsideRange,
+	maskProtectedRanges
 } = require("../MetaTextRanges");
 const {
 	getAliasModeState,
@@ -12,6 +13,7 @@ const {
 } = require("../kaijuAlias");
 const { getAliasOptions } = require("../kaijuAlias/options");
 const { analyzeArcsInDocument } = require("../MetaMotionEngine");
+const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { getAlertOptions } = require("./options");
 
 const DIAGNOSTIC_SOURCE = "Kaiju Alert";
@@ -41,6 +43,7 @@ function registerDiagnostics(context) {
 				event.affectsConfiguration("kaijuNC.alerts")
 				|| event.affectsConfiguration("kaijuNC.alias")
 				|| event.affectsConfiguration("kaijuNC.chronoblade.machineMode")
+				|| event.affectsConfiguration("kaijuNC.chronoblade.gCodeDialect")
 				|| event.affectsConfiguration("kaijuNC.chronoblade.xAxisMode")
 				|| event.affectsConfiguration("kaijuNC.syntax.unresolvedGotos.enabled")
 			) {
@@ -48,6 +51,9 @@ function registerDiagnostics(context) {
 					updateDiagnostics(editor.document, diagnostics);
 				}
 			}
+		}),
+		onDidChangeMachineMode(document => {
+			updateDiagnostics(document, diagnostics);
 		}),
 		vscode.workspace.onDidCloseTextDocument(document => {
 			clearUndefinedAliasTimer(document, undefinedAliasTimers);
@@ -275,22 +281,6 @@ function getSequenceLabels(document) {
 
 function normalizeSequenceNumber(text) {
 	return String(Number.parseInt(text, 10));
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let index = range.start; index <= range.end; index++) {
-			characters[index] = " ";
-		}
-	}
-
-	return characters.join("");
 }
 
 function makeDuplicateSequenceNumberWarnings(line, lineNumber, ignoreRanges, seenSequenceNumbers) {

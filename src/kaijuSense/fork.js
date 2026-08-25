@@ -4,7 +4,7 @@
 const vscode = require("vscode");
 const {
 	getCommentRanges,
-	getAngleBracketRanges
+	maskProtectedRanges
 } = require("../MetaTextRanges");
 
 function registerKaijuSenseFork(context) {
@@ -222,22 +222,6 @@ function cleanCommentText(text) {
 
 function normalizeSequenceNumber(text) {
 	return String(Number.parseInt(text, 10));
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let index = range.start; index <= range.end; index++) {
-			characters[index] = " ";
-		}
-	}
-
-	return characters.join("");
 }
 
 function getDocumentKey(document) {

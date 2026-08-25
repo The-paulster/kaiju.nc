@@ -14,7 +14,7 @@ generated alias phrase/name while remaining in the source comment.
 
 - Uses `MetaMacroEngine` to parse aliases and evaluate shared macro forms.
 - Uses `MetaTextRanges` to avoid protected text while editing/scanning.
-- `MetaMachineMode` presents Alias mode status; Alert may consult Alias state.
+- `kaijuMachineMode` presents Alias mode status; Alert may consult Alias state.
 
 ## Boundary
 

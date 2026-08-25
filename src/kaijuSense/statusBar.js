@@ -5,6 +5,7 @@ const {
 	getModalStateAtLine,
 	formatModalStateStatus
 } = require("../MetaMotionEngine");
+const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { getSenseOptions } = require("./options");
 
 function registerKaijuSenseStatusBar(context) {
@@ -29,9 +30,13 @@ function registerKaijuSenseStatusBar(context) {
 			}
 		}),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.sense") || event.affectsConfiguration("kaijuNC.chronoblade.machineMode")) {
+			if (event.affectsConfiguration("kaijuNC.sense") || event.affectsConfiguration("kaijuNC.chronoblade.machineMode") || event.affectsConfiguration("kaijuNC.chronoblade.gCodeDialect")) {
 				update();
 			}
+		}),
+		onDidChangeMachineMode(document => {
+			const editor = vscode.window.activeTextEditor;
+			if (editor && editor.document === document) update();
 		})
 	);
 }

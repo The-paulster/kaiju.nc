@@ -2,10 +2,7 @@
 // label/GOTO hovers, Ctrl+Click target navigation, and related highlights.
 // Keep fork-resolution alerts in fork.js.
 const vscode = require("vscode");
-const {
-	getCommentRanges,
-	getAngleBracketRanges
-} = require("../MetaTextRanges");
+const { maskProtectedRanges } = require("../MetaTextRanges");
 
 const LABEL_REFERENCE_MARKER = "\u21A9";
 const REFERENCE_HIGHLIGHT_BACKGROUND = "rgba(255, 193, 7, 0.22)";
@@ -506,22 +503,6 @@ function getSelectedLineNumbers(document, selections) {
 
 function normalizeSequenceNumber(text) {
 	return String(Number.parseInt(text, 10));
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let index = range.start; index <= range.end; index++) {
-			characters[index] = " ";
-		}
-	}
-
-	return characters.join("");
 }
 
 module.exports = {

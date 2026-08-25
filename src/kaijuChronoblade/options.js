@@ -2,14 +2,14 @@
 // webview behavior in webview.js.
 const vscode = require("vscode");
 const {
-	getConfiguredValue,
-	getMachineModeProfile
+	getMachineModeForDocument
 } = require("../MetaMachineMode");
 
 function getChronobladeOptions(document, rawOptions = {}) {
 	const reportConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
 	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
-	const profile = getMachineModeProfile(reportConfig.get("machineMode", "latheDiameter"));
+	const machineMode = getMachineModeForDocument(document);
+	const profile = machineMode.profile;
 	const timingProfiles = getTimingProfiles(reportConfig);
 	const timingProfile = getTimingProfile(timingProfiles, rawOptions.timingProfile);
 
@@ -18,8 +18,9 @@ function getChronobladeOptions(document, rawOptions = {}) {
 		showTraceLine: rawOptions.showTraceLine === true,
 		live: rawOptions.live === true,
 		machineMode: profile.id,
+		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: getConfiguredValue(reportConfig, "xAxisMode", profile.xAxisMode),
+		xAxisMode: machineMode.xAxisMode,
 		cssSurfaceSpeedUnit: reportConfig.get("cssSurfaceSpeedUnit", "mPerMin"),
 		samples: clampNumber(reportConfig.get("samples", 96), 12, 500),
 		compactPanelWidth: clampNumber(reportConfig.get("compactPanelWidth", 0.45), 0.2, 0.7),

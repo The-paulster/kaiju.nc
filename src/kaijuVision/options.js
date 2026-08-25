@@ -3,7 +3,7 @@
 const vscode = require("vscode");
 const {
 	getConfiguredValue,
-	getMachineModeProfile
+	getMachineModeForDocument
 } = require("../MetaMachineMode");
 
 const VISION_PLANES = new Set(["xy", "yx", "xz", "zx", "yz", "zy"]);
@@ -13,7 +13,8 @@ function getVisionOptions(document, rawOptions = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.vision", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
 	const displayConfig = vscode.workspace.getConfiguration("kaijuNC.display", document.uri);
-	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
+	const machineMode = getMachineModeForDocument(document);
+	const profile = machineMode.profile;
 	const defaultPlane = getDefaultVisionPlane(config, profile);
 
 	return {
@@ -25,8 +26,9 @@ function getVisionOptions(document, rawOptions = {}) {
 		useToolColors: rawOptions.useToolColors === true,
 		workOffsets: normalizeVisionWorkOffsets(rawOptions.workOffsets),
 		machineMode: profile.id,
+		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: getConfiguredValue(config, "xAxisMode", getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)),
+		xAxisMode: machineMode.xAxisMode,
 		xzOrientation: config.get("xzOrientation", "zRightXUp"),
 		xyOrientation: config.get("xyOrientation", "xRightYUp"),
 		zyOrientation: config.get("zyOrientation", "zRightYUp"),

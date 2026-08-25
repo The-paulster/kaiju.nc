@@ -16,10 +16,12 @@ lists every assumed-zero macro and every safety or flow problem.
   the cache. Its passive file-open run
   keeps only the health and macro-history data needed by Trace and Sense;
   Vision and Chronoblade explicitly request the fuller per-occurrence data when opened.
+- Decomposition consumes the same occurrence stream and formats its optional
+  condition/assignment metadata; it is not a second execution engine.
 - Sense consumes per-line macro histories, showing all values through ten
   occurrences and otherwise the first five and last five.
 - Decomposition remains interactive and requests unresolved macro values when
-  the user explicitly runs it.
+  explicitly run, then rebuilds this same shared execution stream with them.
 
 ## Boundary
 

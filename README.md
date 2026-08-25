@@ -16,7 +16,15 @@ Choose the machine mode from the editor's right-click menu:
 * Lathe - Radius
 * Lathe - Diameter
 
-Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned. It synchronizes their X-axis interpretation and selects the appropriate default feed behavior: feed per minute for mills or feed per revolution for lathes. Explicit program codes such as `G94` and `G95` still take precedence.
+Use the adjacent `KAIJU G-code Profile` submenu to choose the controller word
+bindings saved for that program, such as `FANUC / ISO` or `DMG MORI`.
+
+Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned. It synchronizes their X-axis interpretation and selects the appropriate default feed behavior: feed per minute for mills or feed per revolution for lathes. The program's G-code profile determines which authored words select those functions—for example, FANUC/ISO uses `G94/G95`, while DMG MORI turning uses `G98/G99`.
+
+Choose **KAIJU G-code Profile > KAIJU Manage G-code Profiles** to duplicate a
+built-in profile or create a controller-specific profile. The editor provides
+separate mill and lathe keybinding tables; changing a binding updates the
+shared interpretation used by Sense, Vision, and Chronoblade.
 
 ## KAIJU Highlighting
 

@@ -2,15 +2,15 @@
 // diagnostics.js.
 const vscode = require("vscode");
 const {
-	getConfiguredValue,
-	getMachineModeProfile
+	getMachineModeForDocument
 } = require("../MetaMachineMode");
 
 function getAlertOptions(document) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.alerts", document.uri);
 	const syntaxConfig = vscode.workspace.getConfiguration("kaijuNC.syntax", document.uri);
 	const chronobladeConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
-	const profile = getMachineModeProfile(chronobladeConfig.get("machineMode", "latheDiameter"));
+	const machineMode = getMachineModeForDocument(document);
+	const profile = machineMode.profile;
 
 	return {
 		warnNonAscii: config.get("nonAscii.enabled", true),
@@ -23,8 +23,10 @@ function getAlertOptions(document) {
 		warnUnresolvedGotos: syntaxConfig.get("unresolvedGotos.enabled", true),
 		warnIllegalArcs: config.get("illegalArcs.enabled", true),
 		arcTolerance: clampNumber(config.get("illegalArcs.tolerance", 0.001), 0, 10, 0.001),
+		machineMode: profile.id,
+		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: getConfiguredValue(chronobladeConfig, "xAxisMode", profile.xAxisMode)
+		xAxisMode: machineMode.xAxisMode
 	};
 }
 

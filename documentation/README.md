@@ -17,6 +17,8 @@ flowchart TB
 | --- | --- | --- |
 | [Extension host](extension-host.md) | Activation and registration | Every registered module |
 | [Meta](meta.md) | Shared non-UI interpretation, models, and helpers | Used by feature modules |
+| [Data access contracts](data-access.md) | Which shared API to call and which returned fields to present | Every feature consumer |
+| [Machine Mode](kaiju-machine-mode.md) | Profile commands, custom keybinding editor, and right-side configuration status | Machine state, dialects, Alias state |
 | [Trace](kaiju-trace.md) | Passive execution-trace health status | Execution trace, Sense |
 | [Language support](language-support.md) | G-code language declaration and token scopes | VS Code editor presentation |
 | [Alert](kaiju-alert.md) | Static editor diagnostics | Text ranges, Alias state |
@@ -36,6 +38,8 @@ flowchart TB
 - A new calculation or parser needed by multiple features belongs in the
   appropriate part of [Meta](meta.md), not in a webview or editor decoration.
 - A new presentation of an existing result belongs in the requesting feature.
+- Before scanning source, interpreting a word, or executing control flow, check
+  [Data access contracts](data-access.md) for the existing shared read model.
 - A user setting stays beside the feature that owns its behavior. A quick
   toggle may expose that setting, but it does not own the behavior it toggles.
 - A grammar/token color change belongs in [Language support](language-support.md),

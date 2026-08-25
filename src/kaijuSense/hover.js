@@ -1,5 +1,6 @@
-// Role: provide KAIJU Sense motion hovers for G00-G03 moves. Keep status bar
-// rendering in statusBar.js and keep macro hovers in macro.js.
+// Role: provide KAIJU Sense hovers for motion words resolved by the active
+// G-code profile. Keep status bar rendering in statusBar.js and macro hovers
+// in macro.js.
 const vscode = require("vscode");
 const {
 	getCommentRanges,
@@ -9,7 +10,8 @@ const {
 const {
 	estimateMotionAtLine,
 	formatNumber,
-	formatTime
+	formatTime,
+	getMotionCodeForGCode
 } = require("../MetaMotionEngine");
 const { getSenseOptions } = require("./options");
 
@@ -28,15 +30,14 @@ function provideKaijuSenseHover(document, position) {
 		return undefined;
 	}
 
-	const hoveredMotion = getMotionAtPosition(document, position);
-
-	if (!hoveredMotion) {
-		return undefined;
-	}
-
 	const options = getSenseOptions(document);
 
 	if (!options.enabled) {
+		return undefined;
+	}
+	const hoveredMotion = getMotionAtPosition(document, position, options);
+
+	if (!hoveredMotion) {
 		return undefined;
 	}
 
@@ -49,7 +50,7 @@ function provideKaijuSenseHover(document, position) {
 	return new vscode.Hover(renderKaijuSenseHover(estimate, options));
 }
 
-function getMotionAtPosition(document, position) {
+function getMotionAtPosition(document, position, options) {
 	const line = document.lineAt(position.line).text;
 	const protectedRanges = [
 		...getCommentRanges(line),
@@ -60,16 +61,17 @@ function getMotionAtPosition(document, position) {
 		return undefined;
 	}
 
-	const motionRegex = /\bG0?([0123])\b/gi;
+	const motionRegex = /\bG\s*(\d+(?:\.\d+)?)\b/gi;
 	let match;
 
 	while ((match = motionRegex.exec(line)) !== null) {
 		const start = match.index;
 		const end = start + match[0].length;
 
-		if (position.character >= start && position.character <= end) {
+		const motionCode = getMotionCodeForGCode(match[1], options);
+		if (Number.isFinite(motionCode) && position.character >= start && position.character <= end) {
 			return {
-				code: Number(match[1]),
+				code: motionCode,
 				text: match[0].toUpperCase()
 			};
 		}
@@ -84,7 +86,7 @@ function renderKaijuSenseHover(estimate, options = {}) {
 	const humanFormat = options.humanFormat;
 	const coloredValues = options.syntaxColoredHoverValues === true;
 
-	md.appendMarkdown(`**KAIJU Sense - G${String(estimate.motionCode).padStart(2, "0")}**\n\n`);
+	md.appendMarkdown(`**KAIJU Sense - ${estimate.motionWord || `G${String(estimate.motionCode).padStart(2, "0")}`}**\n\n`);
 	appendHoverValue(md, "Start", formatPosition(estimate.start, humanFormat), coloredValues);
 	appendHoverValue(md, "End", formatPosition(estimate.end, humanFormat), coloredValues);
 	appendHoverValue(md, "Delta", formatDelta(geometry.delta, humanFormat), coloredValues);
@@ -103,9 +105,9 @@ function renderKaijuSenseHover(estimate, options = {}) {
 	}
 
 	if (estimate.spindleMode === "css") {
-		appendHoverValue(md, "Spindle", `G96 S${formatNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` G50 S${formatNumber(estimate.rpmLimit, humanFormat)}` : ""}`, coloredValues);
+		appendHoverValue(md, "Spindle", `${estimate.spindleModeWord || "G96"} S${formatNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` ${estimate.rpmLimitWord || "G50"} S${formatNumber(estimate.rpmLimit, humanFormat)}` : ""}`, coloredValues);
 	} else if (Number.isFinite(estimate.rpm)) {
-		appendHoverValue(md, "Spindle", `G97 S${formatNumber(estimate.rpm, humanFormat)}`, coloredValues);
+		appendHoverValue(md, "Spindle", `${estimate.spindleModeWord || "G97"} S${formatNumber(estimate.rpm, humanFormat)}`, coloredValues);
 	}
 
 	if (Number.isFinite(estimate.minRpm) && Number.isFinite(estimate.maxRpm)) {

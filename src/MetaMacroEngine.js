@@ -4,7 +4,7 @@
 // kaijuSense/macro.js.
 const {
 	getCommentRanges,
-	getAngleBracketRanges
+	maskProtectedRanges
 } = require("./MetaTextRanges");
 
 const MACRO_REGEX = /#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/g;
@@ -89,22 +89,6 @@ function hasExecutableGMCode(line) {
 	const searchableLine = maskProtectedRanges(line);
 
 	return /(^|[^A-Za-z0-9_])[GgMm]\d+/.test(searchableLine);
-}
-
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let i = range.start; i <= range.end; i++) {
-			characters[i] = " ";
-		}
-	}
-
-	return characters.join("");
 }
 
 function findAliasCandidatesInLine(line, lineNumber) {
@@ -219,6 +203,39 @@ function buildMacroAliasMap(document) {
 	}
 
 	return macroAliases;
+}
+
+function buildInitialMacroDefaults(document, macroAliases = buildMacroAliasMap(document)) {
+	const defaults = new Map();
+
+	for (const entry of buildAliasEntries(document)) {
+		const match = String(entry.comment || "").match(/\{\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s*\}\s*$/);
+		if (match) {
+			setMacroValue(defaults, entry.macro, Number(match[1]), macroAliases);
+		}
+	}
+
+	return defaults;
+}
+
+function findMacroAssignments(codeLine) {
+	const text = String(codeLine || "");
+	const matches = [...text.matchAll(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g)];
+
+	return matches.map((match, index) => {
+		const nextMatch = matches[index + 1];
+		const valueStart = match.index + match[0].length;
+		const semicolonStart = text.indexOf(";", valueStart);
+		const valueEnd = Math.min(
+			nextMatch ? nextMatch.index : text.length,
+			semicolonStart === -1 ? text.length : semicolonStart
+		);
+
+		return {
+			macro: normalizeMacro(match[0].match(MACRO_REGEX)[0]),
+			value: text.slice(valueStart, valueEnd).trim()
+		};
+	});
 }
 
 function evaluateNumericExpression(expression, macroValues, macroAliases = new Map()) {
@@ -358,7 +375,9 @@ module.exports = {
 	MACRO_REGEX,
 	buildAliasEntries,
 	buildMacroAliasMap,
+	buildInitialMacroDefaults,
 	evaluateNumericExpression,
+	findMacroAssignments,
 	makeMacroRegex,
 	normalizeMacro,
 	resolveMacroAlias,

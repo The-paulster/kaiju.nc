@@ -10,7 +10,8 @@ fork-resolution notices, and the left-side cursor-state status bar. Its
 `options.js` centralizes Sense configuration and derived machine defaults.
 `kaijuNC.sense.modalNames` lets users replace the verbose status-bar labels for
 individual modal codes without changing their modal meaning. The default labels
-come from Meta and are selected for the configured mill or lathe machine mode.
+come from Meta and are selected for the active program's saved mill or lathe
+machine mode, or the global fallback when it has not been assigned one.
 
 ## Connections
 
@@ -19,6 +20,10 @@ come from Meta and are selected for the configured mill or lathe machine mode.
   history; tool decorations consume `MetaToolModel`.
 - Text scans use `MetaTextRanges`.
 - Machine-profile defaults come from `MetaMachineMode`.
+- Modal meanings come from the active program's shared `MetaGCodeDialect`
+  profile, keeping cursor status and motion hovers aligned with reports.
+- Motion hover entry words are resolved through `MetaMotionEngine`; Sense does
+  not use a literal `G0`-through-`G3` recognizer.
 
 ## Boundary
 

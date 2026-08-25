@@ -1,15 +1,15 @@
 // Role: interpret G-code motion/modal state and provide shared motion analysis
 // primitives. UI modules may read snapshots from here, but editor rendering and
-// product UI belong in the KAIJU feature modules. Status bar modal definitions
-// are data-driven from MetaModalDefs.json.
+// product UI belong in the KAIJU feature modules. Status-bar modal definitions
+// are split between MetaGCodeDialect and the non-dialect MetaModalDefs table.
 const {
 	getCommentRanges,
-	getAngleBracketRanges
+	maskProtectedRanges
 } = require("./MetaTextRanges");
 const {
 	buildMacroAliasMap,
 	evaluateNumericExpression,
-	normalizeMacro,
+	findMacroAssignments,
 	setMacroValue
 } = require("./MetaMacroEngine");
 const {
@@ -21,10 +21,24 @@ const {
 	formatHumanPosition,
 	formatHumanTime
 } = require("./MetaHumanFormat");
+const {
+	G_CODE_OPERATIONS,
+	G_CODE_OPERATION_DEFINITIONS,
+	resolveGCodeOperations,
+	hasGCodeOperation,
+	getPreferredGCodeBinding,
+	getGCodeWordForOperation
+} = require("./MetaGCodeDialect");
 const STATUS_MODAL_GROUPS = require("./MetaModalDefs.json");
 
 const HOVER_MOTION_CODES = new Set([0, 1, 2, 3]);
 const REPORT_MOTION_CODES = new Set([0, 1, 2, 3]);
+const MOTION_OPERATIONS_BY_CODE = new Map([
+	[0, G_CODE_OPERATIONS.MOTION_RAPID],
+	[1, G_CODE_OPERATIONS.MOTION_LINEAR],
+	[2, G_CODE_OPERATIONS.MOTION_ARC_CW],
+	[3, G_CODE_OPERATIONS.MOTION_ARC_CCW]
+]);
 const CANNED_CYCLE_CODES = new Set([73, 74, 76, 81, 82, 83, 84, 85, 86, 87, 88, 89]);
 
 function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options) {
@@ -39,9 +53,9 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 		trackMacroAssignments(codeLine, macroValues, macroAliases);
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
-		const motionCode = getMotionCode(words);
+		const motionCode = getMotionCode(words, options);
 
-		applyModalState(words, motionCode, state);
+		applyModalState(words, motionCode, state, options);
 
 		if (lineNumber === targetLineNumber) {
 			if (motionCode !== hoveredMotion.code || !HOVER_MOTION_CODES.has(motionCode)) {
@@ -59,9 +73,8 @@ function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options
 
 // Status-bar read model only. This intentionally reuses the same G-code modal
 // parsing as motion analysis, but it does not estimate geometry, time, or update
-// position. Status-only modal groups live in MetaModalDefs.json so
-// future built-in or custom modal codes can be added without touching
-// Chronoblade, Vision, or Sense hover timing.
+// position. Dialect-owned movement/modal groups come from MetaGCodeDialect;
+// unrelated status-only groups remain in MetaModalDefs.json.
 function getModalStateAtLine(document, targetLineNumber, options = {}) {
 	const state = makeInitialState(options);
 	const statusState = makeInitialStatusModalState(options);
@@ -76,9 +89,9 @@ function getModalStateAtLine(document, targetLineNumber, options = {}) {
 		trackMacroAssignments(codeLine, macroValues, macroAliases);
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
-		const motionCode = getMotionCode(words);
+		const motionCode = getMotionCode(words, options);
 
-		applyModalState(words, motionCode, state);
+		applyModalState(words, motionCode, state, options);
 		applyStatusModalState(words, statusState, options);
 	}
 
@@ -110,39 +123,32 @@ function makeInitialState(options = {}) {
 
 function makeInitialStatusModalState(options = {}) {
 	const statusState = new Map();
-	const defaultFeedModeCode = options.defaultFeedMode === "perMinute" ? 94 : 95;
-
-	setStatusModalEntry(statusState, "feedMode", defaultFeedModeCode, undefined, [], options);
-	setStatusModalEntry(statusState, "spindleSpeedMode", 97, undefined, [], options);
+	setDefaultDialectStatusEntry(
+		statusState,
+		options.defaultFeedMode === "perMinute" ? G_CODE_OPERATIONS.FEED_PER_MINUTE : G_CODE_OPERATIONS.FEED_PER_REVOLUTION,
+		options
+	);
+	setDefaultDialectStatusEntry(statusState, G_CODE_OPERATIONS.SPINDLE_FIXED_RPM, options);
 
 	return statusState;
 }
 
+function setDefaultDialectStatusEntry(statusState, operation, options) {
+	const candidate = getPreferredGCodeBinding(operation, options);
+	if (!candidate) return;
+	setDialectStatusModalEntry(statusState, {
+		operation,
+		word: { letter: "G", value: candidate.code },
+		argumentWord: undefined,
+		argument: undefined
+	});
+}
+
 function trackMacroAssignments(codeLine, macroValues, macroAliases) {
-	for (const assignment of findAssignments(codeLine)) {
+	for (const assignment of findMacroAssignments(codeLine)) {
 		const value = evaluateNumericExpression(assignment.value, macroValues, macroAliases);
 		setMacroValue(macroValues, assignment.macro, value, macroAliases);
 	}
-}
-
-function findAssignments(codeLine) {
-	const assignmentRegex = /#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g;
-	const matches = [...codeLine.matchAll(assignmentRegex)];
-
-	return matches.map((match, index) => {
-		const nextMatch = matches[index + 1];
-		const valueStart = match.index + match[0].length;
-		const semicolonStart = codeLine.indexOf(";", valueStart);
-		const valueEnd = Math.min(
-			nextMatch ? nextMatch.index : codeLine.length,
-			semicolonStart === -1 ? codeLine.length : semicolonStart
-		);
-
-		return {
-			macro: normalizeMacro(match[0].match(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/)[0]),
-			value: codeLine.slice(valueStart, valueEnd).trim()
-		};
-	});
 }
 
 function parseWords(codeLine, macroValues, macroAliases) {
@@ -233,31 +239,72 @@ function readBracketToken(text, start) {
 	return undefined;
 }
 
-function getMotionCode(words) {
+function getMotionCode(words, options = {}) {
 	let motionCode;
 
-	for (const word of words) {
-		if (word.letter !== "G" || !Number.isFinite(word.value)) {
-			continue;
-		}
-
-		const code = Math.trunc(word.value);
-
-		if (code >= 0 && code <= 3) {
-			motionCode = code;
-		}
+	for (const match of resolveGCodeOperations(words, options)) {
+		const definition = G_CODE_OPERATION_DEFINITIONS[match.operation];
+		if (definition && Number.isFinite(definition.motionCode)) motionCode = definition.motionCode;
 	}
 
 	return motionCode;
 }
 
-function applyModalState(words, motionCode, state) {
+function getMotionCodeForGCode(gCode, options = {}) {
+	const value = Number(gCode);
+	return Number.isFinite(value) ? getMotionCode([{ letter: "G", value }], options) : undefined;
+}
+
+function getMotionDisplayWords(options = {}) {
+	return {
+		rapid: getGCodeWordForOperation(G_CODE_OPERATIONS.MOTION_RAPID, options) || "Rapid",
+		cutting: [
+			G_CODE_OPERATIONS.MOTION_LINEAR,
+			G_CODE_OPERATIONS.MOTION_ARC_CW,
+			G_CODE_OPERATIONS.MOTION_ARC_CCW
+		].map(operation => getGCodeWordForOperation(operation, options)).filter(Boolean)
+	};
+}
+
+function getMotionWord(motionCode, options) {
+	const operation = MOTION_OPERATIONS_BY_CODE.get(motionCode);
+	return operation ? getGCodeWordForOperation(operation, options) : undefined;
+}
+
+function getFeedModeWord(feedMode, options) {
+	return getGCodeWordForOperation(
+		feedMode === "perRev" ? G_CODE_OPERATIONS.FEED_PER_REVOLUTION : G_CODE_OPERATIONS.FEED_PER_MINUTE,
+		options
+	);
+}
+
+function applyModalState(words, motionCode, state, options = {}) {
 	const sWord = lastWord(words, "S");
-	const dWord = lastWord(words, "D");
 	const fWord = lastWord(words, "F");
-	let hasG50 = false;
+	let hasRpmLimit = false;
 	let cycleCode;
 	let cancelCycle = false;
+
+	for (const match of resolveGCodeOperations(words, options)) {
+		switch (match.operation) {
+			case G_CODE_OPERATIONS.DISTANCE_ABSOLUTE: state.distanceMode = "absolute"; break;
+			case G_CODE_OPERATIONS.DISTANCE_INCREMENTAL: state.distanceMode = "incremental"; break;
+			case G_CODE_OPERATIONS.FEED_PER_MINUTE: state.feedMode = "perMinute"; break;
+			case G_CODE_OPERATIONS.FEED_PER_REVOLUTION: state.feedMode = "perRev"; break;
+			case G_CODE_OPERATIONS.CYCLE_RETURN_INITIAL: state.cannedCycleRetractMode = "initial"; break;
+			case G_CODE_OPERATIONS.CYCLE_RETURN_R: state.cannedCycleRetractMode = "r"; break;
+			case G_CODE_OPERATIONS.PLANE_XY: state.arcPlane = "xy"; break;
+			case G_CODE_OPERATIONS.PLANE_XZ: state.arcPlane = "xz"; break;
+			case G_CODE_OPERATIONS.PLANE_YZ: state.arcPlane = "yz"; break;
+			case G_CODE_OPERATIONS.CYCLE_CANCEL: cancelCycle = true; break;
+			case G_CODE_OPERATIONS.SPINDLE_CSS: state.spindleMode = "css"; break;
+			case G_CODE_OPERATIONS.SPINDLE_FIXED_RPM: state.spindleMode = "fixed"; break;
+			case G_CODE_OPERATIONS.SPINDLE_RPM_LIMIT:
+				hasRpmLimit = Number.isFinite(match.argument);
+				if (hasRpmLimit) state.rpmLimit = match.argument;
+				break;
+		}
+	}
 
 	for (const word of words) {
 		if (word.letter !== "G" || !Number.isFinite(word.value)) {
@@ -266,51 +313,19 @@ function applyModalState(words, motionCode, state) {
 
 		const code = Math.trunc(word.value);
 
-		if (word.value === 90) {
-			state.distanceMode = "absolute";
-		} else if (word.value === 91) {
-			state.distanceMode = "incremental";
-		} else if (code === 98) {
-			state.cannedCycleRetractMode = "initial";
-		} else if (code === 94) {
-			state.feedMode = "perMinute";
-		} else if (code === 95) {
-			state.feedMode = "perRev";
-		} else if (code === 99) {
-			state.feedMode = "perRev";
-			state.cannedCycleRetractMode = "r";
-		} else if (code === 17) {
-			state.arcPlane = "xy";
-		} else if (code === 18) {
-			state.arcPlane = "xz";
-		} else if (code === 19) {
-			state.arcPlane = "yz";
-		} else if (code >= 54 && code <= 59) {
+		if (code >= 54 && code <= 59) {
 			state.coordinateSystem = "G" + code;
-		} else if (code === 80) {
-			cancelCycle = true;
 		} else if (CANNED_CYCLE_CODES.has(code)) {
 			cycleCode = code;
-		} else if (code === 96) {
-			state.spindleMode = "css";
-		} else if (code === 97) {
-			state.spindleMode = "fixed";
-		} else if (code === 50 && sWord && Number.isFinite(sWord.value)) {
-			hasG50 = true;
-			state.rpmLimit = sWord.value;
 		}
 	}
 
-	if (sWord && Number.isFinite(sWord.value) && !hasG50) {
+	if (sWord && Number.isFinite(sWord.value) && !hasRpmLimit) {
 		if (state.spindleMode === "css") {
 			state.cssSurfaceSpeed = sWord.value;
 		} else {
 			state.rpm = sWord.value;
 		}
-	}
-
-	if (dWord && Number.isFinite(dWord.value)) {
-		state.rpmLimit = dWord.value;
 	}
 
 	if (fWord && Number.isFinite(fWord.value)) {
@@ -343,8 +358,8 @@ function analyzeArcAtLine(document, targetLineNumber, options = {}) {
 		trackMacroAssignments(codeLine, macroValues, macroAliases);
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
-		const motionCode = getMotionCode(words);
-		applyModalState(words, motionCode, state);
+		const motionCode = getMotionCode(words, options);
+		applyModalState(words, motionCode, state, options);
 
 		if (lineNumber === targetLineNumber) {
 			return analyzeArcWords(words, motionCode, state, options);
@@ -370,8 +385,8 @@ function analyzeArcsInDocument(document, options = {}) {
 		trackMacroAssignments(codeLine, macroValues, macroAliases);
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
-		const motionCode = getMotionCode(words);
-		applyModalState(words, motionCode, state);
+		const motionCode = getMotionCode(words, options);
+		applyModalState(words, motionCode, state, options);
 
 		const arc = analyzeArcWords(words, motionCode, state, options);
 		if (arc) {
@@ -449,10 +464,34 @@ function applyStatusModalState(words, statusState, options = {}) {
 			if (word.letter !== group.letter || !Number.isFinite(word.value)) {
 				continue;
 			}
-
 			setStatusModalEntry(statusState, group.key, getStatusModalCode(word.value), word, words, options);
 		}
 	}
+
+	for (const match of resolveGCodeOperations(words, options)) {
+		setDialectStatusModalEntry(statusState, match);
+	}
+}
+
+function setDialectStatusModalEntry(statusState, match) {
+	const definition = G_CODE_OPERATION_DEFINITIONS[match.operation];
+	const group = definition && STATUS_MODAL_GROUPS.find(candidate => candidate.key === definition.statusGroup);
+	if (!definition || !definition.statusGroup || !group) return;
+
+	const argument = match.argumentWord && Number.isFinite(match.argument)
+		? ` ${match.argumentWord}${formatCodeNumber(match.argument)}`
+		: "";
+	statusState.set(group.key, {
+		key: group.key,
+		order: group.order,
+		code: `${formatDialectGCode(match.word.value)}${argument}`,
+		label: definition.label
+	});
+}
+
+function formatDialectGCode(value) {
+	const code = formatCodeNumber(value);
+	return `G${Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) < 10 ? code.padStart(2, "0") : code}`;
 }
 
 function getStatusModalCode(value) {
@@ -492,10 +531,6 @@ function getStatusDefinitionLabel(definition, options) {
 }
 
 function makeFormattedStatusModalEntry(formatter, word, words, group, definition, label) {
-	if (formatter === "speedLimitS") {
-		return makeSpeedLimitStatusEntry(word, words, group, definition, label);
-	}
-
 	if (formatter === "extendedWorkOffset") {
 		return makeExtendedWorkOffsetStatusEntry(word, words, group, definition, label);
 	}
@@ -508,21 +543,6 @@ function makeStatusModalEntry(group, definition, label) {
 		key: group.key,
 		order: group.order,
 		code: definition.code,
-		label
-	};
-}
-
-function makeSpeedLimitStatusEntry(word, words, group, definition, label) {
-	const sWord = lastWord(words, "S");
-
-	if (!sWord || !Number.isFinite(sWord.value)) {
-		return undefined;
-	}
-
-	return {
-		key: group.key,
-		order: group.order,
-		code: `G50 S${formatCodeNumber(sWord.value)}`,
 		label
 	};
 }
@@ -620,7 +640,8 @@ function estimateMotion(words, motionCode, state, options) {
 
 	return {
 		motionCode,
-		machineCoordinate: hasGCode(words, 53),
+		motionWord: getMotionWord(motionCode, options),
+		machineCoordinate: hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options),
 		start,
 		end,
 		coordinateSystem: state.coordinateSystem,
@@ -630,7 +651,13 @@ function estimateMotion(words, motionCode, state, options) {
 		maxRpm: timing.maxRpm,
 		feed: state.feed,
 		feedMode: state.feedMode,
+		feedModeWord: getFeedModeWord(state.feedMode, options),
 		spindleMode: state.spindleMode,
+		spindleModeWord: getGCodeWordForOperation(
+			state.spindleMode === "css" ? G_CODE_OPERATIONS.SPINDLE_CSS : G_CODE_OPERATIONS.SPINDLE_FIXED_RPM,
+			options
+		),
+		rpmLimitWord: getGCodeWordForOperation(G_CODE_OPERATIONS.SPINDLE_RPM_LIMIT, options),
 		rpm: state.rpm,
 		cssSurfaceSpeed: state.cssSurfaceSpeed,
 		rpmLimit: state.rpmLimit,
@@ -654,7 +681,7 @@ function makeUnavailableEstimate(motionCode, start, end, reason) {
 }
 
 function applyPositionUpdate(words, state, options) {
-	if (isCoordinateSettingLine(words)) {
+	if (isCoordinateSettingLine(words, options)) {
 		return;
 	}
 
@@ -682,7 +709,7 @@ function makeEndPosition(start, words, distanceMode = "absolute", options = {}) 
 		{ position: "Y", incremental: "V", key: "y" },
 		{ position: "Z", incremental: "W", key: "z" }
 	];
-	const g53Position = hasGCode(words, 53) ? options.g53Position : undefined;
+	const g53Position = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options) ? options.g53Position : undefined;
 
 	for (const axis of axisWords) {
 		const positionWord = lastWord(words, axis.position);
@@ -1501,22 +1528,6 @@ function hasKnownPosition(position) {
 	return Number.isFinite(position.x) || Number.isFinite(position.y) || Number.isFinite(position.z);
 }
 
-function maskProtectedRanges(line) {
-	const characters = line.split("");
-	const protectedRanges = [
-		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
-	];
-
-	for (const range of protectedRanges) {
-		for (let index = range.start; index <= range.end; index++) {
-			characters[index] = " ";
-		}
-	}
-
-	return characters.join("");
-}
-
 function analyzeChronobladeRange(document, range, options) {
 	const state = makeInitialState(options);
 	const macroValues = new Map();
@@ -1547,9 +1558,9 @@ function analyzeChronobladeRange(document, range, options) {
 		}
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
-		const motionCode = getMotionCode(words);
+		const motionCode = getMotionCode(words, options);
 
-		applyModalState(words, motionCode, state);
+		applyModalState(words, motionCode, state, options);
 
 		if (isLineInRange(lineNumber, targetRange)) {
 			const toolRange = getToolRangeAtLine(toolRanges, lineNumber);
@@ -1606,13 +1617,13 @@ function analyzeChronobladeRange(document, range, options) {
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
 
-		if (isDwellLine(words)) {
+		if (isDwellLine(words, options)) {
 			positionWasUpdated = true;
 
 			if (isLineInRange(lineNumber, targetRange)) {
 				rows.push(attachChronobladeLineData(makeDwellReportRow(lineNumber, words, getToolRangeAtLine(toolRanges, lineNumber)), lineNumber, executionEntry));
 			}
-		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
+		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
@@ -1676,9 +1687,9 @@ function analyzeVisionRange(document, range, options) {
 		}
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
-		const motionCode = getMotionCode(words);
+		const motionCode = getMotionCode(words, options);
 
-		applyModalState(words, motionCode, state);
+		applyModalState(words, motionCode, state, options);
 
 		if (isLineInRange(lineNumber, targetRange)) {
 			const toolRange = getToolRangeAtLine(toolRanges, lineNumber);
@@ -1701,7 +1712,7 @@ function analyzeVisionRange(document, range, options) {
 			));
 		}
 
-		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words) && isLineInRange(lineNumber, targetRange)) {
+		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words, options) && isLineInRange(lineNumber, targetRange)) {
 			rows.push(attachVisionLineData(
 				makeVisionEventMarkerRow(lineNumber, words, state.position, state.coordinateSystem, options),
 				line,
@@ -1711,7 +1722,7 @@ function analyzeVisionRange(document, range, options) {
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
 		const activeCycleCode = getCannedCycleCode(words);
-		const hasCycleOperation = hasActiveCannedCycleOperation(words, state, activeCycleCode);
+		const hasCycleOperation = hasActiveCannedCycleOperation(words, state, activeCycleCode, options);
 
 		if (hasCycleOperation) {
 			const cycleRow = makeVisionCycleRow(lineNumber, state, words, options, getToolRangeAtLine(toolRanges, lineNumber));
@@ -1725,9 +1736,9 @@ function analyzeVisionRange(document, range, options) {
 			}
 
 			applyCannedCyclePositionUpdate(words, state);
-		} else if (isDwellLine(words)) {
+		} else if (isDwellLine(words, options)) {
 			positionWasUpdated = true;
-		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words)) {
+		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
@@ -1747,7 +1758,8 @@ function analyzeVisionRange(document, range, options) {
 
 	return {
 		rows,
-		range: targetRange
+		range: targetRange,
+		motionDisplayWords: getMotionDisplayWords(options)
 	};
 }
 
@@ -1815,20 +1827,20 @@ function getCannedCycleCode(words) {
 	return cycleCode;
 }
 
-function hasActiveCannedCycleOperation(words, state, cycleCode) {
-	if (!state.cannedCycle || hasGCode(words, 80)) {
+function hasActiveCannedCycleOperation(words, state, cycleCode, options) {
+	if (!state.cannedCycle || hasGCodeOperation(words, G_CODE_OPERATIONS.CYCLE_CANCEL, options)) {
 		return false;
 	}
 
-	return Number.isFinite(cycleCode) || hasCycleSiteAxisWords(words);
+	return Number.isFinite(cycleCode) || hasCycleSiteAxisWords(words, options);
 }
 
-function hasCycleSiteAxisWords(words) {
-	return !isCoordinateSettingLine(words) && words.some(word => ["X", "Y", "U", "V"].includes(word.letter));
+function hasCycleSiteAxisWords(words, options) {
+	return !isCoordinateSettingLine(words, options) && words.some(word => ["X", "Y", "U", "V"].includes(word.letter));
 }
 
-function hasMotionAxisWords(words) {
-	return !isCoordinateSettingLine(words) && words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+function hasMotionAxisWords(words, options) {
+	return !isCoordinateSettingLine(words, options) && words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
 }
 
 function hasMCode(words, targetCode) {
@@ -1863,8 +1875,8 @@ function hasWord(words, letter) {
 	return words.some(word => word.letter === letter && Number.isFinite(word.value));
 }
 
-function isDwellLine(words) {
-	return hasGCode(words, 4);
+function isDwellLine(words, options) {
+	return hasGCodeOperation(words, G_CODE_OPERATIONS.DWELL, options);
 }
 
 function getDwellSeconds(words) {
@@ -1883,8 +1895,8 @@ function getDwellSeconds(words) {
 	return NaN;
 }
 
-function isCoordinateSettingLine(words) {
-	return hasGCode(words, 10);
+function isCoordinateSettingLine(words, options) {
+	return hasGCodeOperation(words, G_CODE_OPERATIONS.COORDINATE_SETTING, options);
 }
 
 function makeToolChangeRows(words, previousTool, options) {
@@ -1985,7 +1997,7 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRang
 	return {
 		type: "motion",
 		lineNumber: lineNumber + 1,
-		instruction: `G${motionCode}`,
+		instruction: estimate.motionWord || `G${motionCode}`,
 		toolColor: getToolColor(toolRange),
 		start: formatPosition(estimate.start, humanFormat),
 		end: formatPosition(estimate.end, humanFormat),
@@ -1993,6 +2005,7 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRang
 		timeSeconds: estimate.timeSeconds,
 		feed: showsFeed ? estimate.feed : NaN,
 		feedMode: showsFeed ? estimate.feedMode : "",
+		feedModeWord: showsFeed ? estimate.feedModeWord : "",
 		spindle: formatSpindle(estimate, humanFormat),
 		rpmUsed: formatRpmUsed(estimate, humanFormat),
 		warnings: estimate.warnings || []
@@ -2040,7 +2053,8 @@ function makeDwellReportRow(lineNumber, words, toolRange) {
 
 function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, toolRange) {
 	const toolColor = getToolColor(toolRange);
-	const coordinateSystem = estimate.machineCoordinate ? "G53" : estimate.coordinateSystem || "";
+	const machineCoordinateWord = getGCodeWordForOperation(G_CODE_OPERATIONS.MACHINE_COORDINATE, options) || "G53";
+	const coordinateSystem = estimate.machineCoordinate ? machineCoordinateWord : estimate.coordinateSystem || "";
 	const start = shiftVisionPosition(estimate.start, estimate.coordinateSystem, options, estimate.machineCoordinate);
 	const end = shiftVisionPosition(estimate.end, estimate.coordinateSystem, options, estimate.machineCoordinate);
 	const marker = makeVisionEndpointMarker(words);
@@ -2048,7 +2062,9 @@ function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, t
 	return {
 		type: "motion",
 		lineNumber: lineNumber + 1,
-		instruction: estimate.machineCoordinate ? `G53 G${motionCode}` : `G${motionCode}`,
+		instruction: estimate.machineCoordinate
+			? `${machineCoordinateWord} ${estimate.motionWord || `G${motionCode}`}`
+			: estimate.motionWord || `G${motionCode}`,
 		motionCode,
 		tool: toolRange ? toolRange.tool : "",
 		toolColor,
@@ -2394,11 +2410,11 @@ function summarizeChronobladeRows(rows) {
 
 function formatSpindle(estimate, humanFormat) {
 	if (estimate.spindleMode === "css") {
-		return `G96 S${formatCompactModalNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` [${formatCompactModalNumber(estimate.rpmLimit, humanFormat)}]` : ""}`;
+		return `${estimate.spindleModeWord || "G96"} S${formatCompactModalNumber(estimate.cssSurfaceSpeed, humanFormat)}${Number.isFinite(estimate.rpmLimit) ? ` [${estimate.rpmLimitWord || "limit"} S${formatCompactModalNumber(estimate.rpmLimit, humanFormat)}]` : ""}`;
 	}
 
 	if (Number.isFinite(estimate.rpm)) {
-		return `G97 S${formatCompactModalNumber(estimate.rpm, humanFormat)}`;
+		return `${estimate.spindleModeWord || "G97"} S${formatCompactModalNumber(estimate.rpm, humanFormat)}`;
 	}
 
 	return "";
@@ -2442,6 +2458,7 @@ function formatTime(seconds) {
 
 module.exports = {
 	estimateMotionAtLine,
+	getMotionCodeForGCode,
 	analyzeArcAtLine,
 	analyzeArcsInDocument,
 	// Read-only modal snapshot for the KAIJU Sense status bar.

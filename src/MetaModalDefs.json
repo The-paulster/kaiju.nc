@@ -1,9 +1,5 @@
 [
   { "key": "motion", "order": 10, "letter": "G", "codes": {
-    "0": { "code": "G00", "millLabel": "Rapid", "latheLabel": "Rapid" },
-    "1": { "code": "G01", "millLabel": "Linear", "latheLabel": "Linear" },
-    "2": { "code": "G02", "millLabel": "CW arc", "latheLabel": "CW arc" },
-    "3": { "code": "G03", "millLabel": "CCW arc", "latheLabel": "CCW arc" },
     "33": { "code": "G33", "millLabel": "Spindle-synchronised", "latheLabel": "Threading" },
     "70": { "code": "G70", "millLabel": "Finishing cycle", "latheLabel": "Finishing cycle", "modes": ["lathe"] },
     "71": { "code": "G71", "millLabel": "Roughing cycle", "latheLabel": "OD/ID roughing", "modes": ["lathe"] },
@@ -12,7 +8,6 @@
     "74": { "code": "G74", "millLabel": "Reverse tapping", "latheLabel": "Face grooving" },
     "75": { "code": "G75", "millLabel": "Grooving cycle", "latheLabel": "OD/ID grooving", "modes": ["lathe"] },
     "76": { "code": "G76", "millLabel": "Fine boring", "latheLabel": "Threading cycle" },
-    "80": { "code": "G80", "millLabel": "Cycle cancel", "latheLabel": "Cycle cancel" },
     "81": { "code": "G81", "millLabel": "Drilling", "latheLabel": "Drilling" },
     "82": { "code": "G82", "millLabel": "Spot drilling", "latheLabel": "Dwell boring" },
     "83": { "code": "G83", "millLabel": "Peck drilling", "latheLabel": "Peck drilling" },
@@ -23,34 +18,20 @@
     "88": { "code": "G88", "millLabel": "Bore, manual retract", "latheLabel": "Bore, manual retract" },
     "89": { "code": "G89", "millLabel": "Bore, dwell, feed out", "latheLabel": "Bore, dwell, feed out" }
   } },
-  { "key": "distanceMode", "order": 20, "letter": "G", "codes": {
-    "90": { "code": "G90", "millLabel": "Absolute", "latheLabel": "OD/ID turning" },
-    "91": { "code": "G91", "millLabel": "Incremental", "latheLabel": "Incremental" }
-  } },
+  { "key": "distanceMode", "order": 20, "letter": "G", "codes": {} },
   { "key": "arcDistanceMode", "order": 30, "letter": "G", "codes": {
     "90.1": { "code": "G90.1", "millLabel": "Absolute arc centre", "latheLabel": "Absolute arc centre" },
     "91.1": { "code": "G91.1", "millLabel": "Incremental arc centre", "latheLabel": "Incremental arc centre" }
   } },
   { "key": "feedMode", "order": 40, "letter": "G", "codes": {
-    "93": { "code": "G93", "millLabel": "Inverse time", "latheLabel": "Inverse time" },
-    "94": { "code": "G94", "millLabel": "Feed/min", "latheLabel": "Feed/min" },
-    "95": { "code": "G95", "millLabel": "Feed/rev", "latheLabel": "Feed/rev" },
-    "98": { "code": "G98", "millLabel": "Feed/min", "latheLabel": "Feed/min", "modes": ["lathe"] },
-    "99": { "code": "G99", "millLabel": "Feed/rev", "latheLabel": "Feed/rev", "modes": ["lathe"] }
+    "93": { "code": "G93", "millLabel": "Inverse time", "latheLabel": "Inverse time" }
   } },
-  { "key": "cannedCycleReturn", "order": 50, "letter": "G", "codes": {
-    "98": { "code": "G98", "millLabel": "Initial-plane return", "latheLabel": "Initial-plane return", "modes": ["mill"] },
-    "99": { "code": "G99", "millLabel": "R-plane return", "latheLabel": "R-plane return", "modes": ["mill"] }
-  } },
+  { "key": "cannedCycleReturn", "order": 50, "letter": "G", "codes": {} },
   { "key": "units", "order": 60, "letter": "G", "codes": {
     "20": { "code": "G20", "millLabel": "Inch", "latheLabel": "Inch" },
     "21": { "code": "G21", "millLabel": "Metric", "latheLabel": "Metric" }
   } },
-  { "key": "plane", "order": 70, "letter": "G", "codes": {
-    "17": { "code": "G17", "millLabel": "X-Y plane", "latheLabel": "X-Y plane" },
-    "18": { "code": "G18", "millLabel": "X-Z plane", "latheLabel": "X-Z plane" },
-    "19": { "code": "G19", "millLabel": "Y-Z plane", "latheLabel": "Y-Z plane" }
-  } },
+  { "key": "plane", "order": 70, "letter": "G", "codes": {} },
   { "key": "cutterCompensation", "order": 80, "letter": "G", "codes": {
     "40": { "code": "G40", "millLabel": "Cutter comp off", "latheLabel": "Nose comp off" },
     "41": { "code": "G41", "millLabel": "Cutter comp left", "latheLabel": "Nose comp left" },
@@ -68,13 +49,8 @@
     "5": { "code": "M05", "millLabel": "Spindle stop", "latheLabel": "Spindle stop" },
     "19": { "code": "M19", "millLabel": "Spindle orient", "latheLabel": "Spindle orient" }
   } },
-  { "key": "spindleSpeedMode", "order": 110, "letter": "G", "codes": {
-    "96": { "code": "G96", "millLabel": "CSS", "latheLabel": "CSS" },
-    "97": { "code": "G97", "millLabel": "Fixed RPM", "latheLabel": "Fixed RPM" }
-  } },
-  { "key": "speedLimit", "order": 120, "letter": "G", "codes": {
-    "50": { "formatter": "speedLimitS", "millLabel": "Spindle limit", "latheLabel": "Spindle limit", "modes": ["lathe"] }
-  } },
+  { "key": "spindleSpeedMode", "order": 110, "letter": "G", "codes": {} },
+  { "key": "speedLimit", "order": 120, "letter": "G", "codes": {} },
   { "key": "scaling", "order": 130, "letter": "G", "codes": {
     "50": { "code": "G50", "millLabel": "Scaling off", "latheLabel": "Scaling off", "modes": ["mill"] },
     "51": { "code": "G51", "millLabel": "Scaling", "latheLabel": "Scaling", "modes": ["mill"] }

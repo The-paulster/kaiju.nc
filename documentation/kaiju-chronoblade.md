@@ -52,7 +52,7 @@ The summary cards sit to the left of these controls in a two-row, four-column
 grid. All cards have the same minimum width and never wrap their values or
 labels. Their compact minute notation uses `m`, such as `6 m 48.5 s`. They show
 total and cutting time, G0, dwell, tool time, total distance, cutting distance,
-and an `Other` time placeholder, which is currently zero.
+and time contributed by configured `Other` M-code events.
 The timing-input labels use a fixed compact column, keeping each value field
 close to its label.
 
@@ -77,9 +77,14 @@ every motion.
 - Consumes `MetaMotionEngine` analysis and human-readable row data.
 - Consumes `MetaExecutionTrace` occurrence streams and the shared formatted
   Trace-line mapping when Trace motion is selected.
-- Requests Decomposition's formatted output only as data for that shared map;
-  it does not implement execution or formatting rules.
-- Its options derive machine defaults from `MetaMachineMode`.
+- Passes the same enriched Trace snapshot to Decomposition for formatted line
+  data; this does not execute the program a second time.
+- Its options use the active program's `MetaMachineMode` profile, falling back
+  to Settings until that program has been assigned a profile.
+- Its modal and timing interpretation uses that program's `MetaGCodeDialect`
+  profile. Row `instruction`, `feedModeWord`, and spindle text already carry
+  the resolved authored spelling; Chronoblade does not translate controller G
+  codes itself.
 - Shares motion interpretation with Sense and Vision; it must not implement an
   independent timing or modal parser.
 
