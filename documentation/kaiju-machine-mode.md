@@ -39,7 +39,9 @@ acquiring two controller meanings.
 **Save profiles** writes reusable custom profiles to
 `kaijuNC.gCodeDialect.customProfiles`. **Save and use for this program** also
 selects the chosen profile for the active document. **Save as fallback** sets
-it as the Settings fallback for documents without an assigned profile.
+`kaijuNC.gCodeDialect.defaultProfile`, the Settings default for documents
+without an assigned profile. It ships as `fanucIso` (FANUC / ISO), and can name
+either built-in profile or a custom profile ID.
 
 The saved shape is intentionally declarative:
 

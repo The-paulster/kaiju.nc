@@ -32,6 +32,7 @@ const MACHINE_MODE_PROFILES = {
 };
 
 const MACHINE_MODE_STORAGE_KEY = "kaijuMachineMode.profilesByDocument";
+const DEFAULT_G_CODE_DIALECT_ID = "fanucIso";
 const machineModeChangeEmitter = new vscode.EventEmitter();
 let machineModeContext;
 
@@ -88,7 +89,7 @@ async function setGCodeDialect(document, dialectId) {
 	const target = vscode.ConfigurationTarget && vscode.ConfigurationTarget.Global
 		? vscode.ConfigurationTarget.Global
 		: true;
-	await vscode.workspace.getConfiguration("kaijuNC.chronoblade").update("gCodeDialect", dialect.id, target);
+	await vscode.workspace.getConfiguration("kaijuNC.gCodeDialect").update("defaultProfile", dialect.id, target);
 	return dialect;
 }
 
@@ -107,9 +108,22 @@ function getMachineModeForDocument(document) {
 }
 
 function getConfiguredGCodeDialectId(document, profile) {
-	const config = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document && document.uri);
-	const configured = config.get("gCodeDialect", "auto");
-	return configured === "auto" ? profile.defaultGCodeDialectId : getGCodeDialectProfile(configured).id;
+	const config = vscode.workspace.getConfiguration("kaijuNC.gCodeDialect", document && document.uri);
+	if (hasConfiguredValue(config, "defaultProfile")) {
+		return getGCodeDialectProfile(config.get("defaultProfile", DEFAULT_G_CODE_DIALECT_ID)).id;
+	}
+
+	// Preserve an explicit value written by 0.5.1 while the setting moves to
+	// the G-code Profiles section. New installs use the FANUC / ISO default.
+	const legacyConfig = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document && document.uri);
+	const legacyDialectId = legacyConfig.get("gCodeDialect", undefined);
+	if (legacyDialectId && hasConfiguredValue(legacyConfig, "gCodeDialect")) {
+		return legacyDialectId === "auto"
+			? profile.defaultGCodeDialectId
+			: getGCodeDialectProfile(legacyDialectId).id;
+	}
+
+	return DEFAULT_G_CODE_DIALECT_ID;
 }
 
 function getStoredMachineModes() {

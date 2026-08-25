@@ -2,6 +2,10 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.5.2]
+
+- Added the `kaijuNC.gCodeDialect.defaultProfile` setting for programs without a selected controller profile. It defaults to FANUC / ISO and also accepts DMG MORI or a custom profile ID.
+
 ## [0.5.1]
 
 - Added a Settings-backed G-code profile editor with separate mill and lathe keybinding tables for custom controller profiles.

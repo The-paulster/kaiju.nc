@@ -2,7 +2,7 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "scripts": {
     "test": "node --test test/*.test.js"
   },
@@ -1022,6 +1022,11 @@
               }
             },
             "description": "Custom controller G-code profiles. Use KAIJU Manage G-code Profiles to edit their separate mill and lathe keybinding tables."
+          },
+          "kaijuNC.gCodeDialect.defaultProfile": {
+            "type": "string",
+            "default": "fanucIso",
+            "description": "G-code profile used by programs without their own profile. Use fanucIso for FANUC / ISO, dmgMori for DMG MORI, or the ID of a custom profile."
           }
         }
       },
@@ -1037,11 +1042,6 @@
             ],
             "default": "latheDiameter",
             "description": "Fallback machine mode used until a program is assigned its own KAIJU Machine Mode. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
-          },
-          "kaijuNC.chronoblade.gCodeDialect": {
-            "type": "string",
-            "default": "auto",
-            "description": "Fallback G-code interpretation profile ID used until a program is assigned its own profile. Use auto for FANUC / ISO Mill and DMG MORI Lathe defaults, or select a custom profile in KAIJU Manage G-code Profiles."
           },
           "kaijuNC.chronoblade.xAxisMode": {
             "type": "string",

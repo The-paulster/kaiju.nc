@@ -23,6 +23,16 @@ test("machine and dialect state persist per document behind the Meta read contra
 	assert.equal(result.gCodeDialectId, "fanucIso");
 });
 
+test("Settings default G-code profile applies before a program selects one", () => {
+	configurationValues.set("kaijuNC.gCodeDialect.defaultProfile", "dmgMori");
+	try {
+		const result = machineMode.getMachineModeForDocument(makeDocument("G1 X1"));
+		assert.equal(result.gCodeDialectId, "dmgMori");
+	} finally {
+		configurationValues.delete("kaijuNC.gCodeDialect.defaultProfile");
+	}
+});
+
 test("custom profiles load from Settings before documents select them", () => {
 	const operations = dialect.G_CODE_OPERATIONS;
 	configurationValues.set("kaijuNC.gCodeDialect.customProfiles", [{

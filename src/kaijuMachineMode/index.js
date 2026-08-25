@@ -79,7 +79,7 @@ function registerMachineModeStatusBar(context) {
 			}
 			if (
 				event.affectsConfiguration("kaijuNC.chronoblade.machineMode")
-				|| event.affectsConfiguration("kaijuNC.chronoblade.gCodeDialect")
+				|| event.affectsConfiguration("kaijuNC.gCodeDialect.defaultProfile")
 				|| event.affectsConfiguration("kaijuNC.alias")
 				|| event.affectsConfiguration("kaijuNC.display.statusBarModeColors")
 			) update();

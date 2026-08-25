@@ -46,11 +46,13 @@ radius/diameter X convention, overrides the Settings value for every consumer.
 The `kaijuNC.chronoblade.machineMode` setting remains the fallback for programs
 that have not yet been assigned a profile.
 
-The same per-program record stores a G-code interpretation profile. The
+The same per-program record stores a G-code interpretation profile. Programs
+without one use `kaijuNC.gCodeDialect.defaultProfile`, which defaults to
+`FANUC / ISO` and may name either built-in profile or a custom profile. The
 built-in `FANUC / ISO` profile binds feed/min and feed/rev to `G94` and `G95`.
 The built-in `DMG MORI` profile binds those functions to `G98` and `G99` in
 turning mode while retaining ISO mill feed modes and mill canned-cycle return
-meanings. Auto uses `FANUC / ISO` for Mill and `DMG MORI` for either Lathe mode.
+meanings.
 
 `MetaGCodeDialect` is a deliberately bounded rebinding layer. Authored G words
 resolve to stable operations such as `feed.perMinute`, `motion.linear`, or
