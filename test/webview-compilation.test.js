@@ -48,6 +48,10 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-zero type="checkbox" checked/);
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-axis="x"[^>]* disabled/);
 	assert.doesNotMatch(html, /data-offset-enabled/);
+	assert.match(html, /Assumed start[\s\S]*?data-start-frame[\s\S]*?G53/);
+	assert.match(html, /data-start-axis="x"[^>]*value="0"/);
+	assert.match(html, /savedWebviewState = vscode\.getState\(\) \|\| \{\}/);
+	assert.match(html, /viewport: \{ plane: planeSelect\.value, zoom, pan: \{ x: pan\.x, y: pan\.y \} \}/);
 });
 
 test("G-code profile editor scripts compile", () => {

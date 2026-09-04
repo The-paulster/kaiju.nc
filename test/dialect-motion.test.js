@@ -135,6 +135,40 @@ test("Vision applies the G53 frame offset", () => {
 	assert.equal(g53Row.points.at(-1).x, 200);
 });
 
+test("Vision draws its assumed start in the selected coordinate frame", () => {
+	const document = makeDocument("G54 G0 X10");
+	const result = motion.analyzeVisionRange(document, undefined, {
+		initialPosition: { coordinateSystem: "G53", x: 0, y: 0, z: 0 },
+		workOffsets: {
+			G53: { x: 0, y: 0, z: 0 },
+			G54: { x: 100, y: 0, z: 0 }
+		},
+		referenceFrame: "G53"
+	});
+	const row = result.rows.find(candidate => candidate.type === "motion");
+	assert.equal(row.start.x, -100);
+	assert.equal(row.end.x, 10);
+	assert.equal(row.points[0].x, 0);
+	assert.equal(row.points.at(-1).x, 110);
+});
+
+test("Vision preserves physical axes when the next move resumes the active work frame after G53", () => {
+	const document = makeDocument("G53 G0 Z-250\nG0 X100");
+	const result = motion.analyzeVisionRange(document, undefined, {
+		workOffsets: {
+			G53: { x: 0, y: 0, z: 0 },
+			G54: { x: 50, y: 0, z: 100 }
+		},
+		referenceFrame: "G53"
+	});
+	const row = result.rows.find(candidate => candidate.type === "motion" && candidate.coordinateSystem === "G54");
+	assert.equal(row.start.z, -350);
+	assert.equal(row.end.z, -350);
+	assert.equal(row.points[0].z, -250);
+	assert.equal(row.points.at(-1).z, -250);
+	assert.equal(row.points.at(-1).x, 150);
+});
+
 test("Vision preserves the prior work frame at the start of a G53 move", () => {
 	const document = makeDocument("G54 G0 X0\nG0 X10\nG53 G0 X0");
 	const result = motion.analyzeVisionRange(document, undefined, {

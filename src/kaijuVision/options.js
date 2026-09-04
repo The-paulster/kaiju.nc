@@ -26,6 +26,7 @@ function getVisionOptions(document, rawOptions = {}) {
 		useToolColors: rawOptions.useToolColors === true,
 		workOffsets: normalizeVisionWorkOffsets(rawOptions.workOffsets),
 		referenceFrame: normalizeVisionReferenceFrame(rawOptions.referenceFrame),
+		initialPosition: normalizeVisionInitialPosition(rawOptions.initialPosition),
 		machineMode: profile.id,
 		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
@@ -64,6 +65,15 @@ const VISION_COORDINATE_FRAME_CODES = ["G53", "G54", "G55", "G56", "G57", "G58",
 
 function normalizeVisionReferenceFrame(value) {
 	return VISION_COORDINATE_FRAME_CODES.includes(value) ? value : "G53";
+}
+
+function normalizeVisionInitialPosition(value = {}) {
+	return {
+		coordinateSystem: normalizeVisionReferenceFrame(value.coordinateSystem),
+		x: normalizeOffsetAxis(value.x),
+		y: normalizeOffsetAxis(value.y),
+		z: normalizeOffsetAxis(value.z)
+	};
 }
 
 function normalizeVisionWorkOffsets(rawOffsets = {}) {
@@ -121,5 +131,6 @@ module.exports = {
 	getVisionOptions,
 	normalizeVisionWorkOffsets,
 	normalizeVisionReferenceFrame,
+	normalizeVisionInitialPosition,
 	VISION_COORDINATE_FRAME_CODES
 };

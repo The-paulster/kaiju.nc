@@ -4,6 +4,12 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.5.2]
 
+- Vision Live refreshes now retain the current plane's pan and zoom viewport.
+
+- Vision's Offsets panel now has a per-program Assumed start position, defaulting to G53 X0/Y0/Z0, with a coordinate-frame selector for the pre-program physical tool location.
+
+- Fixed Vision retaining a previous coordinate frame's raw axis value after a WCS change; subsequent single-axis moves now preserve the physical positions of their omitted axes.
+
 - Vision now exposes Offsets and Macro directly at the top level without an intermediate Data menu; its G53-G59 coordinate-frame panel immediately recalculates toolpath placement after committed axis or Ref. changes while keeping labels and reported positions in their authored coordinate system, and provides one Ref. radio selection plus independent Show axes controls, both defaulting to G53.
 
 - Vision now reads G53 destinations directly from authored axis words; the obsolete G53 preview-coordinate settings were removed.

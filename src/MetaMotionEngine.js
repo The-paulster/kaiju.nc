@@ -104,8 +104,22 @@ function getModalStateAtLine(document, targetLineNumber, options = {}) {
 }
 
 function makeInitialState(options = {}) {
+	const initialPosition = options.initialPosition && typeof options.initialPosition === "object"
+		? options.initialPosition
+		: undefined;
+	const position = {};
+	for (const axis of ["x", "y", "z"]) {
+		if (initialPosition && Number.isFinite(Number(initialPosition[axis]))) {
+			position[axis] = Number(initialPosition[axis]);
+		}
+	}
+	const positionCoordinateSystem = initialPosition && typeof initialPosition.coordinateSystem === "string"
+		? initialPosition.coordinateSystem
+		: undefined;
+
 	return {
-		position: {},
+		position,
+		positionCoordinateSystem,
 		motionCode: undefined,
 		arcPlane: "xy",
 		distanceMode: "absolute",
@@ -1684,9 +1698,10 @@ function analyzeVisionRange(document, range, options) {
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words, options);
-		const startCoordinateSystem = state.coordinateSystem;
 
 		applyModalState(words, motionCode, state, options);
+		rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
+		const startCoordinateSystem = state.positionCoordinateSystem || state.coordinateSystem;
 
 		if (isLineInRange(lineNumber, targetRange)) {
 			const toolRange = getToolRangeAtLine(toolRanges, lineNumber);
@@ -1703,7 +1718,7 @@ function analyzeVisionRange(document, range, options) {
 
 		if (toolRange && isLineInRange(lineNumber, targetRange)) {
 			rows.push(attachVisionLineData(
-				makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, state.coordinateSystem, options),
+				makeVisionToolChangeRow(lineNumber, toolRange, getPreviousToolRange(toolRanges, toolRange), state.position, state.positionCoordinateSystem || state.coordinateSystem, options),
 				line,
 				executionEntry
 			));
@@ -1711,7 +1726,7 @@ function analyzeVisionRange(document, range, options) {
 
 		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words, options) && isLineInRange(lineNumber, targetRange)) {
 			rows.push(attachVisionLineData(
-				makeVisionEventMarkerRow(lineNumber, words, state.position, state.coordinateSystem, options),
+				makeVisionEventMarkerRow(lineNumber, words, state.position, state.positionCoordinateSystem || state.coordinateSystem, options),
 				line,
 				executionEntry
 			));
@@ -1733,19 +1748,23 @@ function analyzeVisionRange(document, range, options) {
 			}
 
 			applyCannedCyclePositionUpdate(words, state);
+			state.positionCoordinateSystem = state.coordinateSystem;
 		} else if (isDwellLine(words, options)) {
 			positionWasUpdated = true;
 		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
+			const isMachineCoordinate = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options);
+			estimate.machineCoordinate = isMachineCoordinate;
 			estimate.startCoordinateSystem = startCoordinateSystem;
-			estimate.endCoordinateSystem = estimate.machineCoordinate
+			estimate.endCoordinateSystem = isMachineCoordinate
 				? getGCodeWordForOperation(G_CODE_OPERATIONS.MACHINE_COORDINATE, options) || "G53"
 				: state.coordinateSystem;
 			positionWasUpdated = true;
 
 			const isFirstProgramMotion = !hasSeenProgramMotion;
 			hasSeenProgramMotion = true;
-			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
+			state.positionCoordinateSystem = estimate.endCoordinateSystem;
+			if ((!isFirstProgramMotion || hasKnownPosition(options.initialPosition || {})) && isLineInRange(lineNumber, targetRange)) {
 				const row = makeVisionMotionRow(lineNumber, words, activeMotionCode, estimate, options, getToolRangeAtLine(toolRanges, lineNumber));
 				attachVisionLineData(row, line, executionEntry);
 				rows.push(row);
@@ -1754,6 +1773,11 @@ function analyzeVisionRange(document, range, options) {
 
 		if (!positionWasUpdated) {
 			applyPositionUpdate(words, state, options);
+			if (hasMotionAxisWords(words, options)) {
+				state.positionCoordinateSystem = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options)
+					? getGCodeWordForOperation(G_CODE_OPERATIONS.MACHINE_COORDINATE, options) || "G53"
+					: state.coordinateSystem;
+			}
 		}
 	}
 
@@ -2307,6 +2331,23 @@ function shiftVisionPosition(point, coordinateSystem, options = {}, machineCoord
 	}
 
 	return shifted;
+}
+
+function rebaseVisionPositionForCoordinateSystem(state, coordinateSystem, options) {
+	const previousCoordinateSystem = state.positionCoordinateSystem;
+
+	if (!previousCoordinateSystem || previousCoordinateSystem === coordinateSystem) {
+		return;
+	}
+
+	const previousOffset = getVisionWorkOffset(previousCoordinateSystem, options);
+	const nextOffset = getVisionWorkOffset(coordinateSystem, options);
+	for (const axis of ["x", "y", "z"]) {
+		if (Number.isFinite(state.position[axis])) {
+			state.position[axis] += (Number(previousOffset[axis]) || 0) - (Number(nextOffset[axis]) || 0);
+		}
+	}
+	state.positionCoordinateSystem = coordinateSystem;
 }
 
 function getVisionWorkOffset(coordinateSystem, options = {}) {

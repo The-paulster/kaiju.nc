@@ -21,6 +21,7 @@ const { maskProtectedRanges } = require("../MetaTextRanges");
 const {
 	VISION_COORDINATE_FRAME_CODES,
 	getVisionOptions,
+	normalizeVisionInitialPosition,
 	normalizeVisionReferenceFrame,
 	normalizeVisionWorkOffsets
 } = require("./options");
@@ -198,6 +199,7 @@ async function saveOffsetsFromWebview(offsets, referenceFrame, rawOptions) {
 	const normalizedReferenceFrame = normalizeVisionReferenceFrame(referenceFrame);
 	await saveDocumentVisionWorkOffsets(editor.document, normalizedOffsets);
 	await saveDocumentVisionReferenceFrame(editor.document, normalizedReferenceFrame);
+	await saveDocumentVisionSettings(editor.document, rawOptions);
 
 	const options = makeVisionOptions(editor.document, Object.assign({}, rawOptions, {
 		workOffsets: normalizedOffsets,
@@ -243,9 +245,11 @@ async function resetOffsetsFromWebview(rawOptions) {
 	delete allReferenceFrames[documentKey];
 	await visionContext.workspaceState.update("kaijuVision.referenceFramesByDocument", allReferenceFrames);
 
-	const settings = Object.assign({}, rawOptions);
+	const settings = Object.assign({}, getDocumentVisionSettings(editor.document), rawOptions);
 	delete settings.workOffsets;
 	delete settings.referenceFrame;
+	delete settings.initialPosition;
+	await saveDocumentVisionSettings(editor.document, settings);
 	const options = makeVisionOptions(editor.document, settings);
 	const mode = visionState && visionState.mode ? visionState.mode : "whole";
 	visionState = { documentUriText: editor.document.uri.toString(), mode, options };
@@ -292,6 +296,7 @@ function normalizeVisionPanelSettings(value = {}) {
 		showTraceLine: value.showTraceLine !== false,
 		plane: value.plane,
 		useToolColors: value.useToolColors === true,
+		initialPosition: normalizeVisionInitialPosition(value.initialPosition),
 		showLabels: value.showLabels !== false,
 		showEndpoints: value.showEndpoints !== false,
 		showZeroLines: value.showZeroLines === true,
@@ -1225,7 +1230,7 @@ function renderVisionHtml(document, mode, options, result) {
 	</section>
 
 	${renderVisionViewPanel(options)}
-	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.offsetPanelOpen)}
+	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.initialPosition, options.offsetPanelOpen)}
 	${renderVisionVisibilityPanel(result.rows)}
 	${renderVisionMacroPanel(macroVariables, savedMacroInputs, options.overrideProgramInitialValues)}
 	<section class="summary">
@@ -1249,6 +1254,10 @@ function renderVisionHtml(document, mode, options, result) {
 	<script>
 		const vscode = acquireVsCodeApi();
 		const data = JSON.parse(document.getElementById("vision-data").textContent);
+		const savedWebviewState = vscode.getState() || {};
+		const savedViewport = savedWebviewState.viewport && savedWebviewState.viewport.plane === data.options.plane
+			? savedWebviewState.viewport
+			: undefined;
 		const planeSelect = document.getElementById("plane");
 		const analysisModeSelect = document.getElementById("analysisMode");
 		const lineDataSelect = document.getElementById("lineData");
@@ -1296,8 +1305,11 @@ function renderVisionHtml(document, mode, options, result) {
 		let labelCacheBytes = 0;
 		let labelCacheRunId = 0;
 		let lastPrewarmKey = "";
-		let zoom = 1;
-		let pan = { x: 0, y: 0 };
+		let zoom = savedViewport && Number.isFinite(Number(savedViewport.zoom)) ? Math.max(1, Number(savedViewport.zoom)) : 1;
+		let pan = savedViewport && savedViewport.pan && Number.isFinite(Number(savedViewport.pan.x)) && Number.isFinite(Number(savedViewport.pan.y))
+			? { x: Number(savedViewport.pan.x), y: Number(savedViewport.pan.y) }
+			: { x: 0, y: 0 };
+		zoomLabel.textContent = Math.round(zoom * 100) + "%";
 		let currentFitBounds;
 		let currentBounds;
 		let currentTableRows = [];
@@ -1306,6 +1318,12 @@ function renderVisionHtml(document, mode, options, result) {
 		const projectedPlaneCache = new Map();
 		let dragState;
 		let playbackMacroSortMode = "number";
+
+		function saveViewport() {
+			vscode.setState(Object.assign({}, vscode.getState() || {}, {
+				viewport: { plane: planeSelect.value, zoom, pan: { x: pan.x, y: pan.y } }
+			}));
+		}
 		function makePlaybackMotionState(rows) {
 			const motionExecutionIndexes = [];
 			const motionIndexByExecutionIndex = new Map();
@@ -1348,6 +1366,7 @@ function renderVisionHtml(document, mode, options, result) {
 				useToolColors: toolColorsInput.checked,
 				workOffsets: collectWorkOffsets(),
 				referenceFrame: collectReferenceFrame(),
+				initialPosition: collectInitialPosition(),
 				showLabels: labelsInput.checked,
 				showEndpoints: endpointsInput.checked,
 				showZeroLines: zeroLinesInput.checked,
@@ -1389,6 +1408,15 @@ function renderVisionHtml(document, mode, options, result) {
 		function collectReferenceFrame() {
 			const selected = document.querySelector("[data-offset-reference]:checked");
 			return selected ? selected.value : "G53";
+		}
+
+		function collectInitialPosition() {
+			return {
+				coordinateSystem: document.querySelector("[data-start-frame]").value,
+				x: Number(document.querySelector("[data-start-axis='x']").value) || 0,
+				y: Number(document.querySelector("[data-start-axis='y']").value) || 0,
+				z: Number(document.querySelector("[data-start-axis='z']").value) || 0
+			};
 		}
 
 		function previewOffsets() {
@@ -1735,6 +1763,7 @@ function renderVisionHtml(document, mode, options, result) {
 			if (!currentFitBounds) {
 				zoom = Math.max(1, nextZoom);
 				zoomLabel.textContent = Math.round(zoom * 100) + "%";
+				saveViewport();
 				render();
 				return;
 			}
@@ -1766,6 +1795,7 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			zoomLabel.textContent = Math.round(zoom * 100) + "%";
+			saveViewport();
 			render();
 		}
 
@@ -1773,6 +1803,7 @@ function renderVisionHtml(document, mode, options, result) {
 			zoom = 1;
 			pan = { x: 0, y: 0 };
 			zoomLabel.textContent = "100%";
+			saveViewport();
 			render();
 		}
 
@@ -3599,6 +3630,7 @@ function renderVisionHtml(document, mode, options, result) {
 				x: dragState.startPan.x - dx / Math.max(1, rect.width) * dragState.bounds.width,
 				y: dragState.startPan.y - dy / Math.max(1, rect.height) * dragState.bounds.height
 			};
+			saveViewport();
 			render();
 		});
 		viewer.addEventListener("pointerup", event => {
@@ -3636,6 +3668,8 @@ function renderVisionHtml(document, mode, options, result) {
 		document.querySelectorAll("[data-offset-reference]").forEach(input => input.addEventListener("change", () => selectOffsetReference(input)));
 		document.querySelectorAll("[data-offset-zero]").forEach(input => input.addEventListener("change", render));
 		document.querySelectorAll("[data-offset-axis]").forEach(input => input.addEventListener("change", previewOffsets));
+		document.querySelector("[data-start-frame]").addEventListener("change", previewOffsets);
+		document.querySelectorAll("[data-start-axis]").forEach(input => input.addEventListener("change", previewOffsets));
 		document.getElementById("resetOffsets").addEventListener("click", () => {
 			vscode.postMessage({ type: "resetOffsets", options: collectVisionOptions() });
 		});
@@ -3658,9 +3692,10 @@ function renderVisionHtml(document, mode, options, result) {
 </html>`;
 }
 
-function renderVisionOffsetPanel(workOffsets, referenceFrame, isOpen = false) {
+function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, isOpen = false) {
 	const reference = normalizeVisionReferenceFrame(referenceFrame);
 	const normalizedOffsets = normalizeVisionWorkOffsets(workOffsets);
+	const start = normalizeVisionInitialPosition(initialPosition);
 	const rows = VISION_COORDINATE_FRAME_CODES.map(code => {
 		const offset = normalizedOffsets[code];
 		const isReference = code === reference;
@@ -3676,6 +3711,14 @@ function renderVisionOffsetPanel(workOffsets, referenceFrame, isOpen = false) {
 		</tr>`;
 	}).join("");
 	return `<section id="offsetPanel" class="offset-panel${isOpen ? " open" : ""}">
+		<div class="offset-actions" title="Vision draws the first move from this assumed physical tool position. The coordinates are expressed in the selected frame.">
+			<label>Assumed start
+				<select data-start-frame>${VISION_COORDINATE_FRAME_CODES.map(code => `<option value="${escapeAttribute(code)}"${code === start.coordinateSystem ? " selected" : ""}>${escapeHtml(code)}</option>`).join("")}</select>
+			</label>
+			<label>X <input data-start-axis="x" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(start.x))}"></label>
+			<label>Y <input data-start-axis="y" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(start.y))}"></label>
+			<label>Z <input data-start-axis="z" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(start.z))}"></label>
+		</div>
 		<table>
 			<thead>
 				<tr>

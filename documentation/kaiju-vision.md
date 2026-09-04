@@ -47,6 +47,10 @@ Vision also uses the source program's saved Machine Mode profile, with the
 global Machine Mode setting as the fallback. Changing that profile refreshes an
 open Vision report and resets only that program's saved Auto-plane choice.
 
+When Live successfully refreshes the report, Vision retains the current plane's
+pan and zoom viewport. Fit and selecting a different plane deliberately reset
+that viewport.
+
 Changing KAIJU Machine Mode resets the active source program's saved Vision
 plane to that machine profile's configured Vision default, while retaining its
 other Vision settings. With Vision plane set to Auto, the default settings are
@@ -70,6 +74,11 @@ The selected Ref. row is always X0/Y0/Z0 and its axis fields are disabled.
 Selecting another reference rebases every frame around it before recalculating,
 so the existing toolpath relationships do not move.
 
+Offsets also contains an **Assumed start** selector and X/Y/Z fields. It
+defaults to G53 X0/Y0/Z0 and supplies Vision's physical tool position before
+the first programmed move. The selected frame applies only to those entered
+start coordinates; it does not select a modal work frame for the program.
+
 Coordinate-frame offsets affect only rendered placement. Vision's table,
 labels, hovers, and playback position continue to show the coordinates authored
 in each move's active G53-G59 frame.
@@ -78,6 +87,11 @@ At a coordinate-frame switch, Vision renders the move's start using the prior
 frame and its destination using the newly active frame. A G53 move therefore
 ends at its authored machine-coordinate target rather than inheriting the
 previous work offset.
+
+After a non-modal G53 move, or whenever the active work frame changes, Vision
+rebases its stored position into the frame used by the next command. An X-only
+move therefore preserves the tool's physical Y/Z position rather than treating
+the prior frame's numeric values as coordinates in the new frame.
 
 Vision playback is a frozen Trace-backed inspection session, not a machine
 simulation. The compact Play control walks existing execution occurrences and
