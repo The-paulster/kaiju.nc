@@ -2,6 +2,8 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.5.3]
+
 ## [0.5.2]
 
 - Vision Live refreshes now retain the current plane's pan and zoom viewport.
