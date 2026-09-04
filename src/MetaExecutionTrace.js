@@ -164,6 +164,8 @@ function buildExecutionTrace(document, options = {}) {
 		initialOverrides: new Set(),
 		firstExecutableLine: findFirstExecutableGMLine(document),
 		labels: buildLabelMap(document),
+		conditionalStructures: buildConditionalStructures(document),
+		conditionalStack: [],
 		loopStack: [],
 		lineStates: new Map(),
 		lineMacroHistories: new Map(),
@@ -172,6 +174,9 @@ function buildExecutionTrace(document, options = {}) {
 		problems: [],
 		options: traceOptions
 	};
+	for (const problem of context.conditionalStructures.problems) {
+		addProblem(context, problem.lineNumber, problem.message);
+	}
 	for (const [macro, value] of Object.entries(options.initialMacroValues || {})) {
 		if (Number.isFinite(Number(value))) {
 			setMacroValue(context.macroValues, macro, Number(value), macroAliases);
@@ -215,14 +220,16 @@ function buildExecutionTrace(document, options = {}) {
 			const assignments = control.handled
 				? control.assignments || []
 				: applyAssignments(codeLine, lineNumber, context);
-			const macroAlarm = control.handled ? control.terminal === true : isMacroAlarmLine(codeLine);
-			const programEnd = isProgramEndLine(codeLine);
+			const effectiveCodeLine = control.effectiveCodeLine === undefined ? codeLine : control.effectiveCodeLine;
+			const macroAlarm = control.handled ? control.terminal === true : isMacroAlarmLine(effectiveCodeLine);
+			const programEnd = isProgramEndLine(effectiveCodeLine);
 
 			recordLineMacroValues(codeLine, lineNumber, context);
 			if (traceOptions.includeExecutionEntries) {
 				recordExecutionEntry(
 					document.lineAt(lineNumber).text,
 					codeLine,
+					effectiveCodeLine,
 					lineNumber,
 					context,
 					macroValuesBeforeLine,
@@ -258,7 +265,7 @@ function buildExecutionTrace(document, options = {}) {
 	};
 }
 
-function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroValuesBeforeLine, control, assignments, termination) {
+function recordExecutionEntry(sourceLine, codeLine, effectiveCodeLine, lineNumber, context, macroValuesBeforeLine, control, assignments, termination) {
 	const values = {};
 	for (const match of String(codeLine || "").matchAll(MACRO_REGEX)) {
 		const macro = normalizeMacro(match[0]);
@@ -281,11 +288,12 @@ function recordExecutionEntry(sourceLine, codeLine, lineNumber, context, macroVa
 		entry.macroDisplayPrecisionChanges = makeMacroDisplayPrecisionChanges(codeLine, context.macroAliases);
 	}
 	if (context.options.includeDecompositionData) {
-		entry.codeLine = codeLine;
+		entry.codeLine = effectiveCodeLine;
 		entry.control = control.detail;
 		entry.assignments = assignments;
 		entry.termination = termination;
 	}
+	entry.effectiveCodeLine = effectiveCodeLine;
 	context.executionEntries.push(entry);
 }
 
@@ -380,6 +388,7 @@ function executeControlLine(codeLine, lineNumber, context) {
 		return {
 			handled: true,
 			nextLine: targetLine,
+			effectiveCodeLine: "",
 			detail: { kind: "ifGoto", condition, body: ifGoto.body, target: ifGoto.target, taken: condition.value }
 		};
 	}
@@ -387,13 +396,67 @@ function executeControlLine(codeLine, lineNumber, context) {
 	const ifThen = findIfThen(codeLine);
 	if (ifThen) {
 		const condition = evaluateConditionDetails(ifThen.condition, lineNumber, context);
-		const assignments = condition.value ? applyAssignments(ifThen.body, lineNumber, context) : [];
+		if (ifThen.isBlock) {
+			const structure = context.conditionalStructures.blocks.get(lineNumber);
+			if (!structure) {
+				return {
+					handled: true,
+					effectiveCodeLine: "",
+					detail: { kind: "ifBlock", condition, body: "", taken: condition.value, invalid: true }
+				};
+			}
+			if (condition.value) {
+				context.conditionalStack.push({ startLine: lineNumber, endLine: structure.endLine });
+			}
+			return {
+				handled: true,
+				nextLine: condition.value ? undefined : (structure.elseLine === undefined ? structure.endLine + 1 : structure.elseLine),
+				effectiveCodeLine: "",
+				detail: { kind: "ifBlock", condition, body: "", taken: condition.value, elseLine: structure.elseLine, endLine: structure.endLine }
+			};
+		}
+		const body = condition.value ? ifThen.thenBody : ifThen.elseBody;
+		const assignments = body ? applyAssignments(body, lineNumber, context) : [];
 		return {
 			handled: true,
 			assignments,
-			terminal: condition.value && isMacroAlarmLine(ifThen.body),
-			detail: { kind: "ifThen", condition, body: ifThen.body, taken: condition.value }
+			terminal: Boolean(body) && isMacroAlarmLine(body),
+			effectiveCodeLine: body || "",
+			detail: { kind: "ifThen", condition, body, taken: condition.value }
 		};
+	}
+
+	const blockElse = findBlockElse(codeLine);
+	if (blockElse) {
+		const structure = context.conditionalStructures.elses.get(lineNumber);
+		if (!structure) {
+			return { handled: true, effectiveCodeLine: "", detail: { kind: "else", invalid: true } };
+		}
+		const openIndex = context.conditionalStack.findLastIndex(frame => frame.startLine === structure.startLine);
+		if (openIndex !== -1) {
+			context.conditionalStack.splice(openIndex, 1);
+			return {
+				handled: true,
+				nextLine: structure.endLine + 1,
+				effectiveCodeLine: "",
+				detail: { kind: "else", body: blockElse.body, endLine: structure.endLine, skipped: true }
+			};
+		}
+		const assignments = blockElse.body ? applyAssignments(blockElse.body, lineNumber, context) : [];
+		return {
+			handled: true,
+			assignments,
+			terminal: Boolean(blockElse.body) && isMacroAlarmLine(blockElse.body),
+			effectiveCodeLine: blockElse.body,
+			detail: { kind: "else", body: blockElse.body, endLine: structure.endLine }
+		};
+	}
+
+	const blockEnd = findBlockEnd(codeLine);
+	if (blockEnd) {
+		const openIndex = context.conditionalStack.findLastIndex(frame => frame.endLine === lineNumber);
+		if (openIndex !== -1) context.conditionalStack.splice(openIndex, 1);
+		return { handled: true, effectiveCodeLine: "", detail: { kind: "endif" } };
 	}
 
 	const whileStart = findWhileStart(codeLine);
@@ -403,6 +466,7 @@ function executeControlLine(codeLine, lineNumber, context) {
 			context.loopStack.push({ doNumber: whileStart.doNumber, startLine: lineNumber });
 			return {
 				handled: true,
+				effectiveCodeLine: "",
 				detail: { kind: "while", condition, body: `DO${whileStart.doNumber}`, doNumber: whileStart.doNumber, taken: true }
 			};
 		}
@@ -417,6 +481,7 @@ function executeControlLine(codeLine, lineNumber, context) {
 		return {
 			handled: true,
 			nextLine: endLine + 1,
+			effectiveCodeLine: "",
 			detail: { kind: "while", condition, body: `DO${whileStart.doNumber}`, doNumber: whileStart.doNumber, taken: false }
 		};
 	}
@@ -426,12 +491,13 @@ function executeControlLine(codeLine, lineNumber, context) {
 		const loop = findOpenLoop(context.loopStack, loopEnd.doNumber);
 		if (!loop) {
 			addProblem(context, lineNumber, `END${loopEnd.doNumber} has no active WHILE DO${loopEnd.doNumber}.`);
-			return { handled: true, detail: { kind: "loopEnd", doNumber: loopEnd.doNumber } };
+			return { handled: true, effectiveCodeLine: "", detail: { kind: "loopEnd", doNumber: loopEnd.doNumber } };
 		}
 		context.loopStack.splice(context.loopStack.indexOf(loop), 1);
 		return {
 			handled: true,
 			nextLine: loop.startLine,
+			effectiveCodeLine: "",
 			detail: { kind: "loopEnd", doNumber: loopEnd.doNumber, targetLine: loop.startLine }
 		};
 	}
@@ -442,6 +508,7 @@ function executeControlLine(codeLine, lineNumber, context) {
 		return {
 			handled: true,
 			nextLine: targetLine,
+			effectiveCodeLine: "",
 			detail: { kind: "goto", target: gotoTarget, targetLine }
 		};
 	}
@@ -576,8 +643,90 @@ function findIfGoto(codeLine) {
 
 function findIfThen(codeLine) {
 	const statement = readConditionalStatement(codeLine, "IF");
-	const match = statement && statement.rest.match(/^\s*THEN\s+(.+)$/i);
-	return match ? { condition: statement.condition, body: match[1].trim() } : undefined;
+	const match = statement && statement.rest.match(/^\s*THEN\b([\s\S]*)$/i);
+	if (!match) return undefined;
+	const branches = splitInlineElse(match[1]);
+	return {
+		condition: statement.condition,
+		thenBody: branches.thenBody,
+		elseBody: branches.elseBody,
+		isBlock: !branches.thenBody && branches.elseBody === undefined
+	};
+}
+
+function splitInlineElse(body) {
+	const elseIndex = findTopLevelKeyword(body, "ELSE");
+	if (elseIndex === -1) return { thenBody: String(body || "").trim(), elseBody: undefined };
+	return {
+		thenBody: body.slice(0, elseIndex).trim(),
+		elseBody: body.slice(elseIndex + 4).trim()
+	};
+}
+
+function findTopLevelKeyword(text, keyword) {
+	let depth = 0;
+	for (let index = 0; index <= text.length - keyword.length; index++) {
+		if (text[index] === "[") depth++;
+		else if (text[index] === "]") depth = Math.max(0, depth - 1);
+		if (depth !== 0 || text.slice(index, index + keyword.length).toUpperCase() !== keyword) continue;
+		const before = text[index - 1];
+		const after = text[index + keyword.length];
+		if ((!before || !/[A-Za-z0-9_]/.test(before)) && (!after || !/[A-Za-z0-9_]/.test(after))) return index;
+	}
+	return -1;
+}
+
+function findBlockElse(codeLine) {
+	const match = String(codeLine || "").match(/^\s*(?:N\d+\s*)?ELSE\b([\s\S]*)$/i);
+	return match ? { body: match[1].trim(), start: match.index, end: match.index + 4 } : undefined;
+}
+
+function findBlockEnd(codeLine) {
+	const match = String(codeLine || "").match(/^\s*(?:N\d+\s*)?ENDIF\b/i);
+	return match ? { start: match.index, end: match.index + match[0].length } : undefined;
+}
+
+function buildConditionalStructures(document) {
+	const blocks = new Map();
+	const elses = new Map();
+	const problems = [];
+	const stack = [];
+
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const codeLine = maskProtectedRanges(document.lineAt(lineNumber).text);
+		const ifThen = findIfThen(codeLine);
+		if (ifThen && ifThen.isBlock) {
+			stack.push({ lineNumber, elseLine: undefined });
+			continue;
+		}
+		const blockElse = findBlockElse(codeLine);
+		if (blockElse) {
+			const open = stack[stack.length - 1];
+			if (!open) {
+				problems.push({ lineNumber, message: "ELSE has no matching IF THEN before it." });
+			} else if (open.elseLine !== undefined) {
+				problems.push({ lineNumber, message: "IF THEN block already has an ELSE." });
+			} else {
+				open.elseLine = lineNumber;
+			}
+			continue;
+		}
+		const blockEnd = findBlockEnd(codeLine);
+		if (!blockEnd) continue;
+		const open = stack.pop();
+		if (!open) {
+			problems.push({ lineNumber, message: "ENDIF has no matching IF THEN before it." });
+			continue;
+		}
+		const structure = { startLine: open.lineNumber, elseLine: open.elseLine, endLine: lineNumber };
+		blocks.set(open.lineNumber, structure);
+		if (open.elseLine !== undefined) elses.set(open.elseLine, structure);
+	}
+
+	for (const open of stack) {
+		problems.push({ lineNumber: open.lineNumber, message: "IF THEN has no matching ENDIF." });
+	}
+	return { blocks, elses, problems };
 }
 
 function findGoto(codeLine) {
@@ -762,6 +911,7 @@ module.exports = {
 	getExecutionTrace,
 	onDidChangeExecutionTrace,
 	buildExecutionTrace,
+	buildConditionalStructures,
 	getMacroHistory,
 	attachTraceOutputLines
 };

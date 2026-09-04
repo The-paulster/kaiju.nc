@@ -4,6 +4,18 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.5.2]
 
+- Vision now exposes Offsets and Macro directly at the top level without an intermediate Data menu; its G53-G59 coordinate-frame panel immediately recalculates toolpath placement after committed axis or Ref. changes while keeping labels and reported positions in their authored coordinate system, and provides one Ref. radio selection plus independent Show axes controls, both defaulting to G53.
+
+- Vision now reads G53 destinations directly from authored axis words; the obsolete G53 preview-coordinate settings were removed.
+
+- Vision disables and visually mutes the selected coordinate-reference row's X/Y/Z fields, and rebases all offsets when Ref. changes so the chosen frame remains X0/Y0/Z0 without moving toolpath relationships.
+
+- Fixed Vision coordinate-frame transitions so G53 moves start in the prior work frame and end at their authored machine-coordinate target.
+
+- Added universal nested `IF [...] THEN` / `ELSE` / `ENDIF` execution tracing, including selected inline actions, so Trace-backed Vision, Chronoblade, and Decomposition exclude non-taken branches.
+
+- Chronoblade now defaults its Motion selector to Trace for programs without a saved mode selection.
+
 - Added the `kaijuNC.gCodeDialect.defaultProfile` setting for programs without a selected controller profile. It defaults to FANUC / ISO and also accepts DMG MORI or a custom profile ID.
 
 ## [0.5.1]

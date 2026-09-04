@@ -17,8 +17,9 @@ Chronoblade uses the active editor selection when it opens; its report does
 not include controls to resend the whole program or selection.
 
 Chronoblade offers the same per-program Trace methodology as Vision: Motion
-data selects Trace or As written, Line selects Source or Trace identifiers, and
-Live refreshes the open report after a successful passive Trace update. Source
+defaults to Trace and can be changed per program to As written, Line selects
+Source or Trace identifiers, and Live refreshes the open report after a
+successful passive Trace update. Source
 rows use non-unique `S###` identifiers; Trace rows use unique execution-order
 `T###` identifiers. Trace expands loop/GOTO occurrences using the shared
 execution stream, while As written analyses each authored line once. An

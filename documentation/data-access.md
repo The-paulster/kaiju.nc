@@ -72,7 +72,10 @@ word from canonical state such as `feedMode` or `motionCode`.
 
 Decomposition may prompt for missing inputs, but it feeds those values back to
 `buildExecutionTrace` and formats the returned occurrences. Features must not
-implement their own `IF`, `GOTO`, `WHILE`, loop, alarm, or repeated-state walk.
+implement their own `IF`, `ELSE`, `ENDIF`, `GOTO`, `WHILE`, loop, alarm, or repeated-state walk.
+When a trace occurrence supplies `effectiveCodeLine`, motion consumers must
+interpret that selected executable text while retaining `sourceLine` for source
+presentation.
 
 ## Tool and display models
 

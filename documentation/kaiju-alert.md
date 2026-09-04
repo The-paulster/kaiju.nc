@@ -12,6 +12,8 @@ messages, refresh lifecycle, and false-positive avoidance.
 
 - Uses `MetaTextRanges` to exclude comments and angle-bracket text before
   scanning.
+- Uses `MetaExecutionTrace`'s structural conditional matcher for unmatched
+  `IF THEN` / `ELSE` / `ENDIF` diagnostics; it does not duplicate that parser.
 - Consults Alias state/options where alias-aware diagnostics need that context.
 - Consumes `MetaMotionEngine`'s one-pass document arc geometry validation for
   explicit `G2`/`G3` diagnostics, using the active program's machine profile X

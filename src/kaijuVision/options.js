@@ -25,6 +25,7 @@ function getVisionOptions(document, rawOptions = {}) {
 			: normalizeVisionPlane(getConfiguredValue(config, "plane", AUTO_VISION_PLANE), defaultPlane),
 		useToolColors: rawOptions.useToolColors === true,
 		workOffsets: normalizeVisionWorkOffsets(rawOptions.workOffsets),
+		referenceFrame: normalizeVisionReferenceFrame(rawOptions.referenceFrame),
 		machineMode: profile.id,
 		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
@@ -55,24 +56,23 @@ function getVisionOptions(document, rawOptions = {}) {
 		humanFormat: {
 			minimumDecimalPlaces: clampNumber(displayConfig.get("minimumDecimalPlaces", 3), 0, 9),
 			maximumDecimalPlaces: clampNumber(displayConfig.get("maximumDecimalPlaces", 3), 0, 9)
-		},
-		g53Position: {
-			x: Number(config.get("g53.x", 0)),
-			y: Number(config.get("g53.y", 0)),
-			z: Number(config.get("g53.z", 0))
 		}
 	};
 }
 
-const VISION_WORK_OFFSET_CODES = ["G54", "G55", "G56", "G57", "G58", "G59"];
+const VISION_COORDINATE_FRAME_CODES = ["G53", "G54", "G55", "G56", "G57", "G58", "G59"];
+
+function normalizeVisionReferenceFrame(value) {
+	return VISION_COORDINATE_FRAME_CODES.includes(value) ? value : "G53";
+}
 
 function normalizeVisionWorkOffsets(rawOffsets = {}) {
 	const offsets = {};
 
-	for (const code of VISION_WORK_OFFSET_CODES) {
+	for (const code of VISION_COORDINATE_FRAME_CODES) {
 		const raw = rawOffsets && rawOffsets[code] ? rawOffsets[code] : {};
 		offsets[code] = {
-			enabled: raw.enabled === true,
+			showZeroLines: code === "G53" ? raw.showZeroLines !== false : raw.showZeroLines === true,
 			x: normalizeOffsetAxis(raw.x),
 			y: normalizeOffsetAxis(raw.y),
 			z: normalizeOffsetAxis(raw.z),
@@ -120,5 +120,6 @@ function clampNumber(value, min, max) {
 module.exports = {
 	getVisionOptions,
 	normalizeVisionWorkOffsets,
-	VISION_WORK_OFFSET_CODES
+	normalizeVisionReferenceFrame,
+	VISION_COORDINATE_FRAME_CODES
 };

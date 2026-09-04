@@ -14,7 +14,7 @@ function getChronobladeOptions(document, rawOptions = {}) {
 	const timingProfile = getTimingProfile(timingProfiles, rawOptions.timingProfile);
 
 	return {
-		analysisMode: rawOptions.analysisMode === "trace" ? "trace" : "asWritten",
+		analysisMode: rawOptions.analysisMode === "asWritten" ? "asWritten" : "trace",
 		showTraceLine: rawOptions.showTraceLine === true,
 		live: rawOptions.live === true,
 		machineMode: profile.id,

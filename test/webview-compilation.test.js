@@ -36,11 +36,18 @@ test("Chronoblade generated webview scripts compile", () => {
 test("Vision generated webview scripts compile", () => {
 	const render = loadPrivateRenderer("src/kaijuVision/webview.js", "renderVisionHtml");
 	const document = makeDocument("G0 X0\nG1 X1");
-	compileEmbeddedScripts(render(document, "document", {}, {
+	const html = render(document, "document", {}, {
 		rows: [],
 		range: { startLine: 0, endLine: document.lineCount - 1 },
 		motionDisplayWords: { rapid: "G0", cutting: ["G1", "G2", "G3"] }
-	}));
+	});
+	compileEmbeddedScripts(html);
+	assert.match(html, /<button id="viewToggle">View<\/button>\s*<button id="offsetsToggle">Offsets<\/button>\s*<button id="macrosToggle">Macro<\/button>/);
+	assert.doesNotMatch(html, /id="dataToggle"|id="dataPanel"/);
+	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-reference type="radio" name="offsetReference" value="G53" checked/);
+	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-zero type="checkbox" checked/);
+	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-axis="x"[^>]* disabled/);
+	assert.doesNotMatch(html, /data-offset-enabled/);
 });
 
 test("G-code profile editor scripts compile", () => {

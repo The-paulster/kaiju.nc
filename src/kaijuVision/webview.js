@@ -19,8 +19,9 @@ const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { MACRO_REGEX, buildAliasEntries, buildMacroAliasMap, normalizeMacro, resolveMacroAlias } = require("../MetaMacroEngine");
 const { maskProtectedRanges } = require("../MetaTextRanges");
 const {
-	VISION_WORK_OFFSET_CODES,
+	VISION_COORDINATE_FRAME_CODES,
 	getVisionOptions,
+	normalizeVisionReferenceFrame,
 	normalizeVisionWorkOffsets
 } = require("./options");
 
@@ -94,7 +95,11 @@ async function showVisionPanel(editor, mode, options) {
 			}
 
 			if (message.type === "saveOffsets") {
-				await saveOffsetsFromWebview(message.offsets, message.options || {});
+				await saveOffsetsFromWebview(message.offsets, message.referenceFrame, message.options || {});
+				return;
+			}
+			if (message.type === "previewOffsets") {
+				await previewOffsetsFromWebview(message.offsets, message.referenceFrame, message.options || {});
 				return;
 			}
 			if (message.type === "resetOffsets") {
@@ -181,7 +186,7 @@ async function showVisionPanel(editor, mode, options) {
 	await renderVisionPanel(editor, mode, options);
 }
 
-async function saveOffsetsFromWebview(offsets, rawOptions) {
+async function saveOffsetsFromWebview(offsets, referenceFrame, rawOptions) {
 	const editor = getVisionSourceEditor();
 
 	if (!editor || editor.document.languageId !== "gcode") {
@@ -190,10 +195,13 @@ async function saveOffsetsFromWebview(offsets, rawOptions) {
 	}
 
 	const normalizedOffsets = normalizeVisionWorkOffsets(offsets);
+	const normalizedReferenceFrame = normalizeVisionReferenceFrame(referenceFrame);
 	await saveDocumentVisionWorkOffsets(editor.document, normalizedOffsets);
+	await saveDocumentVisionReferenceFrame(editor.document, normalizedReferenceFrame);
 
 	const options = makeVisionOptions(editor.document, Object.assign({}, rawOptions, {
-		workOffsets: normalizedOffsets
+		workOffsets: normalizedOffsets,
+		referenceFrame: normalizedReferenceFrame
 	}));
 	const mode = visionState && visionState.mode ? visionState.mode : "whole";
 
@@ -203,6 +211,20 @@ async function saveOffsetsFromWebview(offsets, rawOptions) {
 		options
 	};
 
+	await renderVisionPanel(editor, mode, options);
+}
+
+async function previewOffsetsFromWebview(offsets, referenceFrame, rawOptions) {
+	const editor = getVisionSourceEditor();
+
+	if (!editor || editor.document.languageId !== "gcode") return;
+	const options = makeVisionOptions(editor.document, Object.assign({}, rawOptions, {
+		workOffsets: normalizeVisionWorkOffsets(offsets),
+		referenceFrame: normalizeVisionReferenceFrame(referenceFrame)
+	}));
+	options.offsetPanelOpen = true;
+	const mode = visionState && visionState.mode ? visionState.mode : "whole";
+	visionState = { documentUriText: editor.document.uri.toString(), mode, options };
 	await renderVisionPanel(editor, mode, options);
 }
 
@@ -217,9 +239,13 @@ async function resetOffsetsFromWebview(rawOptions) {
 	const allOffsets = getStoredVisionWorkOffsets();
 	delete allOffsets[documentKey];
 	await visionContext.workspaceState.update("kaijuVision.workOffsetsByDocument", allOffsets);
+	const allReferenceFrames = getStoredVisionReferenceFrames();
+	delete allReferenceFrames[documentKey];
+	await visionContext.workspaceState.update("kaijuVision.referenceFramesByDocument", allReferenceFrames);
 
 	const settings = Object.assign({}, rawOptions);
 	delete settings.workOffsets;
+	delete settings.referenceFrame;
 	const options = makeVisionOptions(editor.document, settings);
 	const mode = visionState && visionState.mode ? visionState.mode : "whole";
 	visionState = { documentUriText: editor.document.uri.toString(), mode, options };
@@ -228,9 +254,11 @@ async function resetOffsetsFromWebview(rawOptions) {
 
 function makeVisionOptions(document, rawOptions = {}) {
 	const savedOffsets = getDocumentVisionWorkOffsets(document);
+	const savedReferenceFrame = getDocumentVisionReferenceFrame(document);
 	const savedSettings = getDocumentVisionSettings(document);
 	const options = getVisionOptions(document, Object.assign({}, savedSettings, rawOptions, {
-		workOffsets: rawOptions.workOffsets || savedOffsets
+		workOffsets: rawOptions.workOffsets || savedOffsets,
+		referenceFrame: rawOptions.referenceFrame || savedReferenceFrame
 	}));
 	const panelSettings = normalizeVisionPanelSettings(Object.assign({}, savedSettings, rawOptions));
 
@@ -309,6 +337,30 @@ async function saveDocumentVisionWorkOffsets(document, offsets) {
 function getStoredVisionWorkOffsets() {
 	return visionContext && visionContext.workspaceState
 		? Object.assign({}, visionContext.workspaceState.get("kaijuVision.workOffsetsByDocument", {}))
+		: {};
+}
+
+function getDocumentVisionReferenceFrame(document) {
+	const allFrames = getStoredVisionReferenceFrames();
+	const documentKey = getVisionDocumentKey(document);
+
+	return documentKey ? allFrames[documentKey] : undefined;
+}
+
+async function saveDocumentVisionReferenceFrame(document, referenceFrame) {
+	if (!visionContext || !visionContext.workspaceState) return;
+	const documentKey = getVisionDocumentKey(document);
+	const allFrames = getStoredVisionReferenceFrames();
+
+	if (documentKey) {
+		allFrames[documentKey] = normalizeVisionReferenceFrame(referenceFrame);
+		await visionContext.workspaceState.update("kaijuVision.referenceFramesByDocument", allFrames);
+	}
+}
+
+function getStoredVisionReferenceFrames() {
+	return visionContext && visionContext.workspaceState
+		? Object.assign({}, visionContext.workspaceState.get("kaijuVision.referenceFramesByDocument", {}))
 		: {};
 }
 
@@ -803,6 +855,12 @@ function renderVisionHtml(document, mode, options, result) {
 			padding: 3px 5px;
 		}
 
+		.offset-panel input[type="number"]:disabled {
+			color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+			background: var(--vscode-input-background);
+			opacity: 0.55;
+		}
+
 		.offset-actions {
 			display: flex;
 			gap: 8px;
@@ -1144,7 +1202,8 @@ function renderVisionHtml(document, mode, options, result) {
 			</select>
 		</label>
 		<button id="viewToggle">View</button>
-		<button id="dataToggle">Data</button>
+		<button id="offsetsToggle">Offsets</button>
+		<button id="macrosToggle">Macro</button>
 		<button id="fit">Fit View</button>
 		<button id="zoomOut">Zoom -</button>
 		<button id="zoomIn">Zoom +</button>
@@ -1166,8 +1225,7 @@ function renderVisionHtml(document, mode, options, result) {
 	</section>
 
 	${renderVisionViewPanel(options)}
-	${renderVisionDataPanel()}
-	${renderVisionOffsetPanel(options.workOffsets)}
+	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.offsetPanelOpen)}
 	${renderVisionVisibilityPanel(result.rows)}
 	${renderVisionMacroPanel(macroVariables, savedMacroInputs, options.overrideProgramInitialValues)}
 	<section class="summary">
@@ -1215,8 +1273,6 @@ function renderVisionHtml(document, mode, options, result) {
 		const markerLegendToggle = document.getElementById("markerLegendToggle");
 		const viewToggle = document.getElementById("viewToggle");
 		const viewPanel = document.getElementById("viewPanel");
-		const dataToggle = document.getElementById("dataToggle");
-		const dataPanel = document.getElementById("dataPanel");
 		const offsetsToggle = document.getElementById("offsetsToggle");
 		const offsetPanel = document.getElementById("offsetPanel");
 		const visibilityToggle = document.getElementById("visibilityToggle");
@@ -1291,6 +1347,7 @@ function renderVisionHtml(document, mode, options, result) {
 				plane: planeSelect.value,
 				useToolColors: toolColorsInput.checked,
 				workOffsets: collectWorkOffsets(),
+				referenceFrame: collectReferenceFrame(),
 				showLabels: labelsInput.checked,
 				showEndpoints: endpointsInput.checked,
 				showZeroLines: zeroLinesInput.checked,
@@ -1318,7 +1375,7 @@ function renderVisionHtml(document, mode, options, result) {
 			document.querySelectorAll("[data-offset-code]").forEach(row => {
 				const code = row.getAttribute("data-offset-code");
 				offsets[code] = {
-					enabled: row.querySelector("[data-offset-enabled]").checked,
+					showZeroLines: row.querySelector("[data-offset-zero]").checked,
 					x: Number(row.querySelector("[data-offset-axis='x']").value) || 0,
 					y: Number(row.querySelector("[data-offset-axis='y']").value) || 0,
 					z: Number(row.querySelector("[data-offset-axis='z']").value) || 0,
@@ -1327,6 +1384,32 @@ function renderVisionHtml(document, mode, options, result) {
 			});
 
 			return offsets;
+		}
+
+		function collectReferenceFrame() {
+			const selected = document.querySelector("[data-offset-reference]:checked");
+			return selected ? selected.value : "G53";
+		}
+
+		function previewOffsets() {
+			vscode.postMessage({ type: "previewOffsets", offsets: collectWorkOffsets(), referenceFrame: collectReferenceFrame(), options: collectVisionOptions() });
+		}
+
+		function selectOffsetReference(referenceInput) {
+			const selectedRow = referenceInput.closest("[data-offset-code]");
+			if (!selectedRow) return;
+			const pivot = {};
+			for (const axis of ["x", "y", "z"]) {
+				pivot[axis] = Number(selectedRow.querySelector("[data-offset-axis='" + axis + "']").value) || 0;
+			}
+			document.querySelectorAll("[data-offset-code]").forEach(row => {
+				for (const axis of ["x", "y", "z"]) {
+					const input = row.querySelector("[data-offset-axis='" + axis + "']");
+					input.value = String((Number(input.value) || 0) - pivot[axis]);
+					input.disabled = row === selectedRow;
+				}
+			});
+			previewOffsets();
 		}
 
 		function getVisibilityState() {
@@ -1467,7 +1550,7 @@ function renderVisionHtml(document, mode, options, result) {
 					if (projectedPoint) {
 						projected.toolChanges.push(Object.assign({}, row, {
 							projectedPoint,
-							labelCoordinateLine: makePlaneCoordinateLine(row.point, plane, data.options.humanFormat, data.options.trimLabelTrailingZeros !== false),
+							labelCoordinateLine: makePlaneCoordinateLine(row.position || row.point, plane, data.options.humanFormat, data.options.trimLabelTrailingZeros !== false),
 							labelHoverHtml: makeToolChangeHoverHtml(row)
 						}));
 					}
@@ -1979,7 +2062,7 @@ function renderVisionHtml(document, mode, options, result) {
 				labelOffset: labelEntry.labelOffset,
 				labelHitboxPadding: labelEntry.labelHitboxPadding
 			}).map(renderPointLabel).join("");
-			const zeroAxes = showZeroLines ? renderZeroAxes(bounds) : "";
+			const zeroAxes = showZeroLines ? renderZeroAxes(bounds, plane) : "";
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
 			const overlaySvg = '<svg id="vision-svg" class="vision-overlay" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="none" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
@@ -2404,7 +2487,7 @@ function renderVisionHtml(document, mode, options, result) {
 				"endpoint-label",
 				showLabels ? "T[1]" : "",
 				showLabels ? toolChange.labelCoordinateLine : "",
-				{ kind: "tool", position: toolChange.point, hoverItems: [toolChange.labelHoverHtml], showMarker }
+				{ kind: "tool", position: toolChange.position || toolChange.point, hoverItems: [toolChange.labelHoverHtml], showMarker }
 			);
 		}
 
@@ -2442,7 +2525,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const lines = ['<div class="tooltip-line">' + svgEscape(lineLabel + (lineLabel ? " " : "")) + toolText + '</div>'];
 
 			for (const axis of ["x", "y", "z"]) {
-				const value = toolChange.point && toolChange.point[axis];
+				const value = (toolChange.position || toolChange.point) && (toolChange.position || toolChange.point)[axis];
 
 				if (Number.isFinite(value)) {
 					lines.push('<div class="tooltip-line axis-' + axis + '">' + axis.toUpperCase() + formatAxisNumber(value, data.options.humanFormat) + '</div>');
@@ -3227,15 +3310,25 @@ function renderVisionHtml(document, mode, options, result) {
 			return (sign >= 0 ? "+" : "-") + axis;
 		}
 
-		function renderZeroAxes(bounds) {
+		function renderZeroAxes(bounds, plane) {
 			const lines = [];
+			const offsets = collectWorkOffsets();
+			const referenceOffset = offsets[collectReferenceFrame()] || { x: 0, y: 0, z: 0 };
 
-			if (bounds.minY <= 0 && bounds.minY + bounds.height >= 0) {
-				lines.push('<line class="zero-line" x1="' + bounds.minX + '" y1="0" x2="' + (bounds.minX + bounds.width) + '" y2="0" />');
-			}
-
-			if (bounds.minX <= 0 && bounds.minX + bounds.width >= 0) {
-				lines.push('<line class="zero-line" x1="0" y1="' + bounds.minY + '" x2="0" y2="' + (bounds.minY + bounds.height) + '" />');
+			for (const [code, offset] of Object.entries(offsets)) {
+				if (!offset.showZeroLines) continue;
+				const origin = project({
+					x: data.options.xAxisMode === "diameter" ? (offset.x - referenceOffset.x) / 2 : offset.x - referenceOffset.x,
+					y: offset.y - referenceOffset.y,
+					z: offset.z - referenceOffset.z
+				}, plane);
+				if (!origin) continue;
+				if (bounds.minY <= origin.y && bounds.minY + bounds.height >= origin.y) {
+					lines.push('<line class="zero-line" data-zero-frame="' + code + '" x1="' + bounds.minX + '" y1="' + origin.y + '" x2="' + (bounds.minX + bounds.width) + '" y2="' + origin.y + '" />');
+				}
+				if (bounds.minX <= origin.x && bounds.minX + bounds.width >= origin.x) {
+					lines.push('<line class="zero-line" data-zero-frame="' + code + '" x1="' + origin.x + '" y1="' + bounds.minY + '" x2="' + origin.x + '" y2="' + (bounds.minY + bounds.height) + '" />');
+				}
 			}
 
 			return lines.join("");
@@ -3520,7 +3613,6 @@ function renderVisionHtml(document, mode, options, result) {
 		});
 		markerLegendToggle.addEventListener("change", () => { updateMarkerLegend(); saveVisionSettings(); });
 		viewToggle.addEventListener("click", () => viewPanel.classList.toggle("open"));
-		dataToggle.addEventListener("click", () => dataPanel.classList.toggle("open"));
 		offsetsToggle.addEventListener("click", () => {
 			offsetPanel.classList.toggle("open");
 		});
@@ -3539,8 +3631,11 @@ function renderVisionHtml(document, mode, options, result) {
 			vscode.postMessage({ type: "resetMacroInputs", options: collectVisionOptions() });
 		});
 		document.getElementById("saveOffsets").addEventListener("click", () => {
-			vscode.postMessage({ type: "saveOffsets", offsets: collectWorkOffsets(), options: collectVisionOptions() });
+			vscode.postMessage({ type: "saveOffsets", offsets: collectWorkOffsets(), referenceFrame: collectReferenceFrame(), options: collectVisionOptions() });
 		});
+		document.querySelectorAll("[data-offset-reference]").forEach(input => input.addEventListener("change", () => selectOffsetReference(input)));
+		document.querySelectorAll("[data-offset-zero]").forEach(input => input.addEventListener("change", render));
+		document.querySelectorAll("[data-offset-axis]").forEach(input => input.addEventListener("change", previewOffsets));
 		document.getElementById("resetOffsets").addEventListener("click", () => {
 			vscode.postMessage({ type: "resetOffsets", options: collectVisionOptions() });
 		});
@@ -3563,26 +3658,30 @@ function renderVisionHtml(document, mode, options, result) {
 </html>`;
 }
 
-function renderVisionOffsetPanel(workOffsets) {
-	const rows = VISION_WORK_OFFSET_CODES.map(code => {
-		const offset = workOffsets && workOffsets[code] ? workOffsets[code] : {};
+function renderVisionOffsetPanel(workOffsets, referenceFrame, isOpen = false) {
+	const reference = normalizeVisionReferenceFrame(referenceFrame);
+	const normalizedOffsets = normalizeVisionWorkOffsets(workOffsets);
+	const rows = VISION_COORDINATE_FRAME_CODES.map(code => {
+		const offset = normalizedOffsets[code];
+		const isReference = code === reference;
 
 		return `<tr data-offset-code="${escapeAttribute(code)}">
 			<td><code>${escapeHtml(code)}</code></td>
-			<td><input data-offset-enabled type="checkbox"${offset.enabled ? " checked" : ""}></td>
-			<td><input data-offset-axis="x" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.x))}"></td>
-			<td><input data-offset-axis="y" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.y))}"></td>
-			<td><input data-offset-axis="z" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.z))}"></td>
+			<td><input data-offset-reference type="radio" name="offsetReference" value="${escapeAttribute(code)}"${code === reference ? " checked" : ""} title="Use this coordinate frame as the display reference"></td>
+			<td><input data-offset-zero type="checkbox"${offset.showZeroLines ? " checked" : ""} title="Show this frame's origin axes when View > Zero lines is enabled"></td>
+			<td><input data-offset-axis="x" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.x))}"${isReference ? " disabled" : ""}></td>
+			<td><input data-offset-axis="y" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.y))}"${isReference ? " disabled" : ""}></td>
+			<td><input data-offset-axis="z" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.z))}"${isReference ? " disabled" : ""}></td>
 			<td><input data-offset-note type="text" value="${escapeAttribute(offset.note || "")}"></td>
 		</tr>`;
 	}).join("");
-
-	return `<section id="offsetPanel" class="offset-panel">
+	return `<section id="offsetPanel" class="offset-panel${isOpen ? " open" : ""}">
 		<table>
 			<thead>
 				<tr>
-					<th>WCS</th>
-					<th>On</th>
+					<th>Frame</th>
+					<th>Ref.</th>
+					<th>Show axes</th>
 					<th>X</th>
 					<th>Y</th>
 					<th>Z</th>
@@ -3606,12 +3705,6 @@ function renderVisionViewPanel(options) {
 			<button id="visibilityToggle">Visibility</button>
 		</div>
 	</section>`;
-}
-
-function renderVisionDataPanel() {
-	return `<section id="dataPanel" class="control-panel"><div class="offset-actions">
-		<button id="offsetsToggle">Offsets</button><button id="macrosToggle">Macro values</button>
-	</div></section>`;
 }
 
 function formatOffsetInputValue(value) {

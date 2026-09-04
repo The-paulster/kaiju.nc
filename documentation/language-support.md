@@ -10,6 +10,9 @@ scopes for comments, commands, addresses, macro variables, operators, and
 control flow. It is editor presentation and language registration—not a G-code
 execution parser.
 
+The grammar highlights `IF`, `THEN`, `ELSE`, and `ENDIF` as control-flow
+keywords. It does not decide whether a particular controller can execute them.
+
 ## Connections
 
 - `package.json` contributes the G-code language, grammar, commands, settings,

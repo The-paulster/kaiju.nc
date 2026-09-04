@@ -25,8 +25,8 @@ specific execution occurrence.
   expression evaluation.
 - Uses `MetaTextRanges` when scanning source text.
 - Consumes `MetaExecutionTrace` occurrence records, resolved conditions,
-  assignments, termination state, and safety problems. It never walks program
-  control flow independently.
+  assignments, termination state, safety problems, and selected effective
+  inline actions. It never walks program control flow independently.
 - Reuses Reconstructor formatting for output formatting rather than duplicating
   it.
 

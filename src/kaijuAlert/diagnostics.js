@@ -13,6 +13,7 @@ const {
 } = require("../kaijuAlias");
 const { getAliasOptions } = require("../kaijuAlias/options");
 const { analyzeArcsInDocument } = require("../MetaMotionEngine");
+const { buildConditionalStructures } = require("../MetaExecutionTrace");
 const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { getAlertOptions } = require("./options");
 
@@ -86,6 +87,7 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	}
 	if (options.warnUnmatchedLoops) {
 		warnings.push(...makeUnmatchedLoopWarnings(document));
+		warnings.push(...makeUnmatchedConditionalWarnings(document));
 	}
 
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -452,6 +454,19 @@ function makeUnmatchedLoopWarnings(document) {
 	}
 
 	return warnings;
+}
+
+function makeUnmatchedConditionalWarnings(document) {
+	return buildConditionalStructures(document).problems.map(problem => {
+		const lineLength = document.lineAt(problem.lineNumber).text.length;
+		const warning = new vscode.Diagnostic(
+			new vscode.Range(problem.lineNumber, 0, problem.lineNumber, lineLength),
+			problem.message,
+			vscode.DiagnosticSeverity.Error
+		);
+		warning.source = DIAGNOSTIC_SOURCE;
+		return warning;
+	});
 }
 
 function findWhileStart(codeLine) {

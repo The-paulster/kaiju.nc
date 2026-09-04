@@ -10,7 +10,8 @@ lists every assumed-zero macro and every safety or flow problem.
 
 ## Connections
 
-- `MetaExecutionTrace` owns reusable execution state, loop/GOTO traversal,
+- `MetaExecutionTrace` owns reusable execution state, loop/GOTO traversal and
+  nested `IF [...] THEN` / `ELSE` / `ENDIF` branch selection,
   macro history, initial macro state, per-occurrence trace lines and macro
   deltas for explicit inspection, the execution-to-formatted-line mapping, and
   the cache. Its passive file-open run
@@ -29,6 +30,13 @@ Trace status presents shared results; it does not implement macro parsing or
 control flow. The passive trace never prompts for values: unresolved macros are
 assumed to be zero and reported visibly, while execution caps and repeated
 states prevent an unresolved loop from running indefinitely.
+
+Structured conditional syntax is interpreted whenever it appears in a program;
+it is not enabled or disabled by the active machine profile. Trace pairs nested
+blocks, executes only the selected branch, and exposes that branch's effective
+NC text to motion consumers. An inline `IF [...] THEN action ELSE action` also
+contributes only its selected action. Unmatched `ELSE` or `ENDIF`, duplicate
+`ELSE`, and missing `ENDIF` markers are reported through the shared flow checks.
 
 An explicit playback consumer may request initial macro state, recorded
 per-occurrence macro deltas, and source-defined decimal precision for macro

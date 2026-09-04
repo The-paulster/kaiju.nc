@@ -123,6 +123,7 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 		const lineNumber = entry.lineNumber;
 		const line = entry.sourceLine;
 		const codeLine = entry.codeLine || maskProtectedRanges(line);
+		const effectiveLine = entry.effectiveCodeLine === undefined ? line : entry.effectiveCodeLine;
 		context.macroValues = new Map(Object.entries(entry.macroValues || {}));
 
 		const labelLine = makeFirstVisitLabelLine(line, codeLine, lineNumber, context);
@@ -138,14 +139,14 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 			));
 		}
 
-		const isControl = Boolean(entry.control);
+		const isControl = Boolean(entry.control) && !effectiveLine.trim();
 		if (entry.termination && entry.termination.macroAlarm) {
 			outputLines.push(makeFlowComment(lineNumber, "#3000 alarm, stopped execution"));
 			break;
 		}
 
 		if (!isControl && isOutputLine(codeLine)) {
-			const decomposedLine = await decomposeLine(line, lineNumber, context);
+			const decomposedLine = await decomposeLine(effectiveLine, lineNumber, context);
 			if (decomposedLine !== undefined && decomposedLine.trim()) {
 				decomposedLineEntries.push({ sourceLineNumber: lineNumber, outputLineIndex: outputLines.length });
 				outputLines.push(decomposedLine);

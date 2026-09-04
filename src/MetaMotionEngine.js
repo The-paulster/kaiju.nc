@@ -709,16 +709,12 @@ function makeEndPosition(start, words, distanceMode = "absolute", options = {}) 
 		{ position: "Y", incremental: "V", key: "y" },
 		{ position: "Z", incremental: "W", key: "z" }
 	];
-	const g53Position = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options) ? options.g53Position : undefined;
-
 	for (const axis of axisWords) {
 		const positionWord = lastWord(words, axis.position);
 		const incrementalWord = lastWord(words, axis.incremental);
 
 		if (positionWord && Number.isFinite(positionWord.value)) {
-			if (g53Position && Number.isFinite(g53Position[axis.key])) {
-				end[axis.key] = g53Position[axis.key];
-			} else if (distanceMode === "incremental" && Number.isFinite(end[axis.key])) {
+			if (distanceMode === "incremental" && Number.isFinite(end[axis.key])) {
 				end[axis.key] += positionWord.value;
 			} else {
 				end[axis.key] = positionWord.value;
@@ -1545,7 +1541,7 @@ function analyzeChronobladeRange(document, range, options) {
 		const executionEntry = executionEntries ? executionEntries[entryIndex] : undefined;
 		const lineNumber = executionEntry ? executionEntry.lineNumber : entryIndex;
 		const line = executionEntry ? executionEntry.sourceLine : document.lineAt(lineNumber).text;
-		const codeLine = maskProtectedRanges(line);
+		const codeLine = maskProtectedRanges(executionEntry && executionEntry.effectiveCodeLine !== undefined ? executionEntry.effectiveCodeLine : line);
 		let positionWasUpdated = false;
 
 		if (executionEntry) {
@@ -1674,7 +1670,7 @@ function analyzeVisionRange(document, range, options) {
 		const executionEntry = executionEntries ? executionEntries[entryIndex] : undefined;
 		const lineNumber = executionEntry ? executionEntry.lineNumber : entryIndex;
 		const line = executionEntry ? executionEntry.sourceLine : document.lineAt(lineNumber).text;
-		const codeLine = maskProtectedRanges(line);
+		const codeLine = maskProtectedRanges(executionEntry && executionEntry.effectiveCodeLine !== undefined ? executionEntry.effectiveCodeLine : line);
 		let positionWasUpdated = false;
 
 		if (executionEntry) {
@@ -1688,6 +1684,7 @@ function analyzeVisionRange(document, range, options) {
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words, options);
+		const startCoordinateSystem = state.coordinateSystem;
 
 		applyModalState(words, motionCode, state, options);
 
@@ -1740,6 +1737,10 @@ function analyzeVisionRange(document, range, options) {
 			positionWasUpdated = true;
 		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
+			estimate.startCoordinateSystem = startCoordinateSystem;
+			estimate.endCoordinateSystem = estimate.machineCoordinate
+				? getGCodeWordForOperation(G_CODE_OPERATIONS.MACHINE_COORDINATE, options) || "G53"
+				: state.coordinateSystem;
 			positionWasUpdated = true;
 
 			const isFirstProgramMotion = !hasSeenProgramMotion;
@@ -2055,8 +2056,10 @@ function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, t
 	const toolColor = getToolColor(toolRange);
 	const machineCoordinateWord = getGCodeWordForOperation(G_CODE_OPERATIONS.MACHINE_COORDINATE, options) || "G53";
 	const coordinateSystem = estimate.machineCoordinate ? machineCoordinateWord : estimate.coordinateSystem || "";
-	const start = shiftVisionPosition(estimate.start, estimate.coordinateSystem, options, estimate.machineCoordinate);
-	const end = shiftVisionPosition(estimate.end, estimate.coordinateSystem, options, estimate.machineCoordinate);
+	const startCoordinateSystem = estimate.startCoordinateSystem || estimate.coordinateSystem || "";
+	const endCoordinateSystem = estimate.endCoordinateSystem || coordinateSystem;
+	const start = clonePosition(estimate.start);
+	const end = clonePosition(estimate.end);
 	const marker = makeVisionEndpointMarker(words);
 
 	return {
@@ -2075,7 +2078,12 @@ function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, t
 		endLabel: formatPosition(end, options.humanFormat),
 		distance: estimate.distance,
 		timeSeconds: estimate.timeSeconds,
-		points: (estimate.pathPoints || []).map(point => toVisionPoint(point, options, estimate.coordinateSystem, estimate.machineCoordinate)),
+		points: (estimate.pathPoints || []).map((point, index) => toVisionPoint(
+			point,
+			options,
+			index === 0 ? startCoordinateSystem : endCoordinateSystem,
+			estimate.machineCoordinate && index > 0
+		)),
 		markerClass: marker.className,
 		markerKind: marker.kind,
 		warnings: estimate.warnings || []
@@ -2100,9 +2108,6 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 		warnings.push(`G${cycle.code} cycle has no Z depth.`);
 	}
 
-	const shiftedTop = shiftVisionPosition(top, state.coordinateSystem, options);
-	const shiftedBottom = shiftVisionPosition(bottom, state.coordinateSystem, options);
-
 	const hasDrawableDepth = Number.isFinite(top.x)
 		&& Number.isFinite(top.y)
 		&& Number.isFinite(top.z)
@@ -2120,10 +2125,10 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 		toolColor: getToolColor(toolRange),
 		coordinateSystem: state.coordinateSystem || "",
 		point: toVisionPoint(bottom, options, state.coordinateSystem),
-		start: shiftedTop,
-		end: shiftedBottom,
-		startLabel: formatPosition(shiftedTop, options.humanFormat),
-		endLabel: formatPosition(shiftedBottom, options.humanFormat),
+		start: top,
+		end: bottom,
+		startLabel: formatPosition(top, options.humanFormat),
+		endLabel: formatPosition(bottom, options.humanFormat),
 		distance: hasDrawableDepth ? getPhysicalDistance(top, bottom, options) : NaN,
 		timeSeconds: NaN,
 		points,
@@ -2140,7 +2145,7 @@ function makeVisionEventMarkerRow(lineNumber, words, position, coordinateSystem,
 		instruction: marker.label || "Event",
 		coordinateSystem: coordinateSystem || "",
 		point: toVisionPoint(position, options, coordinateSystem),
-		position: shiftVisionPosition(position, coordinateSystem, options),
+		position: clonePosition(position),
 		markerClass: marker.className,
 		markerKind: marker.kind,
 		distance: NaN,
@@ -2164,6 +2169,7 @@ function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, posit
 		toolColor,
 		coordinateSystem: coordinateSystem || "",
 		point: toVisionPoint(position, options, coordinateSystem),
+		position: clonePosition(position),
 		distance: NaN,
 		points: [],
 		warnings: []
@@ -2288,7 +2294,7 @@ function toVisionPoint(point, options, coordinateSystem, machineCoordinate = fal
 
 function shiftVisionPosition(point, coordinateSystem, options = {}, machineCoordinate = false) {
 	const shifted = clonePosition(point || {});
-	const offset = machineCoordinate ? undefined : getVisionWorkOffset(coordinateSystem, options);
+	const offset = getVisionWorkOffset(machineCoordinate ? "G53" : coordinateSystem, options);
 
 	if (!offset) {
 		return shifted;
@@ -2305,13 +2311,14 @@ function shiftVisionPosition(point, coordinateSystem, options = {}, machineCoord
 
 function getVisionWorkOffset(coordinateSystem, options = {}) {
 	const offsets = options.workOffsets || {};
-	const offset = offsets[coordinateSystem];
+	const offset = offsets[coordinateSystem] || {};
+	const referenceOffset = offsets[options.referenceFrame || "G53"] || {};
 
-	if (!offset || offset.enabled !== true) {
-		return undefined;
-	}
-
-	return offset;
+	return {
+		x: (Number.isFinite(offset.x) ? offset.x : 0) - (Number.isFinite(referenceOffset.x) ? referenceOffset.x : 0),
+		y: (Number.isFinite(offset.y) ? offset.y : 0) - (Number.isFinite(referenceOffset.y) ? referenceOffset.y : 0),
+		z: (Number.isFinite(offset.z) ? offset.z : 0) - (Number.isFinite(referenceOffset.z) ? referenceOffset.z : 0)
+	};
 }
 function summarizeVisionRows(rows) {
 	const motionRows = rows.filter(row => row.type === "motion");

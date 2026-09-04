@@ -15,9 +15,9 @@ options.
 - Consumes shared rows, geometry, modal meaning, and tool metadata from
   `MetaMotionEngine`.
 - In Trace motion mode, consumes the shared `MetaExecutionTrace` execution
-  stream. Its per-program Macro values drawer saves missing initial values and,
-  when explicitly enabled, substitutes header initialisations before the first
-  executable G/M block.
+  stream. Its top-level per-program Macro drawer saves missing initial values
+  and, when explicitly enabled, substitutes header initialisations before the
+  first executable G/M block.
 - Passes its enriched `MetaExecutionTrace` snapshot to Decomposition for
   formatted Trace-line node details, without executing the program again.
   Repeated executions show unique generated-document line numbers and fully
@@ -53,9 +53,31 @@ other Vision settings. With Vision plane set to Auto, the default settings are
 X-Y for Mill and Z-X for both lathe profiles; each profile's default can be
 changed independently in Settings.
 
-The Data > Offsets panel uses Apply to save its per-program work offsets and
-Reset to defaults to remove them, matching the Macro values panel's reset
-behavior.
+The top-level Offsets and Macro controls open their panels directly; Vision has
+no intermediate Data menu. The Offsets panel presents G53-G59 as coordinate
+frames whose X/Y/Z offsets are always applied. Committing an axis value or
+changing Ref. immediately reanalyzes the toolpaths while retaining the panel
+for continued editing. Apply saves the per-program positions, the single Ref.
+selection, and the independent Show axes selections. G53 is the default
+reference. The View panel's Zero lines control is the master visibility switch:
+when it is on, every frame selected under Show axes draws axes through its zero
+relative to the selected reference.
+G53 is selected under Show axes by default. Reset to defaults removes the
+per-program values and restores those G53 defaults, matching the Macro values
+panel's reset behavior.
+
+The selected Ref. row is always X0/Y0/Z0 and its axis fields are disabled.
+Selecting another reference rebases every frame around it before recalculating,
+so the existing toolpath relationships do not move.
+
+Coordinate-frame offsets affect only rendered placement. Vision's table,
+labels, hovers, and playback position continue to show the coordinates authored
+in each move's active G53-G59 frame.
+
+At a coordinate-frame switch, Vision renders the move's start using the prior
+frame and its destination using the newly active frame. A G53 move therefore
+ends at its authored machine-coordinate target rather than inheriting the
+previous work offset.
 
 Vision playback is a frozen Trace-backed inspection session, not a machine
 simulation. The compact Play control walks existing execution occurrences and

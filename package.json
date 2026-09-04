@@ -418,7 +418,7 @@
           "kaijuNC.alerts.unmatchedLoops.enabled": {
             "type": "boolean",
             "default": true,
-            "description": "Show an error when WHILE DO / END loop markers are not matched."
+            "description": "Show an error when WHILE DO / END loop markers or IF THEN / ELSE / ENDIF markers are not matched."
           },
           "kaijuNC.alerts.adjacentOperators.enabled": {
             "type": "boolean",
@@ -795,21 +795,6 @@
             ],
             "default": "diameter",
             "description": "How KAIJU Vision interprets X-axis values. Diameter mode uses half-X for physical X arc and distance calculations."
-          },
-          "kaijuNC.vision.g53.x": {
-            "type": "number",
-            "default": 0,
-            "description": "Preview X coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain an X word."
-          },
-          "kaijuNC.vision.g53.y": {
-            "type": "number",
-            "default": 0,
-            "description": "Preview Y coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain a Y word."
-          },
-          "kaijuNC.vision.g53.z": {
-            "type": "number",
-            "default": 0,
-            "description": "Preview Z coordinate used by KAIJU Vision when drawing G53 machine-coordinate moves that contain a Z word."
           },
           "kaijuNC.vision.xyOrientation": {
             "type": "string",

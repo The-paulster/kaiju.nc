@@ -438,7 +438,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.logic.gcode",
-					"match": "(?:\\b(?:IF|THEN|WHILE|DO|END|ELSE|GOTO)\\b|(?<![A-Za-z])(?:IF|WHILE)(?=\\s*\\[)|(?<![A-Za-z])(?:DO|END)(?=\\s*\\d)|(?<![A-Za-z])GOTO(?=\\s*(?:[-+]?\\d|#|\\[)))"
+					"match": "(?:\\b(?:IF|THEN|WHILE|DO|END|ENDIF|ELSE|GOTO)\\b|(?<![A-Za-z])(?:IF|WHILE)(?=\\s*\\[)|(?<![A-Za-z])(?:DO|END)(?=\\s*\\d)|(?<![A-Za-z])GOTO(?=\\s*(?:[-+]?\\d|#|\\[)))"
 				}
 			]
 		},

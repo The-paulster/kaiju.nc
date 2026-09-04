@@ -102,6 +102,56 @@ test("status presentation resolves profile-owned collisions through the dialect"
 	assert.equal(isoState.modalGroups.find(entry => entry.key === "cannedCycleReturn").code, "G98");
 });
 
+test("Vision applies coordinate-frame offsets relative to the selected reference", () => {
+	const document = makeDocument("G54 G0 X0\nG0 X10\nG55 G0 X0\nG0 X10");
+	const result = motion.analyzeVisionRange(document, undefined, {
+		workOffsets: {
+			G54: { x: -100, y: 0, z: 0 },
+			G55: { x: 100, y: 0, z: 0 }
+		},
+		referenceFrame: "G54"
+	});
+	const rows = result.rows.filter(row => row.type === "motion");
+
+	assert.equal(rows[0].coordinateSystem, "G54");
+	assert.equal(rows[0].end.x, 10);
+	assert.equal(rows[2].coordinateSystem, "G55");
+	assert.equal(rows[2].end.x, 10);
+	assert.equal(rows[2].points.at(-1).x, 210);
+});
+
+test("Vision applies the G53 frame offset", () => {
+	const document = makeDocument("G54 G0 X0\nG0 X10\nG53 G0 X500");
+	const result = motion.analyzeVisionRange(document, undefined, {
+		workOffsets: {
+			G53: { x: -200, y: 0, z: 0 },
+			G54: { x: 100, y: 0, z: 0 }
+		},
+		referenceFrame: "G54"
+	});
+	const g53Row = result.rows.find(row => row.type === "motion" && row.coordinateSystem === "G53");
+
+	assert.equal(g53Row.end.x, 500);
+	assert.equal(g53Row.points.at(-1).x, 200);
+});
+
+test("Vision preserves the prior work frame at the start of a G53 move", () => {
+	const document = makeDocument("G54 G0 X0\nG0 X10\nG53 G0 X0");
+	const result = motion.analyzeVisionRange(document, undefined, {
+		workOffsets: {
+			G53: { x: 0, y: 0, z: 0 },
+			G54: { x: 100, y: 0, z: 0 }
+		},
+		referenceFrame: "G53"
+	});
+	const g53Row = result.rows.find(row => row.type === "motion" && row.coordinateSystem === "G53");
+
+	assert.equal(g53Row.start.x, 10);
+	assert.equal(g53Row.end.x, 0);
+	assert.equal(g53Row.points[0].x, 110);
+	assert.equal(g53Row.points.at(-1).x, 0);
+});
+
 test("only the profile G50 S binding supplies a CSS RPM limit", () => {
 	const document = makeDocument("G50 S800\nG96 S550\nG0 X100 Z0\nG1 Z-10 F0.1 D1");
 	const result = motion.analyzeChronobladeRange(document, undefined, {
