@@ -4,6 +4,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.5.3]
 
+- Added shared lathe polar-interpolation handling for G12.1/G13.1, including C-axis face paths and sampled arcs in Vision and Chronoblade.
+
 - Vision merged nodes can now pin a scrollable list of their combined entries on click.
 
 - Added an optional program-unit background grid and size field to Vision's Visibility drawer.

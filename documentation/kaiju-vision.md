@@ -37,6 +37,11 @@ rendering samples and visual merging, but it must preserve useful inspection
 detail—paths, arrows, labels, and tool/section information. Place reusable
 motion/geometry changes in Meta and preserve existing report semantics.
 
+For profiles with lathe polar interpolation bindings, Vision displays the
+Cartesian face path produced by `MetaMotionEngine`, including sampled polar
+linear and arc moves. Select the X-Y plane to inspect that face geometry; the
+lathe default remains the configured Z-X view.
+
 Hovering a merged node shows its combined entries. Clicking that node pins an
 interactive, scrollable entry list; clicking elsewhere in the Vision viewport
 releases it. Ordinary one-entry nodes retain their hover-only detail.

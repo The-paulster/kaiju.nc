@@ -40,6 +40,12 @@ only in `MetaGCodeDialect`. `MetaModalDefs.json` supplies group ordering and
 genuinely non-dialect status codes. Sense may apply a user-provided display
 name without changing either source of modal interpretation.
 
+Lathe polar interpolation is also dialect-owned: built-in lathe profiles map
+`G12.1`/`G13.1` to shared polar enable/disable operations. While enabled,
+`MetaMotionEngine` maps authored `X/C` (and incremental `U/H`) motion into its
+Cartesian point stream, including sampled I/J and R arcs; Vision and
+Chronoblade consume that same geometry.
+
 Machine Mode is saved in workspace state by source-document URI when selected
 from the KAIJU Machine Mode menu. That per-program profile, including its
 radius/diameter X convention, overrides the Settings value for every consumer.

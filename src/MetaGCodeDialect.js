@@ -18,6 +18,8 @@ const G_CODE_OPERATIONS = Object.freeze({
 	CYCLE_CANCEL: "cycle.cancel",
 	CYCLE_RETURN_INITIAL: "cycle.returnInitial",
 	CYCLE_RETURN_R: "cycle.returnR",
+	POLAR_INTERPOLATION_ENABLE: "interpolation.polarEnable",
+	POLAR_INTERPOLATION_DISABLE: "interpolation.polarDisable",
 	DWELL: "motion.dwell",
 	MACHINE_COORDINATE: "coordinate.machine",
 	COORDINATE_SETTING: "coordinate.setting"
@@ -40,6 +42,8 @@ const G_CODE_OPERATION_DEFINITIONS = Object.freeze({
 	[G_CODE_OPERATIONS.SPINDLE_CSS]: operationDefinition({ statusGroup: "spindleSpeedMode", label: "CSS" }),
 	[G_CODE_OPERATIONS.SPINDLE_FIXED_RPM]: operationDefinition({ statusGroup: "spindleSpeedMode", label: "Fixed RPM" }),
 	[G_CODE_OPERATIONS.SPINDLE_RPM_LIMIT]: operationDefinition({ statusGroup: "speedLimit", label: "Spindle limit" }),
+	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: operationDefinition({ label: "Polar interpolation on" }),
+	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: operationDefinition({ label: "Polar interpolation off" }),
 	[G_CODE_OPERATIONS.DWELL]: operationDefinition(),
 	[G_CODE_OPERATIONS.MACHINE_COORDINATE]: operationDefinition(),
 	[G_CODE_OPERATIONS.COORDINATE_SETTING]: operationDefinition()
@@ -73,7 +77,7 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 	fanucIso: makeProfile({
 		id: "fanucIso",
 		label: "FANUC / ISO",
-		description: "Mill G94/G95 feed modes, lathe G98/G99 feed modes, and mill G98/G99 canned-cycle return modes.",
+		description: "Mill G94/G95 feed modes, lathe G98/G99 feed modes, mill G98/G99 canned-cycle return modes, and lathe G12.1/G13.1 polar interpolation.",
 		bindings: {
 			mill: {
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
@@ -87,14 +91,16 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
 				[G_CODE_OPERATIONS.DISTANCE_INCREMENTAL]: binding(91),
 				[G_CODE_OPERATIONS.FEED_PER_MINUTE]: binding(98),
-				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99)
+				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99),
+				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: binding(12.1),
+				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: binding(13.1)
 			}
 		}
 	}),
 	dmgMori: makeProfile({
 		id: "dmgMori",
 		label: "DMG MORI",
-		description: "DMG MORI turning G98/G99 feed modes with ISO mill feed and canned-cycle return modes.",
+		description: "DMG MORI turning G98/G99 feed modes with ISO mill feed/canned-cycle return modes and lathe G12.1/G13.1 polar interpolation.",
 		bindings: {
 			mill: {
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
@@ -106,7 +112,9 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 			},
 			lathe: {
 				[G_CODE_OPERATIONS.FEED_PER_MINUTE]: binding(98),
-				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99)
+				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99),
+				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: binding(12.1),
+				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: binding(13.1)
 			}
 		}
 	})

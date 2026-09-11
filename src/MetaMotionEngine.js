@@ -99,6 +99,7 @@ function getModalStateAtLine(document, targetLineNumber, options = {}) {
 		motionCode: state.motionCode,
 		feedMode: state.feedMode,
 		spindleMode: state.spindleMode,
+		polarInterpolation: state.polarInterpolation,
 		modalGroups: getStatusModalEntries(statusState)
 	};
 }
@@ -122,6 +123,9 @@ function makeInitialState(options = {}) {
 		positionCoordinateSystem,
 		motionCode: undefined,
 		arcPlane: "xy",
+		polarInterpolation: false,
+		polarPreviousArcPlane: undefined,
+		polarPreviousY: undefined,
 		distanceMode: "absolute",
 		coordinateSystem: "G54",
 		cannedCycle: undefined,
@@ -310,6 +314,8 @@ function applyModalState(words, motionCode, state, options = {}) {
 			case G_CODE_OPERATIONS.PLANE_XY: state.arcPlane = "xy"; break;
 			case G_CODE_OPERATIONS.PLANE_XZ: state.arcPlane = "xz"; break;
 			case G_CODE_OPERATIONS.PLANE_YZ: state.arcPlane = "yz"; break;
+			case G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE: enablePolarInterpolation(state); break;
+			case G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE: disablePolarInterpolation(state); break;
 			case G_CODE_OPERATIONS.CYCLE_CANCEL: cancelCycle = true; break;
 			case G_CODE_OPERATIONS.SPINDLE_CSS: state.spindleMode = "css"; break;
 			case G_CODE_OPERATIONS.SPINDLE_FIXED_RPM: state.spindleMode = "fixed"; break;
@@ -357,6 +363,25 @@ function applyModalState(words, motionCode, state, options = {}) {
 	} else if (state.cannedCycle) {
 		state.cannedCycle = updateCannedCycleState(state.cannedCycle, words, state);
 	}
+}
+
+function enablePolarInterpolation(state) {
+	if (state.polarInterpolation) return;
+	state.polarPreviousArcPlane = state.arcPlane;
+	state.polarPreviousY = state.position.y;
+	state.polarInterpolation = true;
+	state.arcPlane = "xy";
+	state.position.y = 0;
+}
+
+function disablePolarInterpolation(state) {
+	if (!state.polarInterpolation) return;
+	state.polarInterpolation = false;
+	state.arcPlane = state.polarPreviousArcPlane || "xy";
+	if (Number.isFinite(state.polarPreviousY)) state.position.y = state.polarPreviousY;
+	else delete state.position.y;
+	state.polarPreviousArcPlane = undefined;
+	state.polarPreviousY = undefined;
 }
 
 // Shared, non-UI arc geometry read model. Consumers decide whether and how to
@@ -422,13 +447,13 @@ function analyzeArcWords(words, motionCode, state, options) {
 		&& Number.isFinite(word.value)
 		&& Math.trunc(word.value) === motionCode);
 	const start = clonePosition(state.position);
-	const end = makeEndPosition(start, words, state.distanceMode, options);
+	const end = makeEndPosition(start, words, state.distanceMode, options, state.polarInterpolation);
 
 	return {
 		motionCode,
 		arcPlane: state.arcPlane,
 		motionRange: motionWord ? { start: motionWord.start, end: motionWord.end } : undefined,
-		validation: validateArcGeometry(words, start, end, state.arcPlane, options)
+		validation: validateArcGeometry(words, start, end, state.arcPlane, options, state.polarInterpolation)
 	};
 }
 
@@ -611,20 +636,22 @@ function lastWord(words, letter) {
 
 function estimateMotion(words, motionCode, state, options) {
 	const start = clonePosition(state.position);
-	const end = makeEndPosition(start, words, state.distanceMode, options);
+	const end = makeEndPosition(start, words, state.distanceMode, options, state.polarInterpolation);
 
 	if (!hasKnownPosition(start) || !hasKnownPosition(end)) {
 		applyPositionUpdate(words, state, options);
 		return makeUnavailableEstimate(motionCode, start, end, "Start or end position is incomplete.");
 	}
 
-	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options);
+	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options, state.polarInterpolation);
 	const distance = sumPathDistance(path, options);
 	const geometry = makeMotionGeometry(motionCode, start, end, path, options);
 	const timing = motionCode === 0
 		? estimateRapidTime(distance, options)
 		: estimatePathTime(path, state, options);
-	const warnings = collectUnresolvedWordWarnings(words, ["X", "Y", "Z", "U", "V", "W", "F"]);
+	const warnings = collectUnresolvedWordWarnings(words, state.polarInterpolation
+		? ["X", "C", "Z", "U", "H", "W", "F"]
+		: ["X", "Y", "Z", "U", "V", "W", "F"]);
 
 	if (distance <= 0) {
 		warnings.push("Move distance is zero.");
@@ -675,6 +702,7 @@ function estimateMotion(words, motionCode, state, options) {
 		rpm: state.rpm,
 		cssSurfaceSpeed: state.cssSurfaceSpeed,
 		rpmLimit: state.rpmLimit,
+		polarInterpolation: state.polarInterpolation,
 		geometry,
 		pathPoints: path.points,
 		usedArcFallback: path.usedArcFallback,
@@ -695,11 +723,11 @@ function makeUnavailableEstimate(motionCode, start, end, reason) {
 }
 
 function applyPositionUpdate(words, state, options) {
-	if (isCoordinateSettingLine(words, options)) {
+	if (isCoordinateSettingLine(words, options) || isPolarInterpolationControlLine(words, options)) {
 		return;
 	}
 
-	state.position = makeEndPosition(state.position, words, state.distanceMode, options);
+	state.position = makeEndPosition(state.position, words, state.distanceMode, options, state.polarInterpolation);
 }
 
 function collectUnresolvedWordWarnings(words, letters) {
@@ -716,11 +744,11 @@ function collectUnresolvedWordWarnings(words, letters) {
 	return warnings;
 }
 
-function makeEndPosition(start, words, distanceMode = "absolute", options = {}) {
+function makeEndPosition(start, words, distanceMode = "absolute", options = {}, polarInterpolation = false) {
 	const end = clonePosition(start);
 	const axisWords = [
 		{ position: "X", incremental: "U", key: "x" },
-		{ position: "Y", incremental: "V", key: "y" },
+		polarInterpolation ? { position: "C", incremental: "H", key: "y" } : { position: "Y", incremental: "V", key: "y" },
 		{ position: "Z", incremental: "W", key: "z" }
 	];
 	for (const axis of axisWords) {
@@ -747,12 +775,12 @@ function hasGCode(words, targetCode) {
 	return words.some(word => word.letter === "G" && Number.isFinite(word.value) && Math.trunc(word.value) === targetCode);
 }
 
-function buildPathPoints(motionCode, start, end, words, arcPlane, options) {
+function buildPathPoints(motionCode, start, end, words, arcPlane, options, polarInterpolation = false) {
 	if (motionCode === 0 || motionCode === 1) {
 		return buildLinearPathPoints(start, end, options);
 	}
 
-	return buildArcPathPoints(motionCode, start, end, words, arcPlane, options);
+	return buildArcPathPoints(motionCode, start, end, words, arcPlane, options, polarInterpolation);
 }
 
 function buildLinearPathPoints(start, end, options) {
@@ -763,7 +791,7 @@ function buildLinearPathPoints(start, end, options) {
 	};
 }
 
-function buildArcPathPoints(motionCode, start, end, words, arcPlane, options) {
+function buildArcPathPoints(motionCode, start, end, words, arcPlane, options, polarInterpolation = false) {
 	const iWord = lastWord(words, "I");
 	const jWord = lastWord(words, "J");
 	const kWord = lastWord(words, "K");
@@ -790,7 +818,8 @@ function buildArcPathPoints(motionCode, start, end, words, arcPlane, options) {
 				plane.secondaryAxis,
 				primaryWord.value,
 				secondaryWord.value,
-				options
+				options,
+				polarInterpolation
 			);
 		}
 
@@ -807,7 +836,8 @@ function buildArcPathPoints(motionCode, start, end, words, arcPlane, options) {
 				plane.primaryAxis,
 				plane.secondaryAxis,
 				rWord.value,
-				options
+				options,
+				polarInterpolation
 			);
 
 			if (path) {
@@ -847,10 +877,10 @@ function getArcOffsetWord(words, axis) {
 	return lastWord(words, "K");
 }
 
-function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, primaryOffset, secondaryOffset, options) {
+function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, primaryOffset, secondaryOffset, options, polarInterpolation = false) {
 	const startPoint = toPhysicalPoint(start, options);
-	const centerPrimary = startPoint[primaryAxis] + toPhysicalAxisDistance(primaryAxis, primaryOffset, options);
-	const centerSecondary = startPoint[secondaryAxis] + toPhysicalAxisDistance(secondaryAxis, secondaryOffset, options);
+	const centerPrimary = startPoint[primaryAxis] + toArcOffsetDistance(primaryAxis, primaryOffset, options, polarInterpolation);
+	const centerSecondary = startPoint[secondaryAxis] + toArcOffsetDistance(secondaryAxis, secondaryOffset, options, polarInterpolation);
 	const sweepMotionCode = getPlaneSweepMotionCode(motionCode, primaryAxis, secondaryAxis);
 
 	return buildPlanarArcPathFromCenter(
@@ -866,7 +896,7 @@ function buildPlanarArcPath(motionCode, start, end, primaryAxis, secondaryAxis, 
 	);
 }
 
-function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, radiusWordValue, options) {
+function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, radiusWordValue, options, polarInterpolation = false) {
 	const radius = Math.abs(radiusWordValue);
 
 	if (!Number.isFinite(radius) || radius <= 0) {
@@ -904,7 +934,8 @@ function buildRadiusArcPath(motionCode, start, end, primaryAxis, secondaryAxis, 
 		secondaryAxis,
 		centerPrimary,
 		centerSecondary,
-		options
+		options,
+		polarInterpolation
 	);
 }
 
@@ -1079,7 +1110,7 @@ function estimatePathTime(path, state, options) {
 	};
 }
 
-function validateArcGeometry(words, start, end, arcPlane, options) {
+function validateArcGeometry(words, start, end, arcPlane, options, polarInterpolation = false) {
 	const plane = getArcPlaneAxes(arcPlane);
 	const primaryWord = getArcOffsetWord(words, plane.primaryAxis);
 	const secondaryWord = getArcOffsetWord(words, plane.secondaryAxis);
@@ -1130,8 +1161,8 @@ function validateArcGeometry(words, start, end, arcPlane, options) {
 		return { valid: true };
 	}
 
-	const primaryOffset = toPhysicalAxisDistance(plane.primaryAxis, primaryWord ? primaryWord.value : 0, options);
-	const secondaryOffset = toPhysicalAxisDistance(plane.secondaryAxis, secondaryWord ? secondaryWord.value : 0, options);
+	const primaryOffset = toArcOffsetDistance(plane.primaryAxis, primaryWord ? primaryWord.value : 0, options, polarInterpolation);
+	const secondaryOffset = toArcOffsetDistance(plane.secondaryAxis, secondaryWord ? secondaryWord.value : 0, options, polarInterpolation);
 	const startRadius = Math.hypot(primaryOffset, secondaryOffset);
 	const endRadius = Math.hypot(
 		endPoint[plane.primaryAxis] - (startPoint[plane.primaryAxis] + primaryOffset),
@@ -1164,6 +1195,10 @@ function hasKnownPlanarPosition(start, end, plane) {
 
 function toPhysicalAxisDistance(axis, value, options) {
 	return axis === "x" && options.xAxisMode === "diameter" ? value / 2 : value;
+}
+
+function toArcOffsetDistance(axis, value, options, polarInterpolation) {
+	return polarInterpolation ? value : toPhysicalAxisDistance(axis, value, options);
 }
 
 function getArcTolerance(values, options = {}) {
@@ -1633,7 +1668,7 @@ function analyzeChronobladeRange(document, range, options) {
 			if (isLineInRange(lineNumber, targetRange)) {
 				rows.push(attachChronobladeLineData(makeDwellReportRow(lineNumber, words, getToolRangeAtLine(toolRanges, lineNumber)), lineNumber, executionEntry));
 			}
-		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options)) {
+		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options, state)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			positionWasUpdated = true;
 
@@ -1724,7 +1759,7 @@ function analyzeVisionRange(document, range, options) {
 			));
 		}
 
-		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words, options) && isLineInRange(lineNumber, targetRange)) {
+		if ((isProgramStopLine(words) || isCompensationLine(words) || isSpeedChangeLine(words)) && !hasMotionAxisWords(words, options, state) && isLineInRange(lineNumber, targetRange)) {
 			rows.push(attachVisionLineData(
 				makeVisionEventMarkerRow(lineNumber, words, state.position, state.positionCoordinateSystem || state.coordinateSystem, options),
 				line,
@@ -1751,7 +1786,7 @@ function analyzeVisionRange(document, range, options) {
 			state.positionCoordinateSystem = state.coordinateSystem;
 		} else if (isDwellLine(words, options)) {
 			positionWasUpdated = true;
-		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options)) {
+		} else if (REPORT_MOTION_CODES.has(activeMotionCode) && hasMotionAxisWords(words, options, state)) {
 			const estimate = estimateMotion(words, activeMotionCode, state, options);
 			const isMachineCoordinate = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options);
 			estimate.machineCoordinate = isMachineCoordinate;
@@ -1773,7 +1808,7 @@ function analyzeVisionRange(document, range, options) {
 
 		if (!positionWasUpdated) {
 			applyPositionUpdate(words, state, options);
-			if (hasMotionAxisWords(words, options)) {
+			if (hasMotionAxisWords(words, options, state)) {
 				state.positionCoordinateSystem = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options)
 					? getGCodeWordForOperation(G_CODE_OPERATIONS.MACHINE_COORDINATE, options) || "G53"
 					: state.coordinateSystem;
@@ -1864,8 +1899,12 @@ function hasCycleSiteAxisWords(words, options) {
 	return !isCoordinateSettingLine(words, options) && words.some(word => ["X", "Y", "U", "V"].includes(word.letter));
 }
 
-function hasMotionAxisWords(words, options) {
-	return !isCoordinateSettingLine(words, options) && words.some(word => ["X", "Y", "Z", "U", "V", "W"].includes(word.letter));
+function hasMotionAxisWords(words, options, state) {
+	if (isCoordinateSettingLine(words, options) || isPolarInterpolationControlLine(words, options)) return false;
+	const letters = state && state.polarInterpolation
+		? ["X", "C", "Z", "U", "H", "W"]
+		: ["X", "Y", "Z", "U", "V", "W"];
+	return words.some(word => letters.includes(word.letter));
 }
 
 function hasMCode(words, targetCode) {
@@ -1922,6 +1961,11 @@ function getDwellSeconds(words) {
 
 function isCoordinateSettingLine(words, options) {
 	return hasGCodeOperation(words, G_CODE_OPERATIONS.COORDINATE_SETTING, options);
+}
+
+function isPolarInterpolationControlLine(words, options) {
+	return hasGCodeOperation(words, G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE, options)
+		|| hasGCodeOperation(words, G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE, options);
 }
 
 function makeToolChangeRows(words, previousTool, options) {
