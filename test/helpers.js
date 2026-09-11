@@ -15,6 +15,20 @@ const vscode = {
 		dispose() { this.emitter.removeAllListeners(); }
 	},
 	ConfigurationTarget: { Global: 1 },
+	DiagnosticSeverity: { Error: 0, Warning: 1 },
+	Range: class Range {
+		constructor(startLine, startCharacter, endLine, endCharacter) {
+			this.start = { line: startLine, character: startCharacter };
+			this.end = { line: endLine, character: endCharacter };
+		}
+	},
+	Diagnostic: class Diagnostic {
+		constructor(range, message, severity) {
+			this.range = range;
+			this.message = message;
+			this.severity = severity;
+		}
+	},
 	workspace: {
 		getConfiguration(section) {
 			return {

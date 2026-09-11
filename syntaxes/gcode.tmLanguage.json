@@ -122,6 +122,9 @@
 			"include": "#pcodes"
 		},
 		{
+			"include": "#qbracketvalues"
+		},
+		{
 			"include": "#qcodes"
 		},
 		{
@@ -399,6 +402,23 @@
 				{
 					"name": "support.code.q.gcode",
 					"match": "(?<![A-Za-z])[Qq](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+				}
+			]
+		},
+		"qbracketvalues": {
+			"patterns": [
+				{
+					"name": "support.code.q.gcode",
+					"begin": "(?<![A-Za-z])[Qq]\\[",
+					"end": "\\]",
+					"patterns": [
+						{
+							"include": "#mathwordoperators"
+						},
+						{
+							"include": "#bracketnest"
+						}
+					]
 				}
 			]
 		},

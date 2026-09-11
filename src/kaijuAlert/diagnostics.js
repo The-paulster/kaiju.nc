@@ -239,7 +239,7 @@ function makeUnresolvedGotoTargetWarnings(document) {
 	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
 		const line = document.lineAt(lineNumber).text;
 		const codeLine = maskProtectedRanges(line);
-		const gotoRegex = /\bGOTO\s+(N?)(\d+)(?![.\d])/gi;
+		const gotoRegex = /\bGOTO\s*(N?)(\d+)(?![.\d])/gi;
 		let match;
 
 		while ((match = gotoRegex.exec(codeLine)) !== null) {

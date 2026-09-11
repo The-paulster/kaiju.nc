@@ -30,7 +30,11 @@ test("Chronoblade generated webview scripts compile", () => {
 		dwellTimeSeconds: 0, toolTimeSeconds: 0, otherTimeSeconds: 0,
 		totalDistance: 0, cuttingDistance: 0
 	};
-	compileEmbeddedScripts(render({ timingProfiles: [], humanFormat: {} }, { rows: [], summary: zeroSummary }));
+	const html = render({ timingProfiles: [], humanFormat: {} }, { rows: [], summary: zeroSummary });
+	compileEmbeddedScripts(html);
+	assert.match(html, /formatVirtualTime\(row\.labelTotalTimeSeconds\)/);
+	assert.match(html, /formatVirtualAccumulatedTime\(entry\.accumulatedLabelTimeSeconds\)/);
+	assert.match(html, /<td colspan="7"><button class="section-toggle"/);
 });
 
 test("Vision generated webview scripts compile", () => {
@@ -52,6 +56,32 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /data-start-axis="x"[^>]*value="0"/);
 	assert.match(html, /savedWebviewState = vscode\.getState\(\) \|\| \{\}/);
 	assert.match(html, /viewport: \{ plane: planeSelect\.value, zoom, pan: \{ x: pan\.x, y: pan\.y \} \}/);
+	assert.match(html, /function getDisplayedVisionLineNumber\(row\)/);
+	assert.match(html, /"L" \+ getDisplayedVisionLineNumber\(row\)/);
+	assert.match(html, /"L" \+ getDisplayedVisionLineNumber\(cycle\) \+ " " \+ cycle\.instruction/);
+	assert.match(html, /G\(\?:41\|42\|43\|44\|46\)/);
+	assert.match(html, /G\(\?:40\|49\)/);
+	assert.match(html, /id="grid" type="checkbox"/);
+	assert.match(html, /id="gridSize" type="number" min="0\.001"/);
+	assert.match(html, /function drawGrid\(context, bounds, transform, size, showGrid\)/);
+	assert.match(html, /data-tooltip-merged="true"/);
+	assert.match(html, /function togglePinnedTooltip\(event\)/);
+	assert.match(html, /if \(!target\) \{\s*if \(pinnedTooltip\) clearPinnedTooltip\(\);/);
+	assert.match(html, /pinned-tooltip-list/);
+});
+
+test("Orphan Killer generated webview scripts compile", () => {
+	const render = loadPrivateRenderer("src/kaijuOrphanKiller/index.js", "renderOrphanHtml");
+	const document = makeDocument("#100 = 1");
+	const html = render(document, {
+		undefinedUses: [{ macro: "#101", name: "", lines: [1] }],
+		unusedDefinitions: [{ macro: "#100", name: "", lines: [1] }]
+	}, true);
+	compileEmbeddedScripts(html);
+	assert.match(html, /id="live" type="checkbox" checked/);
+	assert.match(html, /type: "setLive", live: event\.target\.checked/);
+	assert.match(html, /class="summary-grid"/);
+	assert.doesNotMatch(html, /test\.nc/);
 });
 
 test("G-code profile editor scripts compile", () => {

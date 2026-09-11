@@ -853,9 +853,9 @@ function renderChronobladeHtml(options, result) {
 		function renderVirtualLabelRow(entry) {
 			const row = entry.row;
 			const collapsed = collapsedSections.has(entry.sectionId);
-			const total = Number.isFinite(entry.accumulatedLabelTimeSeconds) ? ' Total: ' + formatVirtualTime(entry.accumulatedLabelTimeSeconds) : '';
 			return '<tr class="label-row" data-section-id="' + entry.sectionId + '">' + renderVirtualToolMarkerCell(row) + '<td class="tool-marker-gap"></td><td class="line-cell">' + escapeHtml(formatVirtualLine(row)) + '</td>' +
-				'<td colspan="9"><button class="section-toggle" type="button" aria-expanded="' + String(!collapsed) + '" title="Collapse this label section"><span class="section-chevron" aria-hidden="true">' + (collapsed ? '&#9654;' : '&#9660;') + '</span><code>' + escapeHtml(row.instruction) + '</code>' + escapeHtml(row.comment ? ' ' + row.comment : '') + escapeHtml(total) + '</button></td></tr>';
+				'<td colspan="7"><button class="section-toggle" type="button" aria-expanded="' + String(!collapsed) + '" title="Collapse this label section"><span class="section-chevron" aria-hidden="true">' + (collapsed ? '&#9654;' : '&#9660;') + '</span><code>' + escapeHtml(row.instruction) + '</code>' + escapeHtml(row.comment ? ' ' + row.comment : '') + '</button></td>' +
+				'<td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(formatVirtualTime(row.labelTotalTimeSeconds))) + '</span></td><td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(formatVirtualAccumulatedTime(entry.accumulatedLabelTimeSeconds))) + '</span></td></tr>';
 		}
 
 		function renderSpacerRow(height) {
@@ -990,15 +990,16 @@ function renderSectionGroups(sections) {
 
 function renderLabelRow(row, sectionId, accumulatedLabelTimeSeconds) {
 	const comment = row.comment ? ` ${row.comment}` : "";
-	const total = Number.isFinite(accumulatedLabelTimeSeconds)
-		? ` Total: ${formatTime(accumulatedLabelTimeSeconds)}`
-		: "";
+	const sectionTime = Number.isFinite(row.labelTotalTimeSeconds) ? formatTime(row.labelTotalTimeSeconds) : "-";
+	const total = Number.isFinite(accumulatedLabelTimeSeconds) ? formatTime(accumulatedLabelTimeSeconds) : "-";
 
 	return `<tr class="label-row" data-section-id="${sectionId}">
 		${renderToolMarkerCell(row)}
 		<td class="tool-marker-gap"></td>
 		<td class="line-cell">${escapeHtml(row.lineNumber)}</td>
-		<td colspan="9"><button class="section-toggle" type="button" aria-expanded="true" title="Collapse this label section"><span class="section-chevron" aria-hidden="true">&#9660;</span><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}${escapeHtml(total)}</button></td>
+		<td colspan="7"><button class="section-toggle" type="button" aria-expanded="true" title="Collapse this label section"><span class="section-chevron" aria-hidden="true">&#9660;</span><code>${escapeHtml(row.instruction)}</code>${escapeHtml(comment)}</button></td>
+		<td><span class="cell-value">${escapeHtml(sectionTime)}</span></td>
+		<td><span class="cell-value">${escapeHtml(total)}</span></td>
 	</tr>`;
 }
 

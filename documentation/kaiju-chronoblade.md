@@ -60,7 +60,8 @@ close to its label.
 Its N-label separator rows can be collapsed in the report to hide the ordinary
 rows belonging to that label section; this is presentation-only and does not
 alter the cycle-time analysis. Each label displays the accumulated estimated
-time through its own section.
+time through its own section in Total, alongside that section's own estimated
+time in Time.
 
 The report also offers display toggles for trailing-zero suppression (while
 retaining G-code decimal points) and hiding zero-time label sections. Both

@@ -84,6 +84,21 @@ test("DMG turning timing and presentation both use G98 feed per minute", () => {
 	assert.equal(row.timeSeconds, 60);
 });
 
+test("FANUC / ISO lathe status and motion use G99 for feed per revolution", () => {
+	const options = {
+		machineMode: "lathe", gCodeDialectId: "fanucIso", defaultFeedMode: "perRev", xAxisMode: "radius"
+	};
+	const defaultState = motion.getModalStateAtLine(makeDocument("G0"), 0, options);
+	const explicitState = motion.getModalStateAtLine(makeDocument("G99"), 0, options);
+	const result = motion.analyzeChronobladeRange(makeDocument("G99\nG97 S1000\nG0 Z0\nG1 Z100 F0.1"), undefined, options);
+	const row = result.rows.find(candidate => candidate.type === "motion");
+
+	assert.equal(defaultState.modalGroups.find(entry => entry.key === "feedMode").code, "G99");
+	assert.equal(explicitState.modalGroups.find(entry => entry.key === "feedMode").code, "G99");
+	assert.equal(row.feedMode, "perRev");
+	assert.equal(row.feedModeWord, "G99");
+});
+
 test("dialect-owned status groups do not duplicate word meanings", () => {
 	for (const key of ["distanceMode", "cannedCycleReturn", "plane", "spindleSpeedMode", "speedLimit"]) {
 		assert.deepEqual(modalDefinitions.find(group => group.key === key).codes, {});

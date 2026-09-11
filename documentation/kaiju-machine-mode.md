@@ -68,6 +68,10 @@ The editor writes the complete normalized table, including `null` for unbound
 operations. Users should normally use the editor rather than edit this JSON
 directly.
 
+The built-in FANUC / ISO profile uses G94/G95 for mill feed/min and feed/rev,
+while its lathe table uses G98/G99. Those words remain independent of the mill
+table's G98/G99 canned-cycle return meanings.
+
 ## Boundary
 
 Presentation and command workflow stay here. Machine geometry defaults,

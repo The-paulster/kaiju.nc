@@ -300,10 +300,17 @@ function normalizeVisionPanelSettings(value = {}) {
 		showLabels: value.showLabels !== false,
 		showEndpoints: value.showEndpoints !== false,
 		showZeroLines: value.showZeroLines === true,
+		showGrid: value.showGrid === true,
+		gridSize: normalizeVisionGridSize(value.gridSize),
 		showMarkerLegend: value.showMarkerLegend === true,
 		overrideProgramInitialValues: value.overrideProgramInitialValues === true,
 		live: value.live === true
 	};
+}
+
+function normalizeVisionGridSize(value) {
+	const size = Number(value);
+	return Number.isFinite(size) && size > 0 ? Math.max(0.001, Math.min(size, 1000000)) : 10;
 }
 
 function getDocumentVisionSettings(document) {
@@ -929,7 +936,26 @@ function renderVisionHtml(document, mode, options, result) {
 
 		.visibility-options label {
 			min-height: 22px;
-		}		.summary {
+		}
+
+		.grid-size {
+			display: inline-flex;
+			align-items: center;
+			gap: 5px;
+			color: var(--vscode-descriptionForeground);
+			font-size: 12px;
+		}
+
+		.grid-size input {
+			width: 7ch;
+			box-sizing: border-box;
+			color: var(--vscode-input-foreground);
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+			padding: 2px 4px;
+			font: inherit;
+		}
+		.summary {
 			flex: 0 0 auto;
 			display: flex;
 			flex-wrap: wrap;
@@ -1021,6 +1047,26 @@ function renderVisionHtml(document, mode, options, result) {
 			font-size: 12px;
 			line-height: 1.35;
 			pointer-events: none;
+		}
+
+		.vision-tooltip.pinned {
+			max-height: min(55vh, 390px);
+			min-width: min(260px, 62vw);
+			pointer-events: auto;
+			overflow: hidden;
+		}
+
+		.pinned-tooltip-title {
+			color: var(--vscode-descriptionForeground, #9ca3af);
+			font: 600 11px var(--vscode-font-family, sans-serif);
+			letter-spacing: .03em;
+			margin: 0 0 6px;
+		}
+
+		.pinned-tooltip-list {
+			max-height: min(45vh, 320px);
+			overflow-y: auto;
+			padding-right: 6px;
 		}
 
 		.vision-marker-legend {
@@ -1231,7 +1277,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 	${renderVisionViewPanel(options)}
 	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.initialPosition, options.offsetPanelOpen)}
-	${renderVisionVisibilityPanel(result.rows)}
+		${renderVisionVisibilityPanel(result.rows, options)}
 	${renderVisionMacroPanel(macroVariables, savedMacroInputs, options.overrideProgramInitialValues)}
 	<section class="summary">
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
@@ -1278,6 +1324,8 @@ function renderVisionHtml(document, mode, options, result) {
 		const labelsInput = document.getElementById("labels");
 		const endpointsInput = document.getElementById("endpoints");
 		const zeroLinesInput = document.getElementById("zeroLines");
+		const gridInput = document.getElementById("grid");
+		const gridSizeInput = document.getElementById("gridSize");
 		const toolColorsInput = document.getElementById("toolColors");
 		const markerLegendToggle = document.getElementById("markerLegendToggle");
 		const viewToggle = document.getElementById("viewToggle");
@@ -1317,6 +1365,7 @@ function renderVisionHtml(document, mode, options, result) {
 		let currentLabelEntry;
 		const projectedPlaneCache = new Map();
 		let dragState;
+		let pinnedTooltip;
 		let playbackMacroSortMode = "number";
 
 		function saveViewport() {
@@ -1370,6 +1419,8 @@ function renderVisionHtml(document, mode, options, result) {
 				showLabels: labelsInput.checked,
 				showEndpoints: endpointsInput.checked,
 				showZeroLines: zeroLinesInput.checked,
+				showGrid: gridInput.checked,
+				gridSize: gridSizeInput.value,
 				showMarkerLegend: markerLegendToggle.checked,
 				overrideProgramInitialValues: overrideProgramInitialValues.checked,
 				live: liveInput.checked
@@ -2027,6 +2078,8 @@ function renderVisionHtml(document, mode, options, result) {
 			const showLabels = labelsInput.checked && !playbackActive;
 			const showEndpoints = endpointsInput.checked && !playbackActive;
 			const showZeroLines = zeroLinesInput.checked;
+			const showGrid = gridInput.checked;
+			const gridSize = normalizeGridSize(gridSizeInput.value);
 			const useToolColors = toolColorsInput.checked;
 			const unitsPerPixel = bounds.height / Math.max(1, viewerRect.height);
 			const labelSize = unitsPerPixel * data.options.labelFontSize;
@@ -2104,12 +2157,14 @@ function renderVisionHtml(document, mode, options, result) {
 				labelsAndMarkers +
 				'</svg>';
 
-			hideTooltip();
+			clearPinnedTooltip();
 			viewer.innerHTML = '<canvas id="vision-canvas" class="vision-canvas"></canvas>' + overlaySvg;
-			drawCanvasLayer({
+				drawCanvasLayer({
 				rows: canvasRows,
 				cycles: canvasCycles,
 				bounds,
+				showGrid,
+				gridSize,
 				useToolColors,
 				endpointSize,
 				arrowSize,
@@ -2208,7 +2263,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function makeLabelTargetsForCache(context, metrics) {
 			const targets = [];
-			const cycleTargets = context.cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, metrics.cyclePointSize, "cycle-point", "endpoint-label", context.showLabels ? "L" + cycle.lineNumber + " " + cycle.instruction : "", context.showLabels ? cycle.labelCoordinateLine : "", { kind: "cycle", position: cycle.end, hoverItems: [cycle.labelHoverHtml], showMarker: context.showEndpoints }));
+			const cycleTargets = context.cycles.map(cycle => makePointLabelTarget(cycle.projectedPoint, metrics.cyclePointSize, "cycle-point", "endpoint-label", context.showLabels ? "L" + getDisplayedVisionLineNumber(cycle) + " " + cycle.instruction : "", context.showLabels ? cycle.labelCoordinateLine : "", { kind: "cycle", position: cycle.end, hoverItems: [cycle.labelHoverHtml], showMarker: context.showEndpoints }));
 			const toolTargets = context.toolChanges.map(toolChange => makeToolChangeLabelTarget(toolChange, context.showLabels, metrics.toolChangeSize, context.showEndpoints));
 			const eventTargets = context.events.map(event => makePointLabelTarget(event.projectedPoint, metrics.endpointSize, event.markerClass || "endpoint endpoint-stop", "endpoint-label", context.showLabels ? event.instruction : "", context.showLabels ? event.labelCoordinateLine : "", { kind: event.markerKind || "event", position: event.position, hoverItems: [event.labelHoverHtml], showMarker: context.showEndpoints }));
 			const firstRow = context.rows[0];
@@ -2229,7 +2284,7 @@ function renderVisionHtml(document, mode, options, result) {
 					continue;
 				}
 
-				targets.push(makePointLabelTarget(end, metrics.endpointSize, row.markerClass || "endpoint", "endpoint-label", context.showLabels ? "L" + row.lineNumber : "", context.showLabels ? row.endCoordinateLine : "", { kind: row.markerKind || "endpoint", position: row.end, hoverItems: [row.endHoverHtml], showMarker: context.showEndpoints }));
+				targets.push(makePointLabelTarget(end, metrics.endpointSize, row.markerClass || "endpoint", "endpoint-label", context.showLabels ? "L" + getDisplayedVisionLineNumber(row) : "", context.showLabels ? row.endCoordinateLine : "", { kind: row.markerKind || "endpoint", position: row.end, hoverItems: [row.endHoverHtml], showMarker: context.showEndpoints }));
 			}
 
 			return targets;
@@ -2253,6 +2308,7 @@ function renderVisionHtml(document, mode, options, result) {
 				}
 
 				target.hoverId = hoverId;
+				target.hoverItemCount = target.hoverItems.length;
 				delete target.hoverItems;
 			}
 		}
@@ -2321,10 +2377,14 @@ function renderVisionHtml(document, mode, options, result) {
 				return entry.hoverHtmlById.get(hoverId);
 			}
 
-			const items = entry.hoverItemsById.get(hoverId) || [];
+			const items = getCachedTooltipItems(entry, hoverId);
 			const html = '<div class="tooltip-item">' + items.join("") + '</div>';
 			entry.hoverHtmlById.set(hoverId, html);
 			return html;
+		}
+
+		function getCachedTooltipItems(entry, hoverId) {
+			return entry && hoverId ? entry.hoverItemsById.get(hoverId) || [] : [];
 		}
 
 		function estimateLabelCacheEntryBytes(entry) {
@@ -2524,9 +2584,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function makePointHoverHtml(position, row) {
 			const showTraceLine = analysisModeSelect.value === "trace" && lineDataSelect.value === "trace" && row && row.traceLine && Number.isFinite(row.decompositionLineNumber);
-			const displayedLineNumber = showTraceLine && Number.isFinite(row.decompositionLineNumber)
-				? row.decompositionLineNumber
-				: row && Number.isFinite(row.lineNumber) ? row.lineNumber : undefined;
+			const displayedLineNumber = getDisplayedVisionLineNumber(row);
 			const lineLabel = Number.isFinite(displayedLineNumber) ? "L" + displayedLineNumber : "";
 			const instruction = row && row.instruction ? row.instruction : "";
 			const lines = ['<div class="tooltip-line">' + svgEscape((lineLabel + " " + instruction).trim()) + '</div>'];
@@ -2656,6 +2714,7 @@ function renderVisionHtml(document, mode, options, result) {
 				coordinateLine: "",
 				markerSlices,
 				showMarker: representative.showMarker,
+				isMerged: true,
 				hoverItems
 			});
 			const markerTargets = group
@@ -2667,6 +2726,7 @@ function renderVisionHtml(document, mode, options, result) {
 					// merged point has a semantic marker, do not let its separate grey
 					// endpoint circle paint over that marker.
 					showMarker: markerSlices && markerSlices.length ? false : target.showMarker,
+					isMerged: true,
 					hoverItems
 				}));
 
@@ -2873,15 +2933,16 @@ function renderVisionHtml(document, mode, options, result) {
 			const x = round(target.point.x);
 			const y = round(target.point.y);
 			const tooltipAttribute = target.hoverId ? ' data-tooltip-id="' + escapeAttribute(target.hoverId) + '"' : "";
+			const tooltipCountAttribute = target.hoverItemCount > 1 ? ' data-tooltip-count="' + target.hoverItemCount + '" data-tooltip-merged="true"' : "";
 			const markerKeys = getMarkerLegendKeys(target);
 			const markerKeysAttribute = markerKeys.length ? ' data-marker-keys="' + escapeAttribute(markerKeys.join(",")) + '"' : "";
 			const marker = target.showMarker === false ? "" : renderPointMarker(target, x, y);
 
 			if (!target.labelLine && !target.coordinateLine) {
-				return marker ? '<g class="point-label-hit"' + tooltipAttribute + markerKeysAttribute + '>' + marker + '</g>' : "";
+				return marker ? '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker + '</g>' : "";
 			}
 
-			return '<g class="point-label-hit"' + tooltipAttribute + markerKeysAttribute + '>' + marker +
+			return '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker +
 				'<text class="point-label ' + target.labelClass + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
 					'<tspan x="' + round(target.labelX) + '">' + svgEscape(target.labelLine) + '</tspan>' +
 					(target.coordinateLine ? '<tspan x="' + round(target.labelX) + '" dy="1.15em">' + svgEscape(target.coordinateLine) + '</tspan>' : "") +
@@ -2960,10 +3021,48 @@ function renderVisionHtml(document, mode, options, result) {
 			context.scale(scale, scale);
 			const transform = makeCanvasTransform(state.bounds, rect.width, rect.height);
 
+			drawGrid(context, state.bounds, transform, state.gridSize, state.showGrid);
 			drawMotionRows(context, state.rows, state, transform);
 			drawCycleRows(context, state.cycles, state, transform);
 			drawDirectionArrows(context, state.rows, state, transform);
 			drawCurrentPlaybackDot(context, state.currentPlaybackDot, transform);
+			context.restore();
+		}
+
+		function normalizeGridSize(value) {
+			const size = Number(value);
+			return Number.isFinite(size) && size > 0 ? Math.max(0.001, Math.min(size, 1000000)) : 10;
+		}
+
+		function drawGrid(context, bounds, transform, size, showGrid) {
+			if (!showGrid || !bounds || !Number.isFinite(size) || size <= 0) return;
+			const verticalCount = Math.ceil(bounds.width / size) + 1;
+			const horizontalCount = Math.ceil(bounds.height / size) + 1;
+
+			// A very small program-unit grid can otherwise create enough lines to
+			// make panning sluggish. The entered size remains intact for closer zoom.
+			if (verticalCount > 500 || horizontalCount > 500) return;
+
+			context.save();
+			context.strokeStyle = "rgba(150, 150, 150, 0.18)";
+			context.lineWidth = 1;
+			context.beginPath();
+			const startX = Math.ceil(bounds.minX / size) * size;
+			const startY = Math.ceil(bounds.minY / size) * size;
+			const maxX = bounds.minX + bounds.width;
+			const maxY = bounds.minY + bounds.height;
+
+			for (let x = startX; x <= maxX + size * 0.000001; x += size) {
+				const screenX = transform.x({ x, y: 0 });
+				context.moveTo(screenX, 0);
+				context.lineTo(screenX, transform.y({ x: 0, y: maxY }));
+			}
+			for (let y = startY; y <= maxY + size * 0.000001; y += size) {
+				const screenY = transform.y({ x: 0, y });
+				context.moveTo(0, screenY);
+				context.lineTo(transform.x({ x: maxX, y: 0 }), screenY);
+			}
+			context.stroke();
 			context.restore();
 		}
 
@@ -3025,8 +3124,8 @@ function renderVisionHtml(document, mode, options, result) {
 			if (/#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)\\s*=/i.test(code)) return "#eb17e4";
 			if (/\\bS[-+]?\\d/i.test(code)) return "#ff2b2b";
 			if (/\\bM\\d+/i.test(code)) return "#9CDCFE";
-			if (/\\bG4[12]\\b/i.test(code)) return "#1f7a3a";
-			if (/\\bG40\\b/i.test(code)) return "#8e44ad";
+			if (/\\bG(?:41|42|43|44|46)\\b/i.test(code)) return "#1f7a3a";
+			if (/\\bG(?:40|49)\\b/i.test(code)) return "#8e44ad";
 			return "#2F6DA5";
 		}
 
@@ -3365,6 +3464,14 @@ function renderVisionHtml(document, mode, options, result) {
 			return lines.join("");
 		}
 
+		function getDisplayedVisionLineNumber(row) {
+			const showTraceLine = analysisModeSelect.value === "trace" && lineDataSelect.value === "trace" && row && row.traceLine && Number.isFinite(row.decompositionLineNumber);
+
+			return showTraceLine
+				? row.decompositionLineNumber
+				: row && Number.isFinite(row.lineNumber) ? row.lineNumber : undefined;
+		}
+
 		function escapeAttribute(value) {
 			return String(value || "")
 				.replace(/&/g, "&amp;")
@@ -3470,6 +3577,8 @@ function renderVisionHtml(document, mode, options, result) {
 		labelsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		endpointsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		zeroLinesInput.addEventListener("change", () => { render(); saveVisionSettings(); });
+		gridInput.addEventListener("change", () => { render(); saveVisionSettings(); });
+		gridSizeInput.addEventListener("change", () => { gridSizeInput.value = normalizeGridSize(gridSizeInput.value); render(); saveVisionSettings(); });
 		toolColorsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		document.querySelectorAll("[data-visibility-tool], [data-visibility-wcs]").forEach(input => input.addEventListener("change", render));
 		if (tableWrap) {
@@ -3482,8 +3591,8 @@ function renderVisionHtml(document, mode, options, result) {
 			});
 		}
 		function updateTooltip(event) {
-			if (!tooltip || dragState) {
-				hideTooltip();
+			if (!tooltip || dragState || pinnedTooltip) {
+				if (!pinnedTooltip) hideTooltip();
 				return;
 			}
 
@@ -3499,6 +3608,32 @@ function renderVisionHtml(document, mode, options, result) {
 
 			tooltip.innerHTML = html;
 			tooltip.style.display = "block";
+			positionTooltip(event);
+		}
+
+		function togglePinnedTooltip(event) {
+			const target = event.target && event.target.closest ? event.target.closest(".point-label-hit[data-tooltip-merged='true']") : undefined;
+
+			if (!target) {
+				if (pinnedTooltip) clearPinnedTooltip();
+				return;
+			}
+			const hoverId = target.getAttribute("data-tooltip-id");
+
+			if (!hoverId) return;
+			if (pinnedTooltip && pinnedTooltip.hoverId === hoverId) {
+				clearPinnedTooltip();
+				return;
+			}
+
+			const items = getCachedTooltipItems(currentLabelEntry, hoverId);
+
+			if (items.length < 2) return;
+			pinnedTooltip = { hoverId };
+			tooltip.innerHTML = '<div class="pinned-tooltip-title">Merged node · ' + items.length + ' entries · scroll to browse · click node to release</div><div class="pinned-tooltip-list">' + items.join("") + '</div>';
+			tooltip.classList.add("pinned");
+			tooltip.style.display = "block";
+			updateMarkerLegend(target);
 			positionTooltip(event);
 		}
 
@@ -3521,6 +3656,14 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function hideTooltip() {
+			if (pinnedTooltip) return;
+			hideTooltipOnly();
+			hideMarkerLegend();
+		}
+
+		function clearPinnedTooltip() {
+			pinnedTooltip = undefined;
+			if (tooltip) tooltip.classList.remove("pinned");
 			hideTooltipOnly();
 			hideMarkerLegend();
 		}
@@ -3597,12 +3740,16 @@ function renderVisionHtml(document, mode, options, result) {
 		});
 		viewer.addEventListener("mousemove", updateTooltip);
 		viewer.addEventListener("mouseleave", hideTooltip);
+		viewer.addEventListener("click", togglePinnedTooltip);
 		viewer.addEventListener("wheel", event => {
 			event.preventDefault();
 			setZoom(zoom * (event.deltaY < 0 ? wheelZoomStep : 1 / wheelZoomStep), event);
 		}, { passive: false });
 		viewer.addEventListener("pointerdown", event => {
 			if (!currentBounds || event.button !== 0) {
+				return;
+			}
+			if (event.target && event.target.closest && event.target.closest(".point-label-hit[data-tooltip-merged='true']")) {
 				return;
 			}
 
@@ -3753,12 +3900,16 @@ function renderVisionViewPanel(options) {
 function formatOffsetInputValue(value) {
 	return Number.isFinite(value) ? String(value) : "0";
 }
-function renderVisionVisibilityPanel(rows) {
+function renderVisionVisibilityPanel(rows, options) {
 	const toolEntries = getVisibilityEntries(rows, getVisionToolKey, getVisionToolLabel);
 	const wcsEntries = getVisibilityEntries(rows, getVisionWcsKey, getVisionWcsLabel);
 
 	return `<section id="visibilityPanel" class="visibility-panel">
 		<div class="visibility-groups">
+			<div>
+				<div class="visibility-group-title">Display</div>
+				<div class="visibility-options"><label class="checkbox" title="Draw a subtle program-unit grid behind the toolpath."><input id="grid" type="checkbox"${options.showGrid ? " checked" : ""}> Grid</label><label class="grid-size" title="Program units between grid lines.">Size <input id="gridSize" type="number" min="0.001" step="any" value="${escapeAttribute(options.gridSize)}"></label></div>
+			</div>
 			${renderVisibilityGroup("Tools", toolEntries, "tool")}
 			${renderVisibilityGroup("WCS", wcsEntries, "wcs")}
 		</div>

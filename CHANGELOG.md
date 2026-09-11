@@ -4,6 +4,24 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.5.3]
 
+- Vision merged nodes can now pin a scrollable list of their combined entries on click.
+
+- Added an optional program-unit background grid and size field to Vision's Visibility drawer.
+
+- Updated Orphan Killer with the current compact report layout and an optional per-program Live refresh mode.
+
+- Chronoblade N-label rows now show their section time in Time and the inclusive running value in Total.
+
+- Fixed the FANUC / ISO lathe feed-revolution status and motion word to use G99 instead of G95.
+
+- Fixed Vision playback showing G46 compensation as a flow dot instead of the compensation colour.
+
+- Fixed Vision endpoint and cycle labels continuing to show source lines when Trace output is selected.
+
+- Fixed unresolved GOTO target diagnostics being skipped for spaceless targets such as `GOTO110`.
+
+- Fixed Q words with bracketed macro expressions, such as `Q[#101]`, not receiving Q syntax coloring.
+
 ## [0.5.2]
 
 - Vision Live refreshes now retain the current plane's pan and zoom viewport.

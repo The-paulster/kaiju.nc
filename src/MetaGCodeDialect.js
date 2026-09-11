@@ -73,7 +73,7 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 	fanucIso: makeProfile({
 		id: "fanucIso",
 		label: "FANUC / ISO",
-		description: "ISO-style G94/G95 feed modes with mill G98/G99 canned-cycle return modes.",
+		description: "Mill G94/G95 feed modes, lathe G98/G99 feed modes, and mill G98/G99 canned-cycle return modes.",
 		bindings: {
 			mill: {
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
@@ -86,8 +86,8 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 			lathe: {
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
 				[G_CODE_OPERATIONS.DISTANCE_INCREMENTAL]: binding(91),
-				[G_CODE_OPERATIONS.FEED_PER_MINUTE]: binding(94),
-				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(95)
+				[G_CODE_OPERATIONS.FEED_PER_MINUTE]: binding(98),
+				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99)
 			}
 		}
 	}),

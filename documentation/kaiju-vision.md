@@ -22,8 +22,8 @@ options.
   formatted Trace-line node details, without executing the program again.
   Repeated executions show unique generated-document line numbers and fully
   substituted instructions. The Node line control selects that Trace output or
-  the authored Source program details; Source program is used for As-written
-  motion.
+  the authored Source program details, including endpoint and cycle label line
+  identifiers; Source program is used for As-written motion.
 - Its options use `MetaMachineMode` defaults.
 - Its motion rows and legend use profile-resolved `instruction` and
   `motionDisplayWords` data returned by `MetaMotionEngine`.
@@ -36,6 +36,10 @@ Vision is not a second G-code parser or a full simulator. It may choose bounded
 rendering samples and visual merging, but it must preserve useful inspection
 detail—paths, arrows, labels, and tool/section information. Place reusable
 motion/geometry changes in Meta and preserve existing report semantics.
+
+Hovering a merged node shows its combined entries. Clicking that node pins an
+interactive, scrollable entry list; clicking elsewhere in the Vision viewport
+releases it. Ordinary one-entry nodes retain their hover-only detail.
 Vision saves its main display controls, offsets, and macro-value entries per
 source program in workspace state; its macro drawer only lists macros present
 in that program. Its optional Live control refreshes the open report after its
@@ -66,6 +70,9 @@ selection, and the independent Show axes selections. G53 is the default
 reference. The View panel's Zero lines control is the master visibility switch:
 when it is on, every frame selected under Show axes draws axes through its zero
 relative to the selected reference.
+The Visibility drawer also contains an optional Grid control and a program-unit
+Size field. The grid is off by default, is anchored to the displayed zero
+coordinates, and draws behind the toolpath.
 G53 is selected under Show axes by default. Reset to defaults removes the
 per-program values and restores those G53 defaults, matching the Macro values
 panel's reset behavior.
@@ -116,8 +123,9 @@ Playback must only consume prepared execution data; it must never evaluate
 G-code while stepping or scrubbing. A current-position canvas dot stays at the
 last resolved tool position, using orange for rapid, yellow for cutting motion,
 lime for tool changes, pink for macro maths, light blue for M commands, red for
-spindle changes, green/purple for compensation, and dark blue for flow or other
-non-motion execution. The persistent semantic-marker legend includes these
+spindle changes, green for G41/G42/G43/G44/G46 compensation and purple for
+G40/G49 cancellation, and dark blue for flow or other non-motion execution.
+The persistent semantic-marker legend includes these
 playback-dot colours and meanings; an S word takes precedence over a companion
 M word on a combined spindle block. A compact, axis-coloured bottom-of-view
 readout shows the active tool position for every axis used anywhere in the

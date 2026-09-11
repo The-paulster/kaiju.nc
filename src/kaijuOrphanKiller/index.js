@@ -15,12 +15,26 @@ const {
 
 let orphanPanel;
 let orphanState;
+let orphanContext;
+let liveRefreshTimer;
 
 function registerOrphanKiller(context) {
+	orphanContext = context;
 	context.subscriptions.push(
 		vscode.commands.registerCommand("kaijuNC.orphanKiller", async () => {
 			await runOrphanKiller();
-		})
+		}),
+		vscode.workspace.onDidChangeTextDocument(event => {
+			if (!orphanState || !orphanState.live || !event.document || event.document.uri.toString() !== orphanState.documentUriText) {
+				return;
+			}
+			scheduleLiveOrphanRefresh();
+		}),
+		{
+			dispose() {
+				clearTimeout(liveRefreshTimer);
+			}
+		}
 	);
 }
 
@@ -32,9 +46,7 @@ async function runOrphanKiller() {
 		return;
 	}
 
-	orphanState = {
-		documentUriText: editor.document.uri.toString()
-	};
+	orphanState = makeOrphanState(editor.document);
 
 	if (!orphanPanel) {
 		orphanPanel = vscode.window.createWebviewPanel(
@@ -55,6 +67,10 @@ async function runOrphanKiller() {
 		orphanPanel.webview.onDidReceiveMessage(async message => {
 			if (message && message.type === "refresh") {
 				await refreshOrphanPanel();
+			} else if (message && message.type === "setLive") {
+				if (!orphanState || !orphanState.documentUriText) return;
+				const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(orphanState.documentUriText));
+				await setOrphanLive(document, message.live === true);
 			}
 		});
 	} else {
@@ -73,12 +89,43 @@ async function refreshOrphanPanel() {
 	await renderOrphanPanel(document);
 }
 
+function scheduleLiveOrphanRefresh() {
+	clearTimeout(liveRefreshTimer);
+	liveRefreshTimer = setTimeout(() => {
+		void refreshOrphanPanel();
+	}, 180);
+}
+
+function makeOrphanState(document) {
+	return {
+		documentUriText: document.uri.toString(),
+		live: getOrphanSettings(document).live === true
+	};
+}
+
+function getOrphanSettings(document) {
+	const all = orphanContext && orphanContext.workspaceState
+		? orphanContext.workspaceState.get("kaijuOrphanKiller.settingsByDocument", {})
+		: {};
+	return Object.assign({}, all[document.uri.toString()] || {});
+}
+
+async function setOrphanLive(document, live) {
+	if (!orphanContext || !orphanContext.workspaceState) return;
+	const all = Object.assign({}, orphanContext.workspaceState.get("kaijuOrphanKiller.settingsByDocument", {}));
+	all[document.uri.toString()] = Object.assign({}, all[document.uri.toString()] || {}, { live });
+	await orphanContext.workspaceState.update("kaijuOrphanKiller.settingsByDocument", all);
+	if (orphanState && orphanState.documentUriText === document.uri.toString()) {
+		orphanState.live = live;
+	}
+}
+
 async function renderOrphanPanel(document) {
 	const options = getOrphanKillerOptions(document);
 	const result = inspectOrphanMacros(document, options);
 
 	orphanPanel.title = "KAIJU Orphan Killer";
-	orphanPanel.webview.html = renderOrphanHtml(document, result);
+	orphanPanel.webview.html = renderOrphanHtml(document, result, orphanState && orphanState.live === true);
 	await compactOrphanPanelEditorGroup(document, options);
 }
 
@@ -321,7 +368,7 @@ function normalizeMacro(macro) {
 	return macro.toUpperCase();
 }
 
-function renderOrphanHtml(document, result) {
+function renderOrphanHtml(document, result, live) {
 	const undefinedRows = renderRows(result.undefinedUses);
 	const unusedRows = renderRows(result.unusedDefinitions);
 	const totalCount = result.undefinedUses.length + result.unusedDefinitions.length;
@@ -335,68 +382,30 @@ function renderOrphanHtml(document, result) {
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<style>
-		body {
-			font-family: var(--vscode-font-family);
-			color: var(--vscode-foreground);
-			background: var(--vscode-editor-background);
-			margin: 0;
-			padding: 16px;
-		}
-
-		header {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 12px;
-			border-bottom: 1px solid var(--vscode-panel-border);
-			padding-bottom: 12px;
-			margin-bottom: 16px;
-		}
-
-		h1 {
-			font-size: 18px;
-			margin: 0;
-		}
-
-		h2 {
-			font-size: 13px;
-			text-transform: uppercase;
-			color: var(--vscode-descriptionForeground);
-			margin: 18px 0 8px;
-		}
-
-		button {
-			color: var(--vscode-button-foreground);
-			background: var(--vscode-button-background);
-			border: 0;
-			border-radius: 4px;
-			padding: 6px 10px;
-			cursor: pointer;
-		}
-
-		button:hover {
-			background: var(--vscode-button-hoverBackground);
-		}
-
-		.meta,
-		.empty {
-			color: var(--vscode-descriptionForeground);
-			font-size: 12px;
-			margin-top: 4px;
-		}
-
-		.table {
-			display: inline-grid;
-			grid-template-columns: max-content minmax(12ch, 36ch) max-content;
-			max-width: 100%;
-		}
+		:root { color-scheme: dark; --bg: var(--vscode-editor-background, #1e1e1e); --fg: var(--vscode-editor-foreground, #d4d4d4); --muted: var(--vscode-descriptionForeground, #9ca3af); --border: var(--vscode-panel-border, #3c3c3c); --surface: var(--vscode-sideBar-background, #252526); }
+		body { margin: 0; padding: 14px; background: var(--bg); color: var(--fg); font-family: var(--vscode-font-family, Segoe UI, sans-serif); font-size: var(--vscode-font-size, 13px); }
+		header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+		h1 { font-size: 15px; font-weight: 650; margin: 0; }
+		.summary, .empty { color: var(--muted); font-size: 12px; }
+		.toolbar { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+		button { color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background); border-radius: 3px; padding: 4px 8px; font: inherit; cursor: pointer; }
+		button:hover { background: var(--vscode-button-hoverBackground); }
+		.checkbox { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; cursor: pointer; }
+		.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 8px; margin-bottom: 14px; }
+		.summary-card { border: 1px solid var(--border); border-radius: 5px; background: var(--surface); padding: 8px 10px; }
+		.summary-card .value { font-size: 18px; font-weight: 650; line-height: 1.15; }
+		.summary-card .label { color: var(--muted); font-size: 11px; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+		.report-section { border: 1px solid var(--border); border-radius: 5px; overflow: hidden; margin-top: 10px; }
+		h2 { font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; margin: 0; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+		.section-body { padding: 0 10px 8px; }
+		.table { display: inline-grid; grid-template-columns: max-content minmax(12ch, 36ch) max-content; max-width: 100%; }
 
 		.row {
 			display: contents;
 		}
 
 		.cell {
-			border-bottom: 1px solid var(--vscode-panel-border);
+			border-bottom: 1px solid var(--border);
 			padding: 7px 12px 7px 0;
 			overflow-wrap: anywhere;
 		}
@@ -429,26 +438,31 @@ function renderOrphanHtml(document, result) {
 	<header>
 		<div>
 			<h1>KAIJU Orphan Killer</h1>
-			<div class="meta">${escapeHtml(summary)}</div>
-			<div class="meta">${escapeHtml(document.fileName || document.uri.toString())}</div>
 		</div>
-		<button id="refresh">Refresh</button>
+		<div class="toolbar"><label class="checkbox" title="Refresh this report automatically after edits to this program."><input id="live" type="checkbox"${live ? " checked" : ""}> Live</label><button id="refresh">Refresh</button></div>
 	</header>
-
-	<section>
-		<h2>Used But Not Defined</h2>
-		${undefinedRows}
+	<div class="summary-grid">
+		<div class="summary-card"><div class="value">${result.undefinedUses.length}</div><div class="label">Undefined uses</div></div>
+		<div class="summary-card"><div class="value">${result.unusedDefinitions.length}</div><div class="label">Unused definitions</div></div>
+		<div class="summary-card"><div class="value">${totalCount}</div><div class="label">Total findings</div></div>
+	</div>
+	<div class="summary">${escapeHtml(summary)}</div>
+	<section class="report-section">
+		<h2>Used but not defined</h2>
+		<div class="section-body">${undefinedRows}</div>
 	</section>
-
-	<section>
-		<h2>Defined But Not Used</h2>
-		${unusedRows}
+	<section class="report-section">
+		<h2>Defined but not used</h2>
+		<div class="section-body">${unusedRows}</div>
 	</section>
 
 	<script>
 		const vscode = acquireVsCodeApi();
 		document.getElementById("refresh").addEventListener("click", () => {
 			vscode.postMessage({ type: "refresh" });
+		});
+		document.getElementById("live").addEventListener("change", event => {
+			vscode.postMessage({ type: "setLive", live: event.target.checked });
 		});
 	</script>
 </body>

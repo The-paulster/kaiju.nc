@@ -24,7 +24,9 @@ Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned
 Choose **KAIJU G-code Profile > KAIJU Manage G-code Profiles** to duplicate a
 built-in profile or create a controller-specific profile. The editor provides
 separate mill and lathe keybinding tables; changing a binding updates the
-shared interpretation used by Sense, Vision, and Chronoblade.
+shared interpretation used by Sense, Vision, and Chronoblade. The built-in
+FANUC / ISO profile uses G94/G95 for mill feed modes and G98/G99 for lathe
+feed/min and feed/rev modes.
 
 ## KAIJU Highlighting
 
@@ -39,13 +41,19 @@ KAIJU.NC highlights common CNC program elements to help you lock on to your targ
 - Math and comparison operators, including `EQ`, `NE`, `GT`, `GE`, `LT`, `LE`, `SIN`, `COS`, `SQRT`, `ABS`, `ROUND`, `FIX`, `FUP`
 - Gutter markers that show which tool is active in each section of the program
 
-Fanuc-style parenthesis comments are highlighted, such as `(ROUGHING PASS)`.
+### Comment colour variants
 
-Special comment styles are also recognized:
+KAIJU.NC recognises these comment forms, each with its own syntax scope and
+colour treatment:
 
-- `(- SECTION COMMENT)`
-- `(/ META COMMENT)`
-- `(MAIN COMMENT [SUBCOMMENT])`
+- `(ROUGHING PASS)` — normal parenthesis comment; default `#67825E`
+- `(- SECTION COMMENT)` — section/title comment; default bold `#F2AD0C`
+- `(/ META COMMENT)` — meta comment; default `#95B8BF`
+- `(= VALUE COMMENT)` — equals comment; default `#C4F20C`
+- `<MAIN TITLE>` — angle-bracket main-title comment; default bold `#D0FF00`
+
+Within a parenthesis comment, `[SUBCOMMENT]` and `{VALUE}` are also recognised
+as nested comment forms.
 
 ### In-Editor Example
 
@@ -177,6 +185,8 @@ Unused macro definitions:
 ```
 
 Macro-like text inside comments and protected angle-bracket ranges is ignored automatically. Configured macro ranges can also be excluded from inspection with `kaijuNC.orphanKiller.ignoredMacros`.
+
+The report's optional per-program **Live** control refreshes the open findings shortly after you edit that program. Leave it off to keep a manual snapshot and use **Refresh** when wanted.
 
 ### In-Editor Example
 
