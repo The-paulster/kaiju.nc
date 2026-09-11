@@ -229,7 +229,7 @@
 			"patterns": [
 				{
 					"name": "keyword.motion.rapid.gcode",
-					"match": "(?<![A-Za-z])[Gg]0+(?!\\d)"
+					"match": "(?<![A-Za-z])[Gg]0+(?:\\.0*)?(?![\\d.])"
 				}
 			]
 		},
@@ -237,7 +237,7 @@
 			"patterns": [
 				{
 					"name": "keyword.motion.cut.gcode",
-					"match": "(?<![A-Za-z])[Gg]0*[123](?!\\d)"
+					"match": "(?<![A-Za-z])[Gg]0*[123](?:\\.0*)?(?![\\d.])"
 				}
 			]
 		},
@@ -245,7 +245,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.gcode",
-					"match": "(?<![A-Za-z])[Gg](?!0+(?!\\d)|0*[123](?!\\d))\\d+(?!\\d)"
+					"match": "(?<![A-Za-z])[Gg](?!0+(?:\\.0*)?(?![\\d.])|0*[123](?:\\.0*)?(?![\\d.]))(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?![\\d.])"
 				}
 			]
 		},

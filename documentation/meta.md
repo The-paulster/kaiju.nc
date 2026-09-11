@@ -46,6 +46,15 @@ Lathe polar interpolation is also dialect-owned: built-in lathe profiles map
 Cartesian point stream, including sampled I/J and R arcs; Vision and
 Chronoblade consume that same geometry.
 
+Outside polar interpolation, lathe C words are angular degrees and H is an
+incremental C move. The shared engine retains C in authored positions and
+samples rotary sweeps for Vision, including simultaneous X/Y/Z motion. Physical
+placement rotates the linear XY position about Z; diameter X is halved first.
+C0 points along +X and positive C rotates toward +Y. Absolute angles are used
+as written, preserving signed and multiple turns, without shortest-path wrap.
+Rotary timing remains unknown pending controller-specific rotary feed/rate
+semantics. Human position formatting includes C when available.
+
 Machine Mode is saved in workspace state by source-document URI when selected
 from the KAIJU Machine Mode menu. That per-program profile, including its
 radius/diameter X convention, overrides the Settings value for every consumer.

@@ -12,6 +12,8 @@ execution parser.
 
 The grammar highlights `IF`, `THEN`, `ELSE`, and `ENDIF` as control-flow
 keywords. It does not decide whether a particular controller can execute them.
+G-code scopes accept decimal numeric words such as `G12.1` as well as ordinary
+integer codes.
 
 ## Connections
 

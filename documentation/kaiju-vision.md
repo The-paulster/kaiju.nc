@@ -42,6 +42,19 @@ Cartesian face path produced by `MetaMotionEngine`, including sampled polar
 linear and arc moves. Select the X-Y plane to inspect that face geometry; the
 lathe default remains the configured Z-X view.
 
+For physical rotary C paths, use lathe mode and ordinary C moves outside
+G12.1. Select X-Y for the face view: X40 C0/C90/C180/C270/C360 traces a circle
+of radius 20 in Diameter mode, or 40 in Radius mode. Positive C runs from +X
+toward +Y; explicit full turns and simultaneous X/Z moves are sampled. C stays
+an angle in node details and playback coordinates.
+Once resolved, C is included in visible endpoint labels, merged-node summaries,
+and hover details, retaining its last value on subsequent linear moves.
+C coordinates in hovers and the playback readout use the editor's default
+C-axis purple (#C678DD).
+The first C move assumes C0 if no previous angle is known. This inspection convention does not infer
+controller-specific shortest-path indexing, spindle engagement M codes, or
+rotary timing. G12.1 continues to interpret C as a virtual Cartesian coordinate.
+
 Hovering a merged node shows its combined entries. Clicking that node pins an
 interactive, scrollable entry list; clicking elsewhere in the Vision viewport
 releases it. Ordinary one-entry nodes retain their hover-only detail.
@@ -136,3 +149,23 @@ M word on a combined spindle block. A compact, axis-coloured bottom-of-view
 readout shows the active tool position for every axis used anywhere in the
 source program; axes remain visible once encountered and use `—` until a
 position is resolved.
+
+## Dual view
+
+Vision can toggle a synchronized second projection inside the same webview. The
+second pane consumes the same motion rows, Trace/playback position, visibility,
+offsets, labels, endpoints, grid, tool colours, and other inspection state as
+the primary pane. Only its projection plane differs. Pressing **Dual View**
+again returns to the original single-pane layout.
+
+The two panes may not show equivalent axis pairs in opposite order. X-Y/Y-X,
+X-Z/Z-X, and Y-Z/Z-Y are each one plane family, so a family already used by one
+pane is unavailable in the other. If a plane change would make the pair
+equivalent, Vision automatically chooses a valid plane from another family.
+
+Zoom is shared. Panning is stored as X/Y/Z world-axis view offsets and projected
+into each pane, so moving an axis in one pane moves that same axis in every pane
+that displays it without incorrectly coupling unrelated axes. Fit View clears
+all three shared view offsets and restores 100% zoom. The dual-view toggle and
+secondary plane are webview presentation state; the primary plane remains the
+per-program saved Vision plane.

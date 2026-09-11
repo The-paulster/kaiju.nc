@@ -4,6 +4,18 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.5.3]
 
+- Matched Vision's C-coordinate hover and playback colour to the editor's C-axis purple.
+
+- Vision now includes resolved C angles in endpoint labels, merged-node summaries, and hover details, retaining C on subsequent moves.
+
+- Fixed physical C-axis paths being skipped with the actual Lathe Radius and Lathe Diameter machine profiles.
+
+- Vision now draws physical lathe C-axis sweeps, including full turns and simultaneous linear moves, with radius/diameter conversion and authored C labels; rotary timing remains unknown.
+
+- KAIJU Vision: added a toggleable synchronized dual-plane view; equivalent plane pairs (XY/YX, XZ/ZX, YZ/ZY) are mutually exclusive and navigation is shared by world axis.
+
+- Fixed decimal G words such as G12.1 and G1.0 not receiving their G-code syntax scopes.
+
 - Added shared lathe polar-interpolation handling for G12.1/G13.1, including C-axis face paths and sampled arcs in Vision and Chronoblade.
 
 - Vision merged nodes can now pin a scrollable list of their combined entries on click.

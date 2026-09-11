@@ -369,6 +369,8 @@ function enablePolarInterpolation(state) {
 	if (state.polarInterpolation) return;
 	state.polarPreviousArcPlane = state.arcPlane;
 	state.polarPreviousY = state.position.y;
+	state.polarPreviousC = state.position.c;
+	delete state.position.c;
 	state.polarInterpolation = true;
 	state.arcPlane = "xy";
 	state.position.y = 0;
@@ -382,6 +384,8 @@ function disablePolarInterpolation(state) {
 	else delete state.position.y;
 	state.polarPreviousArcPlane = undefined;
 	state.polarPreviousY = undefined;
+	if (Number.isFinite(state.polarPreviousC)) state.position.c = state.polarPreviousC;
+	state.polarPreviousC = undefined;
 }
 
 // Shared, non-UI arc geometry read model. Consumers decide whether and how to
@@ -646,13 +650,14 @@ function estimateMotion(words, motionCode, state, options) {
 	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options, state.polarInterpolation);
 	const distance = sumPathDistance(path, options);
 	const geometry = makeMotionGeometry(motionCode, start, end, path, options);
-	const timing = motionCode === 0
+	const timing = path.rotaryMotion ? { timeSeconds: NaN, minRpm: NaN, maxRpm: NaN } : motionCode === 0
 		? estimateRapidTime(distance, options)
 		: estimatePathTime(path, state, options);
 	const warnings = collectUnresolvedWordWarnings(words, state.polarInterpolation
 		? ["X", "C", "Z", "U", "H", "W", "F"]
 		: ["X", "Y", "Z", "U", "V", "W", "F"]);
 
+	if (path.rotaryMotion) warnings.push("Rotary C timing requires controller-specific rotary feed and rapid rates.");
 	if (distance <= 0) {
 		warnings.push("Move distance is zero.");
 	}
@@ -768,6 +773,12 @@ function makeEndPosition(start, words, distanceMode = "absolute", options = {}, 
 		}
 	}
 
+	if (options.machineMode !== "mill" && !polarInterpolation) {
+		const c = lastWord(words, "C");
+		const h = lastWord(words, "H");
+		if (c && Number.isFinite(c.value)) end.c = (distanceMode === "incremental" ? (start.c || 0) : 0) + c.value;
+		if (h && Number.isFinite(h.value)) end.c = (end.c || 0) + h.value;
+	}
 	return end;
 }
 
@@ -776,6 +787,23 @@ function hasGCode(words, targetCode) {
 }
 
 function buildPathPoints(motionCode, start, end, words, arcPlane, options, polarInterpolation = false) {
+	if (!polarInterpolation && options.machineMode !== "mill" && Number.isFinite(end.c)) {
+		const sweep = end.c - (start.c || 0);
+		const base = motionCode === 0 || motionCode === 1 ? undefined
+			: buildArcPathPoints(motionCode, { ...start, c: undefined }, { ...end, c: undefined }, words, arcPlane, options, false);
+		const count = Math.min(4096, Math.max(1, Math.ceil(Math.abs(sweep) / 2), base ? base.points.length - 1 : 1));
+		const points = [];
+		for (let index = 0; index <= count; index++) {
+			const fraction = index / count;
+			const baseIndex = base ? fraction * (base.points.length - 1) : 0;
+			const left = base ? base.points[Math.floor(baseIndex)] : start;
+			const right = base ? base.points[Math.min(Math.floor(baseIndex) + 1, base.points.length - 1)] : end;
+			const t = base ? baseIndex - Math.floor(baseIndex) : fraction;
+			points.push({ x: interpolateAxis(left.x, right.x, t), y: interpolateAxis(left.y, right.y, t),
+				z: interpolateAxis(left.z, right.z, t), c: (start.c || 0) + sweep * fraction });
+		}
+		return { points, kind: "rotary", rotaryMotion: sweep !== 0, usedArcFallback: Boolean(base && base.usedArcFallback) };
+	}
 	if (motionCode === 0 || motionCode === 1) {
 		return buildLinearPathPoints(start, end, options);
 	}
@@ -998,6 +1026,7 @@ function buildPlanarArcPathFromCenter(motionCode, sweepMotionCode, start, end, p
 function makeMotionGeometry(motionCode, start, end, path, options) {
 	const delta = getProgramDelta(start, end);
 	const physicalDelta = getPhysicalDelta(start, end, options);
+	if (path && path.kind === "rotary") return { kind: "rotary", delta, sweepDegrees: (end.c || 0) - (start.c || 0) };
 
 	if (motionCode === 0 || motionCode === 1 || !path || path.usedArcFallback) {
 		return {
@@ -1111,6 +1140,9 @@ function estimatePathTime(path, state, options) {
 }
 
 function validateArcGeometry(words, start, end, arcPlane, options, polarInterpolation = false) {
+	// Arc definitions use the programmed linear axes before rotary placement.
+	start = { ...start, c: undefined };
+	end = { ...end, c: undefined };
 	const plane = getArcPlaneAxes(arcPlane);
 	const primaryWord = getArcOffsetWord(words, plane.primaryAxis);
 	const secondaryWord = getArcOffsetWord(words, plane.secondaryAxis);
@@ -1522,6 +1554,13 @@ function getPhysicalDistance(start, end, options) {
 }
 
 function toPhysicalPoint(position, options) {
+	if (options.machineMode !== "mill" && Number.isFinite(position.c) && Number.isFinite(position.x)) {
+		const radius = options.xAxisMode === "diameter" ? position.x / 2 : position.x;
+		const angle = position.c * Math.PI / 180;
+		const y = Number.isFinite(position.y) ? position.y : 0;
+		return { x: radius * Math.cos(angle) - y * Math.sin(angle),
+			y: radius * Math.sin(angle) + y * Math.cos(angle), z: position.z };
+	}
 	return {
 		x: options.xAxisMode === "diameter" && Number.isFinite(position.x) ? position.x / 2 : position.x,
 		y: position.y,
@@ -1563,6 +1602,7 @@ function interpolateAxis(startValue, endValue, fraction) {
 
 function clonePosition(position) {
 	return {
+		...(Number.isFinite(position.c) ? { c: position.c } : {}),
 		x: position.x,
 		y: position.y,
 		z: position.z
@@ -1903,7 +1943,7 @@ function hasMotionAxisWords(words, options, state) {
 	if (isCoordinateSettingLine(words, options) || isPolarInterpolationControlLine(words, options)) return false;
 	const letters = state && state.polarInterpolation
 		? ["X", "C", "Z", "U", "H", "W"]
-		: ["X", "Y", "Z", "U", "V", "W"];
+		: ["X", "Y", "Z", "U", "V", "W", ...(options.machineMode !== "mill" ? ["C", "H"] : [])];
 	return words.some(word => letters.includes(word.letter));
 }
 

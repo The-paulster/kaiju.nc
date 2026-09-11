@@ -33,7 +33,7 @@ function formatHumanNumber(value, options = {}) {
 }
 
 function formatHumanPosition(position, options = {}) {
-	return ["x", "y", "z"]
+	return ["x", "y", "z", "c"]
 		.filter(axis => Number.isFinite(position[axis]))
 		.map(axis => `${axis.toUpperCase()}${formatHumanNumber(position[axis], options)}`)
 		.join(" ");

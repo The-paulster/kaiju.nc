@@ -5,6 +5,8 @@ const path = require("path");
 const Module = require("module");
 const { makeDocument } = require("./helpers");
 
+const syntax = require("../syntaxes/gcode.tmLanguage.json");
+
 function loadPrivateRenderer(relativePath, functionName) {
 	const filename = path.resolve(__dirname, "..", relativePath);
 	const source = `${fs.readFileSync(filename, "utf8")}\nmodule.exports.__privateRenderer = ${functionName};`;
@@ -22,6 +24,18 @@ function compileEmbeddedScripts(html) {
 	assert.ok(scripts.length > 0);
 	for (const script of scripts) new Function(script);
 }
+
+test("G-code grammar accepts decimal G words", () => {
+	const repositories = syntax.repository;
+	const rapid = new RegExp(repositories.rapidgcodes.patterns[0].match);
+	const cutting = new RegExp(repositories.cuttinggcodes.patterns[0].match);
+	const general = new RegExp(repositories.gcodes.patterns[0].match);
+	assert.match("G0.0", rapid);
+	assert.match("G1.0", cutting);
+	assert.match("G12.1", general);
+	assert.match("G0.5", general);
+	assert.doesNotMatch("G1.2", cutting);
+});
 
 test("Chronoblade generated webview scripts compile", () => {
 	const render = loadPrivateRenderer("src/kaijuChronoblade/webview.js", "renderChronobladeHtml");
@@ -46,7 +60,7 @@ test("Vision generated webview scripts compile", () => {
 		motionDisplayWords: { rapid: "G0", cutting: ["G1", "G2", "G3"] }
 	});
 	compileEmbeddedScripts(html);
-	assert.match(html, /<button id="viewToggle">View<\/button>\s*<button id="offsetsToggle">Offsets<\/button>\s*<button id="macrosToggle">Macro<\/button>/);
+	assert.match(html, /<button id="viewToggle">View<\/button>\s*<button id="dualViewToggle"[^>]*>Dual View<\/button>\s*<label id="secondaryPlaneControl"[^>]*>[\s\S]*?<\/label>\s*<button id="offsetsToggle">Offsets<\/button>\s*<button id="macrosToggle">Macro<\/button>/);
 	assert.doesNotMatch(html, /id="dataToggle"|id="dataPanel"/);
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-reference type="radio" name="offsetReference" value="G53" checked/);
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-zero type="checkbox" checked/);
@@ -55,7 +69,7 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /Assumed start[\s\S]*?data-start-frame[\s\S]*?G53/);
 	assert.match(html, /data-start-axis="x"[^>]*value="0"/);
 	assert.match(html, /savedWebviewState = vscode\.getState\(\) \|\| \{\}/);
-	assert.match(html, /viewport: \{ plane: planeSelect\.value, zoom, pan: \{ x: pan\.x, y: pan\.y \} \}/);
+	assert.match(html, /viewport: \{ plane: planeSelect\.value, zoom, pan: getProjectedPan\(planes\[planeSelect\.value\] \|\| planes\.xz\) \}/);
 	assert.match(html, /function getDisplayedVisionLineNumber\(row\)/);
 	assert.match(html, /"L" \+ getDisplayedVisionLineNumber\(row\)/);
 	assert.match(html, /"L" \+ getDisplayedVisionLineNumber\(cycle\) \+ " " \+ cycle\.instruction/);
@@ -68,6 +82,15 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /function togglePinnedTooltip\(event\)/);
 	assert.match(html, /if \(!target\) \{\s*if \(pinnedTooltip\) clearPinnedTooltip\(\);/);
 	assert.match(html, /pinned-tooltip-list/);
+	assert.match(html, /id="dualViewToggle"/);
+	assert.match(html, /id="secondaryPlane"/);
+	assert.match(html, /function getPlaneFamily\(planeKey\)/);
+	assert.match(html, /function isDistinctPlaneFamily\(first, second\)/);
+	assert.match(html, /worldPan: \{ x: worldPan\.x, y: worldPan\.y, z: worldPan\.z \}/);
+	assert.match(html, /renderViewport\(viewer, planeSelect\.value, "primary"\)/);
+	assert.match(html, /renderViewport\(secondaryViewer, secondaryPlaneSelect\.value, "secondary"\)/);
+	assert.match(html, /getPlaneFamily\(option\.value\) === getPlaneFamily\(planeSelect\.value\)/);
+	assert.match(html, /state && state\.canvasId \? state\.canvasId : "vision-canvas"/);
 });
 
 test("Orphan Killer generated webview scripts compile", () => {
