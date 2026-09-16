@@ -2,7 +2,13 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
-## [0.5.3]
+## [0.6.0]
+
+- Improved Vision navigation and playback performance with cached bounds, indexed visibility and playback lookups, retained drawing surfaces and path chunks, deferred tooltip formatting, and batched label-cache preparation; geometry detail and playback cadence are preserved.
+
+- Fixed Vision Dual View using different real-world scales for its two panes at the same zoom percentage.
+
+- Fixed Vision playback showing the C-axis position for programs that use H but never command C.
 
 - Matched Vision's C-coordinate hover and playback colour to the editor's C-axis purple.
 
@@ -12,7 +18,7 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 - Vision now draws physical lathe C-axis sweeps, including full turns and simultaneous linear moves, with radius/diameter conversion and authored C labels; rotary timing remains unknown.
 
-- KAIJU Vision: added a toggleable synchronized dual-plane view; equivalent plane pairs (XY/YX, XZ/ZX, YZ/ZY) are mutually exclusive and navigation is shared by world axis.
+- KAIJU Vision: Dual View now derives its two projections from one shared X, Y, or Z axis, rather than allowing two independently selected planes.
 
 - Fixed decimal G words such as G12.1 and G1.0 not receiving their G-code syntax scopes.
 

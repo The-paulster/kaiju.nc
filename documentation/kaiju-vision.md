@@ -150,22 +150,47 @@ readout shows the active tool position for every axis used anywhere in the
 source program; axes remain visible once encountered and use `—` until a
 position is resolved.
 
+C appears in that readout only when the source program commands a C word.
+
 ## Dual view
 
-Vision can toggle a synchronized second projection inside the same webview. The
-second pane consumes the same motion rows, Trace/playback position, visibility,
-offsets, labels, endpoints, grid, tool colours, and other inspection state as
-the primary pane. Only its projection plane differs. Pressing **Dual View**
-again returns to the original single-pane layout.
+Vision can toggle a synchronized second projection inside the same webview. In
+Dual View, the individual Plane control is replaced by **Shared axis**. Vision
+derives both panes from that one selection: X shows X-Y and X-Z, Y shows Y-X
+and Y-Z, and Z shows Z-X and Z-Y. The panes consume the same motion rows,
+Trace/playback position, visibility, offsets, labels, endpoints, grid, tool
+colours, and other inspection state. Pressing **Single View** returns to the
+saved per-program Plane selection.
 
-The two panes may not show equivalent axis pairs in opposite order. X-Y/Y-X,
-X-Z/Z-X, and Y-Z/Z-Y are each one plane family, so a family already used by one
-pane is unavailable in the other. If a plane change would make the pair
-equivalent, Vision automatically chooses a valid plane from another family.
-
-Zoom is shared. Panning is stored as X/Y/Z world-axis view offsets and projected
+Zoom is shared at one real-world scale: both panes use the larger projected fit
+extent as their common basis, so equal zoom percentages represent equal units
+per pixel. Panning is stored as X/Y/Z world-axis view offsets and projected
 into each pane, so moving an axis in one pane moves that same axis in every pane
 that displays it without incorrectly coupling unrelated axes. Fit View clears
 all three shared view offsets and restores 100% zoom. The dual-view toggle and
-secondary plane are webview presentation state; the primary plane remains the
-per-program saved Vision plane.
+shared-axis selection are webview presentation state; the single-view Plane
+remains the per-program saved Vision plane.
+
+## Rendering and playback performance
+
+Vision coalesces navigation updates into animation frames and retains each
+viewport's canvas and overlay container. Per-projection visibility results,
+fit bounds and path-bound indexes are reused until the geometry or filters
+change. Dual View computes a common units-per-pixel fit for both panes.
+The path index preserves draw order and includes segments crossing the viewport.
+
+Playback consumes indexed execution positions and updates macro values
+incrementally when stepping forward, retaining checkpoints for backward seeks
+and scrubbing. It skips hidden labels and macro-panel HTML work. Non-motion
+events reuse the path image while updating the current-position dot and readout.
+The playback stepping interval remains 350 ms.
+
+Retained path chunks preserve the sampled geometry, stroke grouping, dashes
+and opacity. Their cache has a 16 MiB estimated allocation budget; each viewport
+also retains one image at its current canvas resolution. Projection wrappers
+share source-row metadata, arrow calculations retain their latest scale, and
+tooltip HTML is generated on demand. The existing label-cache setting remains
+in effect, including accounting for generated tooltip HTML. Label prewarming
+uses separate cancellable jobs for the projections and yields between batches
+of targets, merging and indexing. Initial scene preparation and foreground
+cache misses can still require synchronous work.

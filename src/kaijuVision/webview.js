@@ -566,7 +566,7 @@ function getVisionProgramAxes(document) {
 		x: /X(?=[-+#.\d\[])/i,
 		y: /Y(?=[-+#.\d\[])/i,
 		z: /Z(?=[-+#.\d\[])/i,
-		c: /[CH](?=[-+#.\d\[])/i
+		c: /C(?=[-+#.\d\[])/i
 	};
 
 	for (const axis of ["x", "y", "z", "c"]) {
@@ -1024,7 +1024,8 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		.secondary-viewer[hidden],
-		.secondary-plane-control[hidden] { display: none !important; }
+		.plane-control[hidden],
+		.shared-axis-control[hidden] { display: none !important; }
 
 		.viewer-slot.dual-view .viewer {
 			background: var(--vscode-editor-background);
@@ -1265,7 +1266,7 @@ function renderVisionHtml(document, mode, options, result) {
 			</select>
 		</label>
 		<label class="checkbox"><input type="checkbox" id="live"${options.live ? " checked" : ""}> Live</label>
-		<label>Plane
+		<label id="planeControl" class="plane-control">Plane
 			<select id="plane">
 				<option value="xy"${options.plane === "xy" ? " selected" : ""}>X-Y</option>
 				<option value="yx"${options.plane === "yx" ? " selected" : ""}>Y-X</option>
@@ -1277,14 +1278,11 @@ function renderVisionHtml(document, mode, options, result) {
 		</label>
 		<button id="viewToggle">View</button>
 		<button id="dualViewToggle" type="button" aria-pressed="false" title="Toggle a synchronized second projection">Dual View</button>
-		<label id="secondaryPlaneControl" class="secondary-plane-control" hidden>Plane 2
-			<select id="secondaryPlane">
-				<option value="xy">X-Y</option>
-				<option value="yx">Y-X</option>
-				<option value="xz">X-Z</option>
-				<option value="zx">Z-X</option>
-				<option value="yz">Y-Z</option>
-				<option value="zy">Z-Y</option>
+		<label id="sharedAxisControl" class="shared-axis-control" hidden>Shared axis
+			<select id="sharedAxis">
+				<option value="x">X</option>
+				<option value="y">Y</option>
+				<option value="z">Z</option>
 			</select>
 		</label>
 		<button id="offsetsToggle">Offsets</button>
@@ -1338,13 +1336,14 @@ function renderVisionHtml(document, mode, options, result) {
 		const vscode = acquireVsCodeApi();
 		const data = JSON.parse(document.getElementById("vision-data").textContent);
 		const savedWebviewState = vscode.getState() || {};
-		const savedViewport = savedWebviewState.viewport && savedWebviewState.viewport.plane === data.options.plane
+		const savedViewport = savedWebviewState.viewport && (savedWebviewState.dualView === true || savedWebviewState.viewport.plane === data.options.plane)
 			? savedWebviewState.viewport
 			: undefined;
 		const planeSelect = document.getElementById("plane");
+		const planeControl = document.getElementById("planeControl");
 		const dualViewToggle = document.getElementById("dualViewToggle");
-		const secondaryPlaneControl = document.getElementById("secondaryPlaneControl");
-		const secondaryPlaneSelect = document.getElementById("secondaryPlane");
+		const sharedAxisControl = document.getElementById("sharedAxisControl");
+		const sharedAxisSelect = document.getElementById("sharedAxis");
 		const analysisModeSelect = document.getElementById("analysisMode");
 		const lineDataSelect = document.getElementById("lineData");
 		const liveInput = document.getElementById("live");
@@ -1394,7 +1393,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const labelCache = new Map();
 		let labelCacheBytes = 0;
 		let labelCacheRunId = 0;
-		let lastPrewarmKey = "";
+		const prewarmJobs = new Map();
 		let zoom = savedViewport && Number.isFinite(Number(savedViewport.zoom)) ? Math.max(1, Number(savedViewport.zoom)) : 1;
 		const hasSavedWorldPan = savedWebviewState.worldPan
 			&& ["x", "y", "z"].every(axis => Number.isFinite(Number(savedWebviewState.worldPan[axis])))
@@ -1402,7 +1401,9 @@ function renderVisionHtml(document, mode, options, result) {
 			? { x: Number(savedWebviewState.worldPan.x), y: Number(savedWebviewState.worldPan.y), z: Number(savedWebviewState.worldPan.z) }
 			: { x: 0, y: 0, z: 0 };
 		let dualView = savedWebviewState.dualView === true;
-		let secondaryPlaneKey = typeof savedWebviewState.secondaryPlane === "string" ? savedWebviewState.secondaryPlane : "";
+		let sharedAxis = ["x", "y", "z"].includes(savedWebviewState.sharedAxis)
+			? savedWebviewState.sharedAxis
+			: "";
 		zoomLabel.textContent = Math.round(zoom * 100) + "%";
 		let currentFitBounds;
 		let currentBounds;
@@ -1412,16 +1413,26 @@ function renderVisionHtml(document, mode, options, result) {
 		let currentTableVisibilityKey = "";
 		let currentLabelEntry;
 		const projectedPlaneCache = new Map();
+		const visibleSceneCache = new WeakMap();
+		const playbackProjectionIndexes = new WeakMap();
+		const canvasSceneKeys = new WeakMap();
+		const toolColorCache = new Map();
+		const arrowGeometryCache = new WeakMap();
+		let pathChunkCache = new WeakMap();
+		let pathChunkBytes = 0;
+		const pathChunkLimitBytes = 16 * 1024 * 1024;
+		let renderPending = false;
+		let dualFitUnitsPerPixel;
 		let dragState;
 		let pinnedTooltip;
 		let playbackMacroSortMode = "number";
 
 		function saveViewport() {
 			vscode.setState(Object.assign({}, vscode.getState() || {}, {
-				viewport: { plane: planeSelect.value, zoom, pan: getProjectedPan(planes[planeSelect.value] || planes.xz) },
+				viewport: { plane: getPrimaryPlaneKey(), zoom, pan: getProjectedPan(planes[getPrimaryPlaneKey()] || planes.xz) },
 				worldPan: { x: worldPan.x, y: worldPan.y, z: worldPan.z },
 				dualView,
-				secondaryPlane: secondaryPlaneSelect.value
+				sharedAxis
 			}));
 		}
 		function makePlaybackMotionState(rows) {
@@ -1463,35 +1474,32 @@ function renderVisionHtml(document, mode, options, result) {
 			worldPan[savedPlane.v] = -Number(savedViewport.pan.y) / savedPlane.vSign;
 		}
 
-		function getPlaneFamily(planeKey) {
-			if (planeKey === "xy" || planeKey === "yx") return "xy";
-			if (planeKey === "xz" || planeKey === "zx") return "xz";
-			if (planeKey === "yz" || planeKey === "zy") return "yz";
-			return "";
+		function getSharedAxisForPlane(planeKey) {
+			return planes[planeKey] ? planes[planeKey].h : "x";
 		}
 
-		function isDistinctPlaneFamily(first, second) {
-			return Boolean(getPlaneFamily(first) && getPlaneFamily(second) && getPlaneFamily(first) !== getPlaneFamily(second));
+		function getDualPlanePair(axis) {
+			if (axis === "y") return ["yx", "yz"];
+			if (axis === "z") return ["zx", "zy"];
+			return ["xy", "xz"];
 		}
 
-		function chooseSecondaryPlane(primary, preferred) {
-			if (planes[preferred] && isDistinctPlaneFamily(primary, preferred)) return preferred;
-			return Object.keys(planes).find(candidate => isDistinctPlaneFamily(primary, candidate)) || "xz";
+		function getPrimaryPlaneKey() {
+			return dualView ? getDualPlanePair(sharedAxis)[0] : planeSelect.value;
 		}
 
-		function syncPlanePair(changedView) {
-			if (!dualView) return;
-			if (!isDistinctPlaneFamily(planeSelect.value, secondaryPlaneSelect.value)) {
-				if (changedView === "secondary") {
-					const nextPrimary = Object.keys(planes).find(candidate => isDistinctPlaneFamily(candidate, secondaryPlaneSelect.value));
-					if (nextPrimary) planeSelect.value = nextPrimary;
-				} else {
-					secondaryPlaneSelect.value = chooseSecondaryPlane(planeSelect.value, secondaryPlaneKey);
-				}
-			}
-			secondaryPlaneKey = secondaryPlaneSelect.value;
-			for (const option of planeSelect.options) option.disabled = getPlaneFamily(option.value) === getPlaneFamily(secondaryPlaneSelect.value);
-			for (const option of secondaryPlaneSelect.options) option.disabled = getPlaneFamily(option.value) === getPlaneFamily(planeSelect.value);
+		function getSecondaryPlaneKey() {
+			return getDualPlanePair(sharedAxis)[1];
+		}
+
+		function updateDualViewControls() {
+			planeControl.hidden = dualView;
+			sharedAxisControl.hidden = !dualView;
+			sharedAxisSelect.value = sharedAxis;
+			viewerSlot.classList.toggle("dual-view", dualView);
+			secondaryViewer.hidden = !dualView;
+			dualViewToggle.setAttribute("aria-pressed", String(dualView));
+			dualViewToggle.textContent = dualView ? "Single View" : "Dual View";
 		}
 
 		function getProjectedPan(plane) {
@@ -1508,14 +1516,8 @@ function renderVisionHtml(document, mode, options, result) {
 			worldPan = next;
 		}
 
-		secondaryPlaneSelect.value = chooseSecondaryPlane(planeSelect.value, secondaryPlaneKey);
-		secondaryPlaneKey = secondaryPlaneSelect.value;
-		viewerSlot.classList.toggle("dual-view", dualView);
-		secondaryViewer.hidden = !dualView;
-		secondaryPlaneControl.hidden = !dualView;
-		dualViewToggle.setAttribute("aria-pressed", String(dualView));
-		dualViewToggle.textContent = dualView ? "Single View" : "Dual View";
-		if (dualView) syncPlanePair("primary");
+		if (!sharedAxis) sharedAxis = getSharedAxisForPlane(planeSelect.value);
+		updateDualViewControls();
 
 
 		function collectVisionOptions() {
@@ -1726,32 +1728,32 @@ function renderVisionHtml(document, mode, options, result) {
 					const projectedPoint = project(row.point || row.end || {}, plane) || points[points.length - 1];
 
 					if (projectedPoint) {
-						projected.cycles.push(Object.assign({}, row, {
+						projected.cycles.push(Object.assign(Object.create(row), {
 							projectedPoints: points,
 							projectedPoint,
 							projectedBounds: makePointSetBounds(points.length ? points : [projectedPoint]),
 							labelCoordinateLine: makeVisiblePositionLine(row.end, data.options.humanFormat),
-							labelHoverHtml: makePointHoverHtml(row.end, row)
+							labelHoverHtml: { row, position: row.end }
 						}));
 					}
 				} else if (row.type === "tool") {
 					const projectedPoint = project(row.point || {}, plane);
 
 					if (projectedPoint) {
-						projected.toolChanges.push(Object.assign({}, row, {
+						projected.toolChanges.push(Object.assign(Object.create(row), {
 							projectedPoint,
 							labelCoordinateLine: makePlaneCoordinateLine(row.position || row.point, plane, data.options.humanFormat, data.options.trimLabelTrailingZeros !== false),
-							labelHoverHtml: makeToolChangeHoverHtml(row)
+							labelHoverHtml: { row, tool: true }
 						}));
 					}
 				} else if (row.type === "event") {
 					const projectedPoint = project(row.point || {}, plane);
 
 					if (projectedPoint) {
-						projected.events.push(Object.assign({}, row, {
+						projected.events.push(Object.assign(Object.create(row), {
 							projectedPoint,
 							labelCoordinateLine: makePlaneCoordinateLine(row.position || row.point, plane, data.options.humanFormat, data.options.trimLabelTrailingZeros !== false),
-							labelHoverHtml: makePointHoverHtml(row.position || row.point, row)
+							labelHoverHtml: { row, position: row.position || row.point }
 						}));
 					}
 				} else if (row.type !== "label") {
@@ -1761,14 +1763,14 @@ function renderVisionHtml(document, mode, options, result) {
 					const end = points[points.length - 1];
 
 					if (points.length >= 2) {
-						projected.rows.push(Object.assign({}, row, {
+						projected.rows.push(Object.assign(Object.create(row), {
 							projectedPoints: points,
 							projectedEnd: end,
 							projectedBounds: makePointSetBounds(points),
 							startCoordinateLine: makeVisiblePositionLine(row.start, data.options.humanFormat),
-							startHoverHtml: makePointHoverHtml(row.start, Object.assign({}, row, { instruction: "START" })),
+							startHoverHtml: { row, position: row.start, start: true },
 							endCoordinateLine: makeVisiblePositionLine(row.end, data.options.humanFormat),
-							endHoverHtml: makePointHoverHtml(row.end, row)
+							endHoverHtml: { row, position: row.end }
 						}));
 					}
 				}
@@ -1779,12 +1781,57 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function getVisibleProjectedData(projected, visibility) {
-			return {
+			const key = getVisibilityKey(visibility);
+			const cached = visibleSceneCache.get(projected);
+			if (cached && cached.key === key) return cached;
+			const visible = {
+				key,
 				rows: projected.rows.filter(row => isRowVisible(row, visibility)),
 				cycles: projected.cycles.filter(row => isRowVisible(row, visibility)),
 				toolChanges: projected.toolChanges.filter(row => isRowVisible(row, visibility)),
 				events: projected.events.filter(row => isRowVisible(row, visibility))
 			};
+			visible.bounds = makeBounds(visible.rows, visible.cycles, visible.toolChanges, visible.events);
+			visible.rowIndex = buildPathIndex(visible.rows);
+			visible.cycleIndex = buildPathIndex(visible.cycles);
+			visibleSceneCache.set(projected, visible);
+			return visible;
+		}
+
+		// Balanced range tree retains authored draw order and exact segment bounds.
+		function buildPathIndex(rows, start = 0, end = rows.length) {
+			if (start === end) return undefined;
+			if (end - start <= 32) {
+				let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+				for (let i = start; i < end; i++) {
+					const b = rows[i].projectedBounds;
+					if (!b) return { rows, start, end };
+					minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY);
+					maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY);
+				}
+				return { rows, start, end, bounds: { minX, minY, maxX, maxY } };
+			}
+			const middle = (start + end) >>> 1;
+			const left = buildPathIndex(rows, start, middle), right = buildPathIndex(rows, middle, end);
+			const a = left.bounds, b = right.bounds;
+			const minX = a && b ? Math.min(a.minX, b.minX) : 0;
+			const minY = a && b ? Math.min(a.minY, b.minY) : 0;
+			return { left, right, bounds: a && b ? { minX, minY,
+				maxX: Math.max(a.maxX, b.maxX),
+				maxY: Math.max(a.maxY, b.maxY) } : undefined };
+		}
+
+		function queryPathIndex(node, bounds, result = []) {
+			if (!node || (node.bounds && !rowBoundsIntersect(node.bounds, bounds))) return result;
+			if (node.rows) {
+				for (let i = node.start; i < node.end; i++) {
+					if (rowBoundsIntersect(node.rows[i].projectedBounds, bounds)) result.push(node.rows[i]);
+				}
+			} else {
+				queryPathIndex(node.left, bounds, result);
+				queryPathIndex(node.right, bounds, result);
+			}
+			return result;
 		}
 
 		function makePointSetBounds(points) {
@@ -1896,11 +1943,28 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function zoomBounds(bounds, viewportAspect = 1, plane = planes[planeSelect.value] || planes.xz) {
+		function getFitHeight(bounds, viewportAspect = 1) {
+			const aspect = Math.max(0.000001, Number(viewportAspect) || 1);
+			return Math.max(bounds.height, bounds.width / aspect);
+		}
+
+		function getDualViewFitHeight(viewportAspect = 1) {
+			const visibility = getVisibilityState();
+			return getDualPlanePair(sharedAxis).reduce((largestFitHeight, planeKey) => {
+				const projected = getProjectedPlaneData(planeKey, planes[planeKey] || planes.xz);
+				const visible = getVisibleProjectedData(projected, visibility);
+				return Math.max(largestFitHeight, getFitHeight(visible.bounds, viewportAspect));
+			}, 0);
+		}
+
+		function getZoomFitHeight(bounds, viewportAspect = 1) {
+			return dualView ? getDualViewFitHeight(viewportAspect) : getFitHeight(bounds, viewportAspect);
+		}
+
+		function zoomBounds(bounds, viewportAspect = 1, plane = planes[getPrimaryPlaneKey()] || planes.xz, fitHeight = getZoomFitHeight(bounds, viewportAspect)) {
 			const centerX = bounds.minX + bounds.width / 2;
 			const centerY = bounds.minY + bounds.height / 2;
 			const aspect = Math.max(0.000001, Number(viewportAspect) || 1);
-			const fitHeight = Math.max(bounds.height, bounds.width / aspect);
 			const fitWidth = fitHeight * aspect;
 			const width = fitWidth / zoom;
 			const height = fitHeight / zoom;
@@ -1925,7 +1989,7 @@ function renderVisionHtml(document, mode, options, result) {
 		function setZoom(nextZoom, event, viewKey = "primary") {
 			const state = viewStateByKey.get(viewKey);
 			const targetViewer = viewKey === "secondary" ? secondaryViewer : viewer;
-			const planeKey = viewKey === "secondary" ? secondaryPlaneSelect.value : planeSelect.value;
+			const planeKey = viewKey === "secondary" ? getSecondaryPlaneKey() : getPrimaryPlaneKey();
 			const plane = planes[planeKey] || planes.xz;
 			if (!state || !state.fitBounds) {
 				zoom = Math.max(1, nextZoom);
@@ -1937,7 +2001,8 @@ function renderVisionHtml(document, mode, options, result) {
 
 			const rect = targetViewer.getBoundingClientRect();
 			const viewportAspect = Math.max(1, rect.width) / Math.max(1, rect.height);
-			const oldBounds = state.bounds || zoomBounds(state.fitBounds, viewportAspect, plane);
+			const fitHeight = state.fitHeight || getZoomFitHeight(state.fitBounds, viewportAspect);
+			const oldBounds = zoomBounds(state.fitBounds, viewportAspect, plane, fitHeight);
 			const oldZoom = zoom;
 			zoom = Math.max(1, nextZoom);
 
@@ -1946,7 +2011,6 @@ function renderVisionHtml(document, mode, options, result) {
 				const ratioY = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
 				const anchorX = oldBounds.minX + ratioX * oldBounds.width;
 				const anchorY = oldBounds.minY + ratioY * oldBounds.height;
-				const fitHeight = Math.max(state.fitBounds.height, state.fitBounds.width / viewportAspect);
 				const fitWidth = fitHeight * viewportAspect;
 				const newWidth = fitWidth / zoom;
 				const newHeight = fitHeight / zoom;
@@ -2056,6 +2120,13 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function restorePlaybackMacroValues(cursor) {
 			if (!playback) return;
+			if (cursor === playback.restoredCursor + 1) {
+				applyPlaybackChanges(playback.macroValues, playback.entries[cursor].macroChanges);
+				applyPlaybackDisplayPrecisionChanges(playback.macroDisplayPrecisions, playback.entries[cursor].macroDisplayPrecisionChanges);
+				playback.restoredCursor = cursor;
+				return;
+			}
+			playback.restoredCursor = cursor;
 			const completedEntries = cursor + 1;
 			const checkpointIndex = Math.floor(completedEntries / 200) * 200;
 			const checkpoint = playbackCheckpoints.get(checkpointIndex) || playbackCheckpoints.get(0);
@@ -2084,8 +2155,9 @@ function renderVisionHtml(document, mode, options, result) {
 				const code = showTrace ? (contextEntry.traceLine || contextEntry.sourceLine) : contextEntry.sourceLine;
 				return '<div class="playback-context-line' + (index === playback.cursor ? ' current' : '') + '" data-source-line="' + contextEntry.lineNumber + '" title="Open source line ' + (Number(contextEntry.lineNumber) + 1) + '"><span>' + (showTrace ? 'T' : 'S') + lineNumber + '</span><code>' + svgEscape(code || '') + '</code></div>';
 			}).join("");
+			if (!playbackMacroPanel.classList.contains("open")) return;
 			const aliases = new Map((data.macroVariables || []).map(variable => [variable.macro, variable.label]));
-			const macroLastUpdates = getPlaybackMacroLastUpdates();
+			const macroLastUpdates = playbackMacroSortMode === "recent" ? getPlaybackMacroLastUpdates() : new Map();
 			const values = [...playback.macroValues.entries()].filter(([, value]) => Number.isFinite(value)).sort(([left], [right]) => {
 				if (playbackMacroSortMode === "recent") {
 					const updateDifference = (macroLastUpdates.get(right) ?? -1) - (macroLastUpdates.get(left) ?? -1);
@@ -2110,9 +2182,23 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function getPlaybackMacroLastUpdates() {
+			if (!playback.macroUpdateIndexes) {
+				playback.macroUpdateIndexes = new Map();
+				playback.entries.forEach((entry, index) => {
+					for (const change of entry.macroChanges || []) {
+						if (!playback.macroUpdateIndexes.has(change.macro)) playback.macroUpdateIndexes.set(change.macro, []);
+						playback.macroUpdateIndexes.get(change.macro).push(index);
+					}
+				});
+			}
 			const lastUpdates = new Map();
-			for (let index = 0; index <= playback.cursor; index++) {
-				for (const change of playback.entries[index].macroChanges || []) lastUpdates.set(change.macro, index);
+			for (const [macro, indexes] of playback.macroUpdateIndexes) {
+				let low = 0, high = indexes.length;
+				while (low < high) {
+					const middle = (low + high) >>> 1;
+					if (indexes[middle] <= playback.cursor) low = middle + 1; else high = middle;
+				}
+				if (low) lastUpdates.set(macro, indexes[low - 1]);
 			}
 			return lastUpdates;
 		}
@@ -2121,6 +2207,7 @@ function renderVisionHtml(document, mode, options, result) {
 			playbackMacroPanel.classList.toggle("open", isOpen);
 			document.body.classList.toggle("playback-macros-open", isOpen);
 			playbackMacrosToggle.setAttribute("aria-expanded", String(isOpen));
+			if (isOpen) updatePlaybackPanel();
 			render();
 		}
 
@@ -2171,9 +2258,28 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function render() {
+			if (renderPending) return;
+			renderPending = true;
+			window.requestAnimationFrame(() => {
+				renderPending = false;
+				renderFrame();
+			});
+		}
+
+		function renderFrame() {
+			if (playback && playback.active) playback.currentMotionIndex = getCurrentPlaybackMotionIndex(playback);
 			sizeViewer();
-			renderViewport(viewer, planeSelect.value, "primary");
-			if (dualView) renderViewport(secondaryViewer, secondaryPlaneSelect.value, "secondary");
+			dualFitUnitsPerPixel = undefined;
+			if (dualView) {
+				const visibility = getVisibilityState();
+				dualFitUnitsPerPixel = Math.max(...getDualPlanePair(sharedAxis).map((planeKey, i) => {
+					const rect = (i ? secondaryViewer : viewer).getBoundingClientRect();
+					const scene = getVisibleProjectedData(getProjectedPlaneData(planeKey, planes[planeKey]), visibility);
+					return Math.max(scene.bounds.width / Math.max(1, rect.width), scene.bounds.height / Math.max(1, rect.height));
+				}));
+			}
+			renderViewport(viewer, getPrimaryPlaneKey(), "primary");
+			if (dualView) renderViewport(secondaryViewer, getSecondaryPlaneKey(), "secondary");
 		}
 
 		function renderViewport(viewerElement, planeKey, viewKey) {
@@ -2187,10 +2293,11 @@ function renderVisionHtml(document, mode, options, result) {
 			const toolChanges = visible.toolChanges;
 			const events = visible.events;
 			const viewerRect = viewerElement.getBoundingClientRect();
-			const fitBounds = makeBounds(rows, cycles, toolChanges, events);
+			const fitBounds = visible.bounds;
 			const viewportAspect = Math.max(1, viewerRect.width) / Math.max(1, viewerRect.height);
-			const bounds = zoomBounds(fitBounds, viewportAspect, plane);
-			viewStateByKey.set(viewKey, { fitBounds, bounds, planeKey });
+			const fitHeight = dualView && dualFitUnitsPerPixel ? dualFitUnitsPerPixel * Math.max(1, viewerRect.height) : getZoomFitHeight(fitBounds, viewportAspect);
+			const bounds = zoomBounds(fitBounds, viewportAspect, plane, fitHeight);
+			viewStateByKey.set(viewKey, { fitBounds, fitHeight, bounds, planeKey });
 			if (viewKey === "primary") { currentFitBounds = fitBounds; currentBounds = bounds; }
 			const playbackActive = playback && playback.active;
 			const showLabels = labelsInput.checked && !playbackActive;
@@ -2222,14 +2329,15 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			const zoomBucket = getZoomBucket(zoom);
-			const labelEntry = getLabelCacheEntry({ planeKey, plane, visibilityKey, showLabels, showEndpoints, zoomBucket, viewportAspect, fitBounds, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
+			const labelEntry = playbackActive ? { mergeDistance: 0, labelSize: 0, targets: [], spatialCells: new Map(), spatialCellSize: 1 }
+				: getLabelCacheEntry({ planeKey, plane, visibilityKey, showLabels, showEndpoints, zoomBucket, viewportAspect, fitBounds, fitHeight, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
 			currentLabelEntryByViewer.set(viewerElement, labelEntry);
 			if (viewKey === "primary") currentLabelEntry = labelEntry;
-			scheduleLabelCachePrewarm({ planeKey, plane, visibilityKey, showLabels, showEndpoints, zoomBucket, viewportAspect, fitBounds, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
-			const visibleLabelTargets = queryLabelCacheEntry(labelEntry, bounds, Math.max(labelEntry.mergeDistance, labelEntry.labelSize * 8));
+			if (!playbackActive) scheduleLabelCachePrewarm({ planeKey, plane, visibilityKey, showLabels, showEndpoints, zoomBucket, viewportAspect, fitBounds, fitHeight, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
+			const visibleLabelTargets = playbackActive ? [] : queryLabelCacheEntry(labelEntry, bounds, Math.max(labelEntry.mergeDistance, labelEntry.labelSize * 8));
 			const drawBounds = expandBounds(bounds, Math.max(unitsPerPixel * 48, labelEntry.mergeDistance));
-			const canvasRows = rows.filter(row => rowBoundsIntersect(row.projectedBounds, drawBounds));
-			const canvasCycles = cycles.filter(cycle => rowBoundsIntersect(cycle.projectedBounds, drawBounds));
+			const canvasRows = queryPathIndex(visible.rowIndex, drawBounds);
+			const canvasCycles = queryPathIndex(visible.cycleIndex, drawBounds);
 			const currentPlaybackDot = getCurrentPlaybackDot(projected);
 			if (viewKey === "primary") updatePlaybackPositionReadout(getCurrentPlaybackPosition(projected));
 			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, { labelSize: labelEntry.labelSize, labelOffset: labelEntry.labelOffset, labelHitboxPadding: labelEntry.labelHitboxPadding }).map(renderPointLabel).join("");
@@ -2242,9 +2350,18 @@ function renderVisionHtml(document, mode, options, result) {
 					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
 				'</style>' + zeroAxes + compass + labelsAndMarkers + '</svg>';
 
-			clearPinnedTooltip();
-			viewerElement.innerHTML = '<canvas id="' + canvasId + '" class="vision-canvas"></canvas>' + overlaySvg;
-			drawCanvasLayer({ canvasId, rows: canvasRows, cycles: canvasCycles, bounds, showGrid, gridSize, useToolColors, endpointSize, arrowSize, unitsPerPixel, lineScale, playback: playback && playback.active ? playback : undefined, currentPlaybackDot });
+			let canvas = document.getElementById(canvasId);
+			if (!canvas) {
+				viewerElement.innerHTML = '<canvas id="' + canvasId + '" class="vision-canvas"></canvas><div class="vision-overlay-host"></div>';
+				canvas = document.getElementById(canvasId);
+			}
+			const overlayHost = viewerElement.querySelector(".vision-overlay-host");
+			if (overlayHost._markup !== overlaySvg) {
+				clearPinnedTooltip();
+				overlayHost.innerHTML = overlaySvg;
+				overlayHost._markup = overlaySvg;
+			}
+			drawCanvasLayer({ canvasId, sceneToken: visible, planeKey, rows: canvasRows, cycles: canvasCycles, bounds, showGrid, gridSize, useToolColors, endpointSize, arrowSize, unitsPerPixel, lineScale, playback: playback && playback.active ? playback : undefined, currentPlaybackDot });
 		}
 
 		function getZoomBucket(value) {
@@ -2285,14 +2402,23 @@ function renderVisionHtml(document, mode, options, result) {
 				context.showLabels ? "labels" : "markers",
 				context.showEndpoints ? "endpoints" : "no-endpoints",
 				Math.round((Number(context.viewportAspect) || 1) * 1000) / 1000,
+				Number(context.fitHeight) || 0,
+				context.viewerSize,
 				context.zoomBucket
 			].join("::");
 		}
 
 		function buildLabelCacheEntry(context, key) {
+			const steps = buildLabelCacheEntrySteps(context, key);
+			let step;
+			do { step = steps.next(); } while (!step.done);
+			return step.value;
+		}
+
+		function* buildLabelCacheEntrySteps(context, key) {
 			const bucketZoom = getZoomForBucket(context.zoomBucket);
 			const aspect = Math.max(0.000001, Number(context.viewportAspect) || 1);
-			const fitHeight = Math.max(context.fitBounds.height, context.fitBounds.width / aspect);
+			const fitHeight = Number(context.fitHeight) || getFitHeight(context.fitBounds, aspect);
 			const bucketUnitsPerPixel = fitHeight / Math.max(1, bucketZoom) / Math.max(1, context.viewerSize);
 			const metrics = makeLabelMetrics(bucketUnitsPerPixel);
 			const entry = {
@@ -2310,13 +2436,29 @@ function renderVisionHtml(document, mode, options, result) {
 				hoverHtmlById: new Map(),
 				bytes: 0
 			};
-			const targets = makeLabelTargetsForCache(context, metrics);
-			const collapsedTargets = collapseCoincidentLabelTargets(targets, context.plane, data.options.humanFormat, entry.mergeDistance, context.showLabels);
+			const targets = [];
+			const chunkSize = 128;
+			for (const kind of ["cycles", "toolChanges", "events", "rows"]) {
+				for (let i = 0; i < context[kind].length; i += chunkSize) {
+					const chunk = Object.assign({}, context, { rows: [], cycles: [], toolChanges: [], events: [], skipStart: i > 0 });
+					chunk[kind] = context[kind].slice(i, i + chunkSize);
+					targets.push(...makeLabelTargetsForCache(chunk, metrics));
+					yield;
+				}
+			}
+			const collapsedTargets = yield* collapseLabelTargetSteps(targets, context.plane, data.options.humanFormat, entry.mergeDistance, context.showLabels);
 
-			assignHoverIds(entry, collapsedTargets);
-			entry.targets = collapsedTargets;
+			entry.targets = [];
+			entry.nextHoverId = 1;
 			entry.spatialCellSize = Math.max(entry.mergeDistance, entry.labelSize * 8, 0.000001);
-			indexLabelTargets(entry);
+			for (let i = 0; i < collapsedTargets.length; i += 128) {
+				const chunk = collapsedTargets.slice(i, i + 128);
+				assignHoverIds(entry, chunk);
+				entry.targets = chunk;
+				indexLabelTargets(entry);
+				yield;
+			}
+			entry.targets = collapsedTargets;
 			entry.bytes = estimateLabelCacheEntryBytes(entry);
 			return entry;
 		}
@@ -2341,7 +2483,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const firstRow = context.rows[0];
 			const firstPoint = firstRow && firstRow.projectedPoints[0];
 
-			if (firstPoint) {
+			if (firstPoint && !context.skipStart) {
 				targets.push(makePointLabelTarget(firstPoint, metrics.startPointSize, "start-point", "start-label", context.showLabels ? "START" : "", context.showLabels ? firstRow.startCoordinateLine : "", { kind: "start", position: firstRow.start, hoverItems: [firstRow.startHoverHtml], showMarker: context.showEndpoints }));
 			}
 
@@ -2363,8 +2505,8 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function assignHoverIds(entry, targets) {
-			let nextId = 1;
-			const idsByItems = new WeakMap();
+			let nextId = entry.nextHoverId || 1;
+			const idsByItems = entry.idsByItems || (entry.idsByItems = new WeakMap());
 
 			for (const target of targets) {
 				if (!target.hoverItems || !target.hoverItems.length) {
@@ -2383,6 +2525,7 @@ function renderVisionHtml(document, mode, options, result) {
 				target.hoverItemCount = target.hoverItems.length;
 				delete target.hoverItems;
 			}
+			entry.nextHoverId = nextId;
 		}
 
 		function indexLabelTargets(entry) {
@@ -2452,30 +2595,25 @@ function renderVisionHtml(document, mode, options, result) {
 			const items = getCachedTooltipItems(entry, hoverId);
 			const html = '<div class="tooltip-item">' + items.join("") + '</div>';
 			entry.hoverHtmlById.set(hoverId, html);
+			const addedBytes = html.length * 2;
+			entry.bytes += addedBytes;
+			if (labelCache.get(entry.key) === entry) {
+				labelCacheBytes += addedBytes;
+				evictLabelCache(getZoomBucket(zoom));
+			}
 			return html;
 		}
 
 		function getCachedTooltipItems(entry, hoverId) {
-			return entry && hoverId ? entry.hoverItemsById.get(hoverId) || [] : [];
+			const items = entry && hoverId ? entry.hoverItemsById.get(hoverId) || [] : [];
+			return items.map(item => typeof item === "string" ? item : item.tool
+				? makeToolChangeHoverHtml(item.row)
+				: makePointHoverHtml(item.position, item.start ? Object.assign({}, item.row, { instruction: "START" }) : item.row));
 		}
 
 		function estimateLabelCacheEntryBytes(entry) {
-			let bytes = 2048 + entry.targets.length * 180 + entry.spatialCells.size * 80;
-
-			for (const target of entry.targets) {
-				bytes += String(target.labelLine || "").length * 2;
-				bytes += String(target.coordinateLine || "").length * 2;
-				bytes += String(target.hoverId || "").length * 2;
-			}
-
-			for (const items of entry.hoverItemsById.values()) {
-				bytes += 64;
-				for (const item of items) {
-					bytes += String(item || "").length * 2;
-				}
-			}
-
-			return bytes;
+			// Conservative accounting for target objects, index cells and shared row references.
+			return entry.targets.length * 768 + entry.spatialCells.size * 128 + entry.hoverItemsById.size * 128;
 		}
 
 		function evictLabelCache(currentBucket) {
@@ -2500,41 +2638,39 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function scheduleLabelCachePrewarm(context) {
-			if (labelCacheLimitBytes <= 0) {
-				return;
-			}
-
-			const prewarmKey = makeLabelCacheKey(context);
-
-			if (prewarmKey === lastPrewarmKey) {
-				return;
-			}
-
-			lastPrewarmKey = prewarmKey;
-			const runId = ++labelCacheRunId;
+			if (labelCacheLimitBytes <= 0) return;
+			const key = makeLabelCacheKey(context);
+			if (prewarmJobs.get(context.planeKey)?.key === key) return;
+			const job = { key, generation: labelCacheRunId };
+			prewarmJobs.set(context.planeKey, job);
 			const buckets = [-1, 1, -2, 2].map(offset => context.zoomBucket + offset).filter(bucket => bucket >= 0);
-			const schedule = window.requestIdleCallback || (callback => window.setTimeout(() => callback({ timeRemaining: () => 8 }), 80));
-			let index = 0;
+			const schedule = window.requestIdleCallback || (callback => window.setTimeout(() => callback({ timeRemaining: () => 4 }), 80));
+			let builder;
 			const work = deadline => {
-				while (index < buckets.length && deadline.timeRemaining() > 2) {
-					if (runId !== labelCacheRunId) {
-						return;
+				if (job.generation !== labelCacheRunId || prewarmJobs.get(context.planeKey) !== job ||
+					(playback && playback.active) || ![getPrimaryPlaneKey(), ...(dualView ? [getSecondaryPlaneKey()] : [])].includes(context.planeKey)) return;
+				const stop = performance.now() + 4;
+				while (deadline.timeRemaining() > 1 && performance.now() < stop) {
+					if (!builder) {
+						if (!buckets.length) return;
+						const nextContext = Object.assign({}, context, { zoomBucket: buckets.shift() });
+						const nextKey = makeLabelCacheKey(nextContext);
+						if (labelCache.has(nextKey)) continue;
+						builder = buildLabelCacheEntrySteps(nextContext, nextKey);
 					}
-
-					const zoomBucket = buckets[index++];
-					const nextContext = Object.assign({}, context, { zoomBucket });
-					const key = makeLabelCacheKey(nextContext);
-
-					if (!labelCache.has(key)) {
-						getLabelCacheEntry(nextContext);
+					const step = builder.next();
+					if (step.done) {
+						const entry = step.value;
+						if (!labelCache.has(entry.key)) {
+							labelCache.set(entry.key, entry);
+							labelCacheBytes += entry.bytes;
+							evictLabelCache(context.zoomBucket);
+						}
+						builder = undefined;
 					}
 				}
-
-				if (index < buckets.length && runId === labelCacheRunId) {
-					schedule(work);
-				}
+				schedule(work);
 			};
-
 			schedule(work);
 		}
 
@@ -2696,12 +2832,21 @@ function renderVisionHtml(document, mode, options, result) {
 			return '<div class="tooltip-row">' + lines.join("") + '</div>';
 		}
 		function collapseCoincidentLabelTargets(targets, plane, humanFormat, mergeDistance, showLabels) {
+			const steps = collapseLabelTargetSteps(targets, plane, humanFormat, mergeDistance, showLabels);
+			let step;
+			do { step = steps.next(); } while (!step.done);
+			return step.value;
+		}
+
+		function* collapseLabelTargetSteps(targets, plane, humanFormat, mergeDistance, showLabels) {
 			const tolerance = Math.max(0, Number(mergeDistance) || 0);
 			const groups = [];
 			const exactGroups = new Map();
 			const spatialCells = new Map();
+			let processed = 0;
 
 			for (const target of targets) {
+				if (++processed % 128 === 0) yield;
 				let group;
 
 				if (tolerance <= 0) {
@@ -2727,7 +2872,13 @@ function renderVisionHtml(document, mode, options, result) {
 				group.push(target);
 			}
 
-			return groups.flatMap(group => group.length > 1 ? makeCollapsedLabelTargets(group, plane, humanFormat, showLabels) : group[0]);
+			const collapsed = [];
+			for (const group of groups) {
+				const entries = group.length > 1 ? makeCollapsedLabelTargets(group, plane, humanFormat, showLabels) : [group[0]];
+				for (const entry of entries) collapsed.push(entry);
+				if (++processed % 128 === 0) yield;
+			}
+			return collapsed;
 		}
 
 		function findNearbyLabelGroup(target, spatialCells, tolerance) {
@@ -2778,7 +2929,7 @@ function renderVisionHtml(document, mode, options, result) {
 				: ['<div class="tooltip-row"><div class="tooltip-line">' + svgEscape([target.labelLine, target.coordinateLine].filter(Boolean).join(" ")) + '</div></div>']);
 			const markerSlices = makeMergedMarkerSlices(group);
 			const mergedSemanticEndpointScale = Math.max(1, Number(data.options.mergedSemanticEndpointScale) || 1.5);
-			const mergedPointSize = Math.max(...group.map(target => target.pointSize || 0)) * (markerSlices && markerSlices.length > 1 ? mergedSemanticEndpointScale : 1);
+			const mergedPointSize = group.reduce((largest, target) => Math.max(largest, target.pointSize || 0), 0) * (markerSlices && markerSlices.length > 1 ? mergedSemanticEndpointScale : 1);
 
 			const collapsedTarget = Object.assign({}, representative, {
 				pointSize: mergedPointSize,
@@ -3088,7 +3239,19 @@ function renderVisionHtml(document, mode, options, result) {
 				return;
 			}
 
+			const sceneKey = JSON.stringify([state.planeKey, state.bounds, width, height, scale, state.showGrid,
+				state.gridSize, state.useToolColors, state.endpointSize, state.arrowSize, state.lineScale,
+				state.playback ? state.playback.currentMotionIndex : null]);
+			let cached = canvasSceneKeys.get(canvas);
 			context.clearRect(0, 0, width, height);
+			if (cached && cached.key === sceneKey && cached.token === state.sceneToken) {
+				context.drawImage(cached.surface, 0, 0);
+				context.save();
+				context.scale(scale, scale);
+				drawCurrentPlaybackDot(context, state.currentPlaybackDot, makeCanvasTransform(state.bounds, rect.width, rect.height));
+				context.restore();
+				return;
+			}
 			context.save();
 			context.scale(scale, scale);
 			const transform = makeCanvasTransform(state.bounds, rect.width, rect.height);
@@ -3097,6 +3260,13 @@ function renderVisionHtml(document, mode, options, result) {
 			drawMotionRows(context, state.rows, state, transform);
 			drawCycleRows(context, state.cycles, state, transform);
 			drawDirectionArrows(context, state.rows, state, transform);
+			const surface = cached ? cached.surface : document.createElement("canvas");
+			if (surface.width !== width) surface.width = width;
+			if (surface.height !== height) surface.height = height;
+			const surfaceContext = surface.getContext("2d");
+			surfaceContext.clearRect(0, 0, width, height);
+			surfaceContext.drawImage(canvas, 0, 0);
+			canvasSceneKeys.set(canvas, { key: sceneKey, token: state.sceneToken, surface });
 			drawCurrentPlaybackDot(context, state.currentPlaybackDot, transform);
 			context.restore();
 		}
@@ -3138,39 +3308,45 @@ function renderVisionHtml(document, mode, options, result) {
 			context.restore();
 		}
 
+		function getPlaybackProjectionIndex(projected) {
+			let index = playbackProjectionIndexes.get(projected);
+			if (index) return index;
+			const candidates = [...projected.rows, ...projected.cycles, ...projected.toolChanges, ...projected.events]
+				.filter(row => Number.isFinite(row.executionIndex)).sort((a, b) => a.executionIndex - b.executionIndex);
+			let point, position;
+			const positions = candidates.map(row => {
+				point = row.projectedEnd || row.projectedPoint || (row.projectedPoints && row.projectedPoints[row.projectedPoints.length - 1]) || point;
+				position = row.end || row.position || row.point || position;
+				return { executionIndex: row.executionIndex, point, position };
+			});
+			index = { positions, motions: new Map([...projected.rows, ...projected.cycles].map(row => [row.executionIndex, row])) };
+			playbackProjectionIndexes.set(projected, index);
+			return index;
+		}
+
+		function getPlaybackLocation(projected) {
+			const positions = getPlaybackProjectionIndex(projected).positions;
+			let low = 0, high = positions.length;
+			while (low < high) {
+				const middle = (low + high) >>> 1;
+				if (positions[middle].executionIndex <= playback.cursor) low = middle + 1;
+				else high = middle;
+			}
+			return positions[low - 1];
+		}
+
 		function getCurrentPlaybackDot(projected) {
 			if (!playback || !playback.active) return undefined;
-			const currentEntry = playback.entries[playback.cursor];
-			const candidates = [
-				...(projected.rows || []),
-				...(projected.cycles || []),
-				...(projected.toolChanges || []),
-				...(projected.events || [])
-			].filter(row => Number.isFinite(row.executionIndex) && row.executionIndex <= playback.cursor)
-				.sort((left, right) => left.executionIndex - right.executionIndex);
-			let point;
-			for (const candidate of candidates) {
-				point = candidate.projectedEnd || candidate.projectedPoint || (candidate.projectedPoints && candidate.projectedPoints[candidate.projectedPoints.length - 1]) || point;
-			}
-			if (!point) return undefined;
-			const currentMotion = [...(projected.rows || []), ...(projected.cycles || [])].find(row => row.executionIndex === playback.cursor);
-			return { point, color: getPlaybackDotColor(currentEntry, currentMotion) };
+			const location = getPlaybackLocation(projected);
+			if (!location || !location.point) return undefined;
+			return { point: location.point, color: getPlaybackDotColor(playback.entries[playback.cursor],
+				getPlaybackProjectionIndex(projected).motions.get(playback.cursor)) };
 		}
 
 		function getCurrentPlaybackPosition(projected) {
 			if (!playback || !playback.active) return undefined;
-			const candidates = [
-				...(projected.rows || []),
-				...(projected.cycles || []),
-				...(projected.toolChanges || []),
-				...(projected.events || [])
-			].filter(row => Number.isFinite(row.executionIndex) && row.executionIndex <= playback.cursor)
-				.sort((left, right) => left.executionIndex - right.executionIndex);
-			let position;
-			for (const candidate of candidates) {
-				position = candidate.end || candidate.position || candidate.point || position;
-			}
-			return position;
+			const location = getPlaybackLocation(projected);
+			return location && location.position;
 		}
 
 		function updatePlaybackPositionReadout(position) {
@@ -3216,6 +3392,8 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function makeCanvasTransform(bounds, width, height) {
 			return {
+				scaleX: width / bounds.width,
+				scaleY: height / bounds.height,
 				x: point => (point.x - bounds.minX) / bounds.width * width,
 				y: point => (point.y - bounds.minY) / bounds.height * height
 			};
@@ -3280,6 +3458,40 @@ function renderVisionHtml(document, mode, options, result) {
 			context.lineCap = "round";
 			context.lineJoin = "round";
 			context.setLineDash(style.dash || []);
+			if (typeof Path2D !== "undefined") {
+				const combined = new Path2D();
+				const origin = { x: 0, y: 0 };
+				const matrix = { a: transform.scaleX, b: 0, c: 0,
+					d: transform.scaleY, e: transform.x(origin), f: transform.y(origin) };
+				for (let start = 0; start < pointSets.length; start += 128) {
+					const end = Math.min(start + 128, pointSets.length);
+					const first = pointSets[start], last = pointSets[end - 1];
+					if (!first) continue;
+					let cached = pathChunkCache.get(first);
+					// Verify every reference: filtering can change the middle of a chunk.
+					if (!cached || cached.last !== last || cached.sets.length !== end - start ||
+						cached.sets.some((points, offset) => points !== pointSets[start + offset])) {
+						const path = new Path2D();
+						let bytes = 128;
+						for (let i = start; i < end; i++) {
+							const points = pointSets[i];
+							if (!points || points.length < 2) continue;
+							path.moveTo(points[0].x, points[0].y);
+							for (let j = 1; j < points.length; j++) path.lineTo(points[j].x, points[j].y);
+							bytes += points.length * 32;
+						}
+						if (pathChunkBytes + bytes > pathChunkLimitBytes) {
+							pathChunkCache = new WeakMap(); pathChunkBytes = 0;
+						}
+						cached = { path, sets: pointSets.slice(start, end), last, bytes };
+						if (bytes <= pathChunkLimitBytes) { pathChunkCache.set(first, cached); pathChunkBytes += bytes; }
+					}
+					combined.addPath(cached.path, matrix);
+				}
+				context.stroke(combined);
+				context.restore();
+				return;
+			}
 
 			for (const points of pointSets) {
 				if (!points || points.length < 2) {
@@ -3396,7 +3608,7 @@ function renderVisionHtml(document, mode, options, result) {
 			if (!playbackState || !Number.isFinite(row.executionIndex)) return 1;
 			const motionIndex = playbackState.motionIndexByExecutionIndex.get(row.executionIndex);
 			if (!Number.isFinite(motionIndex)) return 0;
-			const currentMotionIndex = getCurrentPlaybackMotionIndex(playbackState);
+			const currentMotionIndex = playbackState.currentMotionIndex ?? getCurrentPlaybackMotionIndex(playbackState);
 			const age = currentMotionIndex - motionIndex;
 			if (age < 0) return 0;
 			if (age === 0) return 1;
@@ -3429,6 +3641,15 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function makeDirectionArrowSegment(points, endpointSize, arrowSize, unitsPerPixel) {
+			if (!points) return undefined;
+			const cached = arrowGeometryCache.get(points);
+			if (cached && cached.endpointSize === endpointSize && cached.arrowSize === arrowSize && cached.unitsPerPixel === unitsPerPixel) return cached.segment;
+			const segment = calculateDirectionArrowSegment(points, endpointSize, arrowSize, unitsPerPixel);
+			arrowGeometryCache.set(points, { endpointSize, arrowSize, unitsPerPixel, segment });
+			return segment;
+		}
+
+		function calculateDirectionArrowSegment(points, endpointSize, arrowSize, unitsPerPixel) {
 			if (!points || points.length < 2) {
 				return undefined;
 			}
@@ -3553,6 +3774,13 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		function boostToolColor(color) {
+			if (toolColorCache.has(color)) return toolColorCache.get(color);
+			const boosted = calculateBoostedToolColor(color);
+			toolColorCache.set(color, boosted);
+			return boosted;
+		}
+
+		function calculateBoostedToolColor(color) {
 			const match = String(color || "").match(/^#([0-9a-f]{6})$/i);
 
 			if (!match) {
@@ -3592,29 +3820,19 @@ function renderVisionHtml(document, mode, options, result) {
 		}
 
 		planeSelect.addEventListener("change", () => {
-			if (dualView) syncPlanePair("primary");
 			resetView();
 			saveVisionSettings();
 		});
-		secondaryPlaneSelect.addEventListener("change", () => {
-			secondaryPlaneKey = secondaryPlaneSelect.value;
-			syncPlanePair("secondary");
+		sharedAxisSelect.addEventListener("change", () => {
+			sharedAxis = sharedAxisSelect.value;
 			resetView();
+			saveViewport();
 		});
 		dualViewToggle.addEventListener("click", () => {
 			dualView = !dualView;
-			if (dualView) {
-				secondaryPlaneSelect.value = chooseSecondaryPlane(planeSelect.value, secondaryPlaneKey);
-				syncPlanePair("primary");
-			}
-			viewerSlot.classList.toggle("dual-view", dualView);
-			secondaryViewer.hidden = !dualView;
-			secondaryPlaneControl.hidden = !dualView;
-			dualViewToggle.setAttribute("aria-pressed", String(dualView));
-			dualViewToggle.textContent = dualView ? "Single View" : "Dual View";
-			if (!dualView) {
-				for (const option of planeSelect.options) option.disabled = false;
-			}
+			if (dualView && !sharedAxis) sharedAxis = getSharedAxisForPlane(planeSelect.value);
+			updateDualViewControls();
+			saveViewport();
 			resetView();
 		});
 		analysisModeSelect.addEventListener("change", () => {
@@ -3846,7 +4064,7 @@ function renderVisionHtml(document, mode, options, result) {
 				const state = viewStateByKey.get(viewKey);
 				if (!state || !state.bounds || event.button !== 0) return;
 				if (event.target && event.target.closest && event.target.closest(".point-label-hit[data-tooltip-merged='true']")) return;
-				const planeKey = viewKey === "secondary" ? secondaryPlaneSelect.value : planeSelect.value;
+				const planeKey = viewKey === "secondary" ? getSecondaryPlaneKey() : getPrimaryPlaneKey();
 				const plane = planes[planeKey] || planes.xz;
 				targetViewer.setPointerCapture(event.pointerId);
 				hideTooltip();

@@ -60,7 +60,7 @@ test("Vision generated webview scripts compile", () => {
 		motionDisplayWords: { rapid: "G0", cutting: ["G1", "G2", "G3"] }
 	});
 	compileEmbeddedScripts(html);
-	assert.match(html, /<button id="viewToggle">View<\/button>\s*<button id="dualViewToggle"[^>]*>Dual View<\/button>\s*<label id="secondaryPlaneControl"[^>]*>[\s\S]*?<\/label>\s*<button id="offsetsToggle">Offsets<\/button>\s*<button id="macrosToggle">Macro<\/button>/);
+	assert.match(html, /<button id="viewToggle">View<\/button>\s*<button id="dualViewToggle"[^>]*>Dual View<\/button>\s*<label id="sharedAxisControl"[^>]*>Shared axis[\s\S]*?<\/label>\s*<button id="offsetsToggle">Offsets<\/button>\s*<button id="macrosToggle">Macro<\/button>/);
 	assert.doesNotMatch(html, /id="dataToggle"|id="dataPanel"/);
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-reference type="radio" name="offsetReference" value="G53" checked/);
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-zero type="checkbox" checked/);
@@ -69,7 +69,7 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /Assumed start[\s\S]*?data-start-frame[\s\S]*?G53/);
 	assert.match(html, /data-start-axis="x"[^>]*value="0"/);
 	assert.match(html, /savedWebviewState = vscode\.getState\(\) \|\| \{\}/);
-	assert.match(html, /viewport: \{ plane: planeSelect\.value, zoom, pan: getProjectedPan\(planes\[planeSelect\.value\] \|\| planes\.xz\) \}/);
+	assert.match(html, /viewport: \{ plane: getPrimaryPlaneKey\(\), zoom, pan: getProjectedPan\(planes\[getPrimaryPlaneKey\(\)\] \|\| planes\.xz\) \}/);
 	assert.match(html, /function getDisplayedVisionLineNumber\(row\)/);
 	assert.match(html, /"L" \+ getDisplayedVisionLineNumber\(row\)/);
 	assert.match(html, /"L" \+ getDisplayedVisionLineNumber\(cycle\) \+ " " \+ cycle\.instruction/);
@@ -83,14 +83,21 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /if \(!target\) \{\s*if \(pinnedTooltip\) clearPinnedTooltip\(\);/);
 	assert.match(html, /pinned-tooltip-list/);
 	assert.match(html, /id="dualViewToggle"/);
-	assert.match(html, /id="secondaryPlane"/);
-	assert.match(html, /function getPlaneFamily\(planeKey\)/);
-	assert.match(html, /function isDistinctPlaneFamily\(first, second\)/);
+	assert.match(html, /id="sharedAxis"/);
+	assert.match(html, /function getDualPlanePair\(axis\)/);
+	assert.match(html, /function getDualViewFitHeight\(viewportAspect = 1\)/);
+	assert.match(html, /function getSharedAxisForPlane\(planeKey\)/);
 	assert.match(html, /worldPan: \{ x: worldPan\.x, y: worldPan\.y, z: worldPan\.z \}/);
-	assert.match(html, /renderViewport\(viewer, planeSelect\.value, "primary"\)/);
-	assert.match(html, /renderViewport\(secondaryViewer, secondaryPlaneSelect\.value, "secondary"\)/);
-	assert.match(html, /getPlaneFamily\(option\.value\) === getPlaneFamily\(planeSelect\.value\)/);
+	assert.match(html, /sharedAxis/);
+	assert.match(html, /renderViewport\(viewer, getPrimaryPlaneKey\(\), "primary"\)/);
+	assert.match(html, /renderViewport\(secondaryViewer, getSecondaryPlaneKey\(\), "secondary"\)/);
 	assert.match(html, /state && state\.canvasId \? state\.canvasId : "vision-canvas"/);
+});
+
+test("Vision playback only shows C when the program commands C", () => {
+	const getVisionProgramAxes = loadPrivateRenderer("src/kaijuVision/webview.js", "getVisionProgramAxes");
+	assert.deepEqual(getVisionProgramAxes(makeDocument("G0 X0 H1\nG1 Z-2\n(C90)")), ["x", "z"]);
+	assert.deepEqual(getVisionProgramAxes(makeDocument("G0 X0\nG1 C90")), ["x", "c"]);
 });
 
 test("Orphan Killer generated webview scripts compile", () => {
