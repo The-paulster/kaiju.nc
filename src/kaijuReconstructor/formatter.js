@@ -9,7 +9,7 @@ const {
 
 function registerFormatter(context) {
 	const disposable = vscode.languages.registerDocumentFormattingEditProvider(
-		{ language: "gcode" },
+		{ language: "gcode", scheme: "*" },
 		{
 			provideDocumentFormattingEdits(document) {
 				const options = getFormattingOptions(document);

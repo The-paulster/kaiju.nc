@@ -25,7 +25,7 @@ function registerGCodeProfileEditor(context) {
 }
 
 function reloadConfiguredGCodeDialectProfiles(document) {
-	const configured = vscode.workspace.getConfiguration("kaijuNC.gCodeDialect", document && document.uri).get(CUSTOM_PROFILES_SETTING, []);
+	const configured = vscode.workspace.getConfiguration("kaijuNC.gCodeDialect", document ? document.uri : null).get(CUSTOM_PROFILES_SETTING, []);
 	try {
 		setCustomGCodeDialectProfiles(configured);
 		return undefined;
@@ -114,12 +114,14 @@ function serializeBindingTable(table) {
 }
 
 function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
+	const nonce = makeWebviewNonce();
 	const initialData = JSON.stringify({ profiles, currentProfileId, operations: G_CODE_OPERATION_DEFINITIONS, loadError }).replace(/</g, "\\u003c");
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <title>KAIJU G-code Profiles</title>
 <style>
 	:root { color-scheme: dark light; }
@@ -157,7 +159,7 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 </style>
 </head>
 <body>
-<script id="profileData" type="application/json">${initialData}</script>
+<script nonce="${nonce}" id="profileData" type="application/json">${initialData}</script>
 <main>
 	<aside>
 		<h1>G-code profiles</h1>
@@ -174,7 +176,7 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 		<div class="table-wrap"><table><thead><tr><th>Function</th><th>Binding</th></tr></thead><tbody id="bindingsBody"></tbody></table></div>
 	</section>
 </main>
-<script>
+<script nonce="${nonce}">
 	const vscode = acquireVsCodeApi();
 	const initial = JSON.parse(document.getElementById('profileData').textContent);
 	const builtInProfiles = initial.profiles.filter(profile => profile.builtIn);
@@ -259,6 +261,13 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 </script>
 </body>
 </html>`;
+}
+
+function makeWebviewNonce() {
+	let nonce = "";
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	for (let index = 0; index < 32; index++) nonce += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+	return nonce;
 }
 
 module.exports = {

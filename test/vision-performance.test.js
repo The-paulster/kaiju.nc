@@ -38,6 +38,29 @@ test('Vision indexed culling preserves draw order and crossing paths', t => {
   t.diagnostic(`50,001 rows, 100 viewport queries: linear ${linearMs.toFixed(1)} ms; indexed ${indexedMs.toFixed(1)} ms (Node helper benchmark, not frame timing)`);
 });
 
+test('Vision spatial path index rejects distant authored rows before leaf checks', () => {
+  let intersections = 0;
+  const intersects = (rowBounds, bounds) => {
+    intersections++;
+    return rowBounds.maxX >= bounds.minX && rowBounds.minX <= bounds.minX + bounds.width
+      && rowBounds.maxY >= bounds.minY && rowBounds.minY <= bounds.minY + bounds.height;
+  };
+  const api = helpers(['buildPathIndex', 'queryPathIndex'], { rowBoundsIntersect: intersects, console });
+  const rows = Array.from({ length: 20000 }, (_, i) => {
+    const far = i % 2 === 1;
+    const x = far ? 10000 + (i % 100) : i % 100;
+    const y = Math.floor(i / 100) % 100;
+    return { id: i, projectedBounds: { minX: x, minY: y, maxX: x + 0.5, maxY: y + 0.5 } };
+  });
+  const index = api.buildPathIndex(rows);
+  const found = api.queryPathIndex(index, { minX: 4, minY: 4, width: 3, height: 3 });
+  assert.deepEqual(Array.from(found, row => row.id), [
+    404, 406, 504, 506, 604, 606, 704, 706,
+    10404, 10406, 10504, 10506, 10604, 10606, 10704, 10706
+  ]);
+  assert.ok(intersections < 1000, `expected spatial pruning, saw ${intersections} bounds checks`);
+});
+
 test('Vision reuses filtered bounds until visibility changes', () => {
   let pointReads = 0;
   const point = { get x() { pointReads++; return 5; }, y: 2 };
@@ -143,10 +166,13 @@ test('Vision embedded renderer retains canvases, shares scale and handles playba
   result.rows.forEach((row, i) => row.executionIndex = i);
   result.executionTrace = { executionEntries: [0, 1, 2].map(i => ({ sourceLine: doc.lineAt(i).text, lineNumber: i, macroChanges: [] })) };
   const html = loaded.exports.render(doc, 'whole', options, result);
-  const jsonStart = html.indexOf('<script type="application/json" id="vision-data">') + '<script type="application/json" id="vision-data">'.length;
-  const payload = html.slice(jsonStart, html.indexOf('</script>', jsonStart));
-  const start = html.indexOf('<script>') + '<script>'.length;
-  const script = html.slice(start, html.indexOf('</script>', start));
+  const payloadMatch = html.match(/<script\b[^>]*id="vision-data"[^>]*>([\s\S]*?)<\/script>/);
+  assert.ok(payloadMatch, 'Vision data script');
+  const payload = payloadMatch[1];
+  const scriptMatch = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
+    .find(match => match[1].includes('const vscode = acquireVsCodeApi();'));
+  assert.ok(scriptMatch, 'Vision renderer script');
+  const script = scriptMatch[1];
   const elements = new Map(), frames = [];
   const drawCounts = { strokes: 0 };
   class Element {

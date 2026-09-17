@@ -813,6 +813,7 @@ function makeRgba(color, alpha) {
 }
 
 function renderWarpaintHtml(sections, documentName) {
+	const nonce = makeWebviewNonce();
 	const payload = JSON.stringify({
 		sections,
 		documentName
@@ -823,6 +824,7 @@ function renderWarpaintHtml(sections, documentName) {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 	<title>KAIJU Warpaint</title>
 	<style>
 		:root {
@@ -1007,7 +1009,7 @@ function renderWarpaintHtml(sections, documentName) {
 		</div>
 	</header>
 	<main id="sections" class="sections"></main>
-	<script>
+	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		const state = ${payload};
 		const sectionsEl = document.getElementById("sections");
@@ -1209,6 +1211,13 @@ function renderWarpaintHtml(sections, documentName) {
 	</script>
 </body>
 </html>`;
+}
+
+function makeWebviewNonce() {
+	let nonce = "";
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	for (let index = 0; index < 32; index++) nonce += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+	return nonce;
 }
 
 module.exports = {

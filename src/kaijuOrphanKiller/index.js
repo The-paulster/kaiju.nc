@@ -369,6 +369,7 @@ function normalizeMacro(macro) {
 }
 
 function renderOrphanHtml(document, result, live) {
+	const nonce = makeWebviewNonce();
 	const undefinedRows = renderRows(result.undefinedUses);
 	const unusedRows = renderRows(result.unusedDefinitions);
 	const totalCount = result.undefinedUses.length + result.unusedDefinitions.length;
@@ -381,6 +382,7 @@ function renderOrphanHtml(document, result, live) {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 	<style>
 		:root { color-scheme: dark; --bg: var(--vscode-editor-background, #1e1e1e); --fg: var(--vscode-editor-foreground, #d4d4d4); --muted: var(--vscode-descriptionForeground, #9ca3af); --border: var(--vscode-panel-border, #3c3c3c); --surface: var(--vscode-sideBar-background, #252526); }
 		body { margin: 0; padding: 14px; background: var(--bg); color: var(--fg); font-family: var(--vscode-font-family, Segoe UI, sans-serif); font-size: var(--vscode-font-size, 13px); }
@@ -456,7 +458,7 @@ function renderOrphanHtml(document, result, live) {
 		<div class="section-body">${unusedRows}</div>
 	</section>
 
-	<script>
+	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		document.getElementById("refresh").addEventListener("click", () => {
 			vscode.postMessage({ type: "refresh" });
@@ -467,6 +469,13 @@ function renderOrphanHtml(document, result, live) {
 	</script>
 </body>
 </html>`;
+}
+
+function makeWebviewNonce() {
+	let nonce = "";
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	for (let index = 0; index < 32; index++) nonce += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+	return nonce;
 }
 
 function renderRows(items) {

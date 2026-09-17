@@ -58,18 +58,19 @@ function updateVisibleToolDecorations(decorationTypes) {
 
 function updateToolDecorations(editor, decorationTypes) {
 	const groupedDecorations = decorationTypes.map(() => []);
+	const canShowToolDecorations = editor.document.languageId === "gcode"
+		&& areToolDecorationsEnabled(editor.document);
+	const warpaintOwnsMarkers = canShowToolDecorations
+		&& isWarpaintMarkerCompositorEnabled(editor.document);
 
-	if (
-		editor.document.languageId === "gcode"
-		&& areToolDecorationsEnabled(editor.document)
-	) {
+	if (canShowToolDecorations) {
 		for (const range of getToolRanges(editor.document)) {
 			for (let lineNumber = range.startLine; lineNumber <= range.endLine; lineNumber++) {
 				const decoration = {
 					range: new vscode.Range(lineNumber, 0, lineNumber, 0)
 				};
 
-				if (!isWarpaintMarkerCompositorEnabled(editor.document)) {
+				if (!warpaintOwnsMarkers) {
 					groupedDecorations[range.colorIndex].push(decoration);
 				}
 			}

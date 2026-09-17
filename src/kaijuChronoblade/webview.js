@@ -307,6 +307,7 @@ function isSimpleSideBySideLayout(layout) {
 }
 
 function renderTimingProfilesHtml(profiles) {
+	const nonce = makeWebviewNonce();
 	return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
 		body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 14px; }
 		label { display:grid; gap:4px; font-size:12px; color:var(--vscode-descriptionForeground); }
@@ -316,11 +317,11 @@ function renderTimingProfilesHtml(profiles) {
 		.event { display:grid; grid-template-columns:1fr 1fr auto; gap:6px; margin:6px 0; }
 		button { color:var(--vscode-button-foreground); background:var(--vscode-button-background); border:0; border-radius:3px; padding:5px 8px; cursor:pointer; }
 		.list-actions { display:flex; gap:8px; margin:8px 0; } .hint { font-size:12px; color:var(--vscode-descriptionForeground); margin:12px 0 6px; }
-	</style></head><body>
+	</style><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body>
 		<div class="profile-bar"><label>Profile<select id="profileSelect"></select></label><button id="newProfile">New profile</button><button id="deleteProfile">Delete profile</button></div>
 		<div class="grid"><label>Name<input id="name"></label><label>G0 rate<input id="rapidRate" type="number" min="0"></label><label>Tool swap<input id="toolChangeSeconds" type="number" min="0" step="0.1"></label><label>Extra station<input id="extraStationSeconds" type="number" min="0" step="0.1"></label></div>
 		<p class="hint">Custom commands add time to Chronoblade's Other category.</p><div class="list-actions"><button id="save">Save profile</button><button id="addEvent">New command</button></div><div id="events"></div>
-		<script>const vscode=acquireVsCodeApi();let profiles=${escapeScriptJson(profiles)};let active=0;
+		<script nonce="${nonce}">const vscode=acquireVsCodeApi();let profiles=${escapeScriptJson(profiles)};let active=0;
 		const $=id=>document.getElementById(id); const value=id=>$(id).value; const number=id=>Number(value(id));
 		function eventRows(){return [...document.querySelectorAll('.event')].map(row=>({code:row.querySelector('.code').value,seconds:row.querySelector('.seconds').value}));}
 		function capture(){if(!profiles[active])return; profiles[active]={name:value('name'),rapidRate:number('rapidRate'),toolChangeSeconds:number('toolChangeSeconds'),extraStationSeconds:number('extraStationSeconds'),customTimes:eventRows()};}
@@ -332,6 +333,7 @@ function renderTimingProfilesHtml(profiles) {
 }
 
 function renderChronobladeHtml(options, result) {
+	const nonce = makeWebviewNonce();
 	const summary = result.summary;
 
 	return `<!DOCTYPE html>
@@ -339,6 +341,7 @@ function renderChronobladeHtml(options, result) {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 	<style>
 		html,
 		body {
@@ -720,9 +723,9 @@ function renderChronobladeHtml(options, result) {
 	</section>
 
 	${renderRows(result.rows, options.humanFormat)}
-	<script type="application/json" id="chronoblade-data">${escapeScriptJson({ rows: result.rows, humanFormat: options.humanFormat, lineData: options.showTraceLine ? "trace" : "source" })}</script>
+	<script nonce="${nonce}" type="application/json" id="chronoblade-data">${escapeScriptJson({ rows: result.rows, humanFormat: options.humanFormat, lineData: options.showTraceLine ? "trace" : "source" })}</script>
 
-	<script>
+	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		const chronobladeData = JSON.parse(document.getElementById("chronoblade-data").textContent);
 		const significantFiguresInput = document.getElementById("significantFigures");
@@ -1095,6 +1098,13 @@ function escapeHtml(text) {
 
 function escapeAttribute(text) {
 	return escapeHtml(text);
+}
+
+function makeWebviewNonce() {
+	let nonce = "";
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	for (let index = 0; index < 32; index++) nonce += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+	return nonce;
 }
 
 function escapeScriptJson(value) {

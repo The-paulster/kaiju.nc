@@ -4,6 +4,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- Fixed KAIJU settings being resolved against G-code resources without an appropriate configuration scope, preventing repeated VS Code warnings during editor decoration updates.
+
+- Hardened KAIJU Vision, Chronoblade, Machine Mode, Orphan Killer, and Warpaint webviews with content security policies.
+
 - Improved Vision navigation and playback performance with cached bounds, indexed visibility and playback lookups, retained drawing surfaces and path chunks, deferred tooltip formatting, and batched label-cache preparation; geometry detail and playback cadence are preserved.
 
 - Fixed Vision Dual View using different real-world scales for its two panes at the same zoom percentage.

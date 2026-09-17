@@ -46,7 +46,7 @@ function registerKaijuSenseNLabels(context) {
 	context.subscriptions.push(hoverTargetLabelDecorationType);
 	let pendingHoverClear;
 	context.subscriptions.push(
-		vscode.languages.registerHoverProvider({ language: "gcode" }, {
+		vscode.languages.registerHoverProvider({ language: "gcode", scheme: "*" }, {
 			provideHover(document, position) {
 				if (!areLabelReferenceDecorationsEnabled(document)) {
 					clearHoverHighlightDecorations(document, {
@@ -82,7 +82,7 @@ function registerKaijuSenseNLabels(context) {
 				return new vscode.Hover(referenceInfo.detail, referenceInfo.range);
 			}
 		}),
-		vscode.languages.registerDefinitionProvider({ language: "gcode" }, {
+		vscode.languages.registerDefinitionProvider({ language: "gcode", scheme: "*" }, {
 			provideDefinition(document, position) {
 				if (!areLabelReferenceDecorationsEnabled(document)) {
 					return undefined;

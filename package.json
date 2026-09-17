@@ -398,12 +398,14 @@
             "type": "boolean",
             "default": true,
             "description": "Show KAIJU.NC tool-range gutter markers beside G-code programs."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.syntax.unresolvedGotos.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when a GOTO target does not have a matching N label."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -413,49 +415,58 @@
             "type": "boolean",
             "default": true,
             "description": "Warn when a G-code file contains non-ASCII characters that some lathe controls may not read reliably."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.duplicateSequenceNumbers.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when the same N sequence number appears more than once in a G-code file."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.sequenceNumberOrder.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when N sequence numbers decrease instead of staying in order."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.unmatchedLoops.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when WHILE DO / END loop markers or IF THEN / ELSE / ENDIF markers are not matched."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.adjacentOperators.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when two symbolic math operators are adjacent, such as 1.00*-2.00."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.mixedAliasMode.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when a G-code file mixes KAIJU Alias names and their original numeric macros."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.undefinedAliases.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when a named KAIJU Alias macro is used without a matching alias definition before the first G/M block."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.illegalArcs.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show an error when an explicit G2/G3 arc is geometrically impossible or has no usable arc definition."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.illegalArcs.tolerance": {
             "type": "number",
             "default": 0.001,
             "minimum": 0,
             "maximum": 10,
             "description": "Maximum permitted arc radius mismatch in program units before KAIJU Alert reports an explicit G2/G3 centre-offset or R-radius error."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -465,34 +476,40 @@
             "type": "boolean",
             "default": true,
             "description": "Enable KAIJU.NC document formatting for G-code files."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.decimalPlaces": {
             "type": "integer",
             "default": 3,
             "minimum": 0,
             "maximum": 9,
             "description": "Default number of decimal places used by KAIJU Reconstructor."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.addMissingDecimal": {
             "type": "boolean",
             "default": true,
             "description": "Add a decimal point to configured address values when one is missing."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.decimalAddressLetters": {
             "type": "string",
             "default": "XYZUVWABCIJKRF",
             "description": "Address letters whose numeric values should be formatted with decimal places."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.autoSemicolon": {
             "type": "boolean",
             "default": false,
             "description": "Add semicolons after code and before comments during formatting."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.normalizeToolCodes": {
             "type": "boolean",
             "default": true,
             "description": "Normalize numeric T codes without inventing offsets, such as T1 to T01 and T606 to T0606."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.leadingWhitespace": {
             "type": "string",
             "default": "preserveTabs",
@@ -507,14 +524,16 @@
               "Normalize leading whitespace across the document using WHILE/END block depth and the detected indent style."
             ],
             "description": "Controls how KAIJU Reconstructor handles leading whitespace."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.format.softTabSize": {
             "type": "integer",
             "default": 4,
             "minimum": 1,
             "maximum": 16,
             "description": "Number of leading spaces KAIJU Reconstructor treats as one intentional soft-tab indentation unit."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -524,7 +543,8 @@
             "type": "boolean",
             "default": false,
             "description": "Match KAIJU Alias macro names case-sensitively when toggling aliases. Disabled by default so #PART_OD can still toggle back to #100."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -536,12 +556,14 @@
             "minimum": 0.15,
             "maximum": 0.5,
             "description": "Target width fraction for the KAIJU Orphan Killer side editor group when VS Code has a simple two-column layout."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.orphanKiller.ignoredMacros": {
             "type": "string",
             "default": "1001-",
             "description": "Comma-separated macro numbers or ranges ignored by KAIJU Orphan Killer, such as 100, 123, 3000-4000, or 1001- for all macros above #1000. Clear this setting to inspect every numeric macro."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -552,19 +574,22 @@
             "default": 1e-7,
             "minimum": 0,
             "description": "Numeric tolerance used by KAIJU Decomposition when evaluating macro comparisons such as EQ, NE, GT, GE, LT, and LE."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.decomposition.maxExecutionSteps": {
             "type": "integer",
             "default": 20000,
             "minimum": 1,
             "description": "Maximum number of execution steps KAIJU Decomposition will process before stopping to avoid unresolved loops or jumps."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.decomposition.maxOutputLines": {
             "type": "integer",
             "default": 50000,
             "minimum": 1,
             "description": "Maximum number of output lines KAIJU Decomposition will emit before stopping the trace."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -576,20 +601,23 @@
             "minimum": 50,
             "maximum": 5000,
             "description": "How long KAIJU waits after an edit before refreshing the passive execution trace."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.trace.maxExecutionSteps": {
             "type": "integer",
             "default": 20000,
             "minimum": 1,
             "maximum": 1000000,
             "description": "Maximum execution steps for the passive KAIJU Trace before it stops and reports a safety warning."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.trace.comparisonTolerance": {
             "type": "number",
             "default": 1e-7,
             "minimum": 0,
             "description": "Numeric tolerance used by KAIJU Trace when evaluating macro comparisons."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -599,52 +627,60 @@
             "type": "boolean",
             "default": true,
             "description": "Enable KAIJU Warpaint section coloring for G-code files."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.markerCompositor.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Use KAIJU Warpaint as the central gutter marker renderer for active tools and Warpaint sections."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.marker.maxSections": {
             "type": "integer",
             "default": 2,
             "minimum": 0,
             "maximum": 2,
             "description": "Maximum number of overlapping KAIJU Warpaint sections shown in the gutter marker."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.marker.sectionStripeWidth": {
             "type": "number",
             "default": 2,
             "minimum": 1,
             "maximum": 12,
             "description": "Width in pixels for each KAIJU Warpaint section stripe in composited gutter markers."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.marker.toolGap": {
             "type": "number",
             "default": 2,
             "minimum": 0,
             "maximum": 8,
             "description": "Gap in pixels between the active-tool stripe and the first KAIJU Warpaint stripe in composited gutter markers."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.marker.verticalOverflow": {
             "type": "number",
             "default": 1,
             "minimum": 0,
             "maximum": 4,
             "description": "Extra vertical bleed in pixels for composited gutter markers to reduce visible gaps between painted lines."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.backgroundIntensity": {
             "type": "number",
             "default": 0.05,
             "minimum": 0,
             "maximum": 0.5,
             "description": "Opacity used for KAIJU Warpaint background tinting. Lower values keep the editor softer."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.warpaint.overviewRuler.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show KAIJU Warpaint section colors in the editor overview ruler."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -656,19 +692,22 @@
             "minimum": 0,
             "maximum": 9,
             "description": "Minimum decimal places shown in human-facing KAIJU numeric readouts."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.display.maximumDecimalPlaces": {
             "type": "integer",
             "default": 3,
             "minimum": 0,
             "maximum": 9,
             "description": "Maximum decimal places shown in human-facing KAIJU numeric readouts. Set this above the minimum to allow extra precision in display text."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.display.statusBarModeColors": {
             "type": "boolean",
             "default": true,
             "description": "Color the right-side KAIJU machine-mode and alias-mode status bar indicators."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -678,22 +717,26 @@
             "type": "boolean",
             "default": true,
             "description": "Enable KAIJU Sense motion hovers on G0, G1, G2, and G3 moves."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.labelReferences.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Show inline reference markers after N labels targeted by GOTO statements."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.statusBarVerbose": {
             "type": "boolean",
             "default": true,
             "description": "Show verbose labels in the left-side KAIJU Sense cursor-state status bar, such as G00 (Rapid), instead of only modal codes. This does not affect the right-side machine-mode indicator."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.statusBarSyntaxColors": {
             "type": "boolean",
             "default": true,
             "description": "Color the left-side KAIJU Sense cursor-state status bar codes with colors matching KAIJU.NC syntax highlighting. VS Code applies this by splitting the readout into adjacent status bar items."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.modalNames": {
             "type": "object",
             "default": {},
@@ -701,12 +744,14 @@
               "type": "string"
             },
             "description": "Optional custom names for modal codes in the verbose KAIJU Sense status bar. Add code-to-name pairs in Settings JSON, for example { \"G00\": \"Positioning\", \"M03\": \"Main spindle forward\", \"G50\": \"Chuck speed cap\" }. G0/G00 and M3/M03 are treated as the same code; G50 applies to G50 S speed-limit entries."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.syntaxColoredHoverValues": {
             "type": "boolean",
             "default": false,
             "description": "Experimental: show KAIJU Sense motion-hover values in G-code code blocks so VS Code can apply syntax coloring. This is taller and currently less readable than the default compact hover; leave it off unless you are testing it."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.xAxisMode": {
             "type": "string",
             "enum": [
@@ -715,7 +760,8 @@
             ],
             "default": "diameter",
             "description": "How KAIJU Sense interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.cssSurfaceSpeedUnit": {
             "type": "string",
             "enum": [
@@ -724,20 +770,23 @@
             ],
             "default": "mPerMin",
             "description": "Unit used by KAIJU Sense for G96 constant surface speed calculations."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.samples": {
             "type": "integer",
             "default": 96,
             "minimum": 12,
             "maximum": 500,
             "description": "Number of samples used for KAIJU Sense path and CSS/RPM-limit estimates."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.sense.rapidRate": {
             "type": "number",
             "default": 10000,
             "minimum": 0,
             "description": "Default G0 rapid rate used by KAIJU Sense hovers, in program units per minute."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -756,7 +805,8 @@
             ],
             "default": "auto",
             "description": "2D plane used by KAIJU Vision. Auto uses the configured default plane for the current machine profile."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.defaultPlaneMill": {
             "type": "string",
             "enum": [
@@ -769,7 +819,8 @@
             ],
             "default": "xy",
             "description": "Default KAIJU Vision plane for the Mill machine profile when Vision plane is Auto."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.defaultPlaneLatheRadius": {
             "type": "string",
             "enum": [
@@ -782,7 +833,8 @@
             ],
             "default": "zx",
             "description": "Default KAIJU Vision plane for the Lathe (Radius) machine profile when Vision plane is Auto."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.defaultPlaneLatheDiameter": {
             "type": "string",
             "enum": [
@@ -795,7 +847,8 @@
             ],
             "default": "zx",
             "description": "Default KAIJU Vision plane for the Lathe (Diameter) machine profile when Vision plane is Auto."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.xAxisMode": {
             "type": "string",
             "enum": [
@@ -804,7 +857,8 @@
             ],
             "default": "diameter",
             "description": "How KAIJU Vision interprets X-axis values. Diameter mode uses half-X for physical X arc and distance calculations."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.xyOrientation": {
             "type": "string",
             "enum": [
@@ -819,7 +873,8 @@
             ],
             "default": "xRightYUp",
             "description": "Controls how KAIJU Vision orients the X-Y plane."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.xzOrientation": {
             "type": "string",
             "enum": [
@@ -834,7 +889,8 @@
             ],
             "default": "zRightXUp",
             "description": "Controls how KAIJU Vision orients the X-Z plane."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.zyOrientation": {
             "type": "string",
             "enum": [
@@ -849,7 +905,8 @@
             ],
             "default": "zRightYUp",
             "description": "Controls how KAIJU Vision orients the Z-Y plane."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.cssSurfaceSpeedUnit": {
             "type": "string",
             "enum": [
@@ -858,135 +915,155 @@
             ],
             "default": "mPerMin",
             "description": "Unit used by KAIJU Vision for G96 constant surface speed calculations."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.samples": {
             "type": "integer",
             "default": 96,
             "minimum": 12,
             "maximum": 500,
             "description": "Number of samples used by KAIJU Vision for arc path drawing."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.compactPanelWidth": {
             "type": "number",
             "default": 0.55,
             "minimum": 0.25,
             "maximum": 0.8,
             "description": "Target width fraction for the KAIJU Vision side editor group when VS Code has a simple two-column layout."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.zoomStep": {
             "type": "number",
             "default": 1.75,
             "minimum": 1.01,
             "maximum": 5,
             "description": "Multiplier used by KAIJU Vision zoom buttons. The default is three times larger than the previous button step."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.wheelZoomStep": {
             "type": "number",
             "default": 1.36,
             "minimum": 1.01,
             "maximum": 5,
             "description": "Multiplier used by KAIJU Vision mouse-wheel zoom. The default is three times larger than the previous wheel step."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.lineThickness": {
             "type": "number",
             "default": 1,
             "minimum": 0.1,
             "maximum": 5,
             "description": "Scale factor for KAIJU Vision path line thickness."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.arrowSize": {
             "type": "number",
             "default": 1,
             "minimum": 0.1,
             "maximum": 5,
             "description": "Scale factor for KAIJU Vision path direction arrow size."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.endpointSize": {
             "type": "number",
             "default": 4,
             "minimum": 1,
             "maximum": 24,
             "description": "Endpoint marker radius in KAIJU Vision, in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.mergedSemanticEndpointScale": {
             "type": "number",
             "default": 1.5,
             "minimum": 1,
             "maximum": 4,
             "description": "Scale multiplier for KAIJU Vision merged endpoint markers that contain multiple semantic colors."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.startPointSize": {
             "type": "number",
             "default": 4,
             "minimum": 1,
             "maximum": 24,
             "description": "Start-point marker radius in KAIJU Vision, in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.labelFontSize": {
             "type": "number",
             "default": 11,
             "minimum": 5,
             "maximum": 32,
             "description": "Endpoint and start label font size in KAIJU Vision, in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.labelOffset": {
             "type": "number",
             "default": 5,
             "minimum": 0,
             "maximum": 80,
             "description": "Distance between KAIJU Vision point markers and their labels, in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.trimLabelTrailingZeros": {
             "type": "boolean",
             "default": true,
             "description": "Trim insignificant trailing zeros from visible KAIJU Vision coordinate labels. Hover details keep the configured display precision."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.playbackMacroSignificantFiguresOnly": {
             "type": "boolean",
             "default": false,
             "description": "In KAIJU Vision playback's Macro values panel, trim insignificant trailing zeros. When off, values use three decimal places unless their executed assignment explicitly specifies more, up to six."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.pointMergeDistance": {
             "type": "number",
             "default": 20,
             "minimum": 0,
             "maximum": 80,
             "description": "Screen-pixel distance used by KAIJU Vision to merge endpoint and tool-change markers into one visual point. Use 0 for exact-coordinate merging only; zooming in can split near-overlapping points."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.labelCacheMB": {
             "type": "number",
             "default": 128,
             "minimum": 0,
             "maximum": 512,
             "description": "Approximate memory limit for KAIJU Vision merged-label zoom cache, in MB. Use 0 to disable label caching."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.compassSize": {
             "type": "number",
             "default": 78,
             "minimum": 24,
             "maximum": 220,
             "description": "KAIJU Vision compass size in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.compassOffsetX": {
             "type": "number",
             "default": 14,
             "minimum": 0,
             "maximum": 240,
             "description": "KAIJU Vision compass horizontal offset from the left edge, in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.compassOffsetY": {
             "type": "number",
             "default": 14,
             "minimum": 0,
             "maximum": 240,
             "description": "KAIJU Vision compass vertical offset from the top edge, in screen pixels."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.vision.rapidRate": {
             "type": "number",
             "default": 10000,
             "minimum": 0,
             "description": "Default G0 rapid rate used by KAIJU Vision timing context, in program units per minute."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -1016,12 +1093,14 @@
               }
             },
             "description": "Custom controller G-code profiles. Use KAIJU Manage G-code Profiles to edit their separate mill and lathe keybinding tables."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.gCodeDialect.defaultProfile": {
             "type": "string",
             "default": "fanucIso",
             "description": "G-code profile used by programs without their own profile. Use fanucIso for FANUC / ISO, dmgMori for DMG MORI, or the ID of a custom profile."
-          }
+          ,
+            "scope": "resource"}
         }
       },
       {
@@ -1036,7 +1115,8 @@
             ],
             "default": "latheDiameter",
             "description": "Fallback machine mode used until a program is assigned its own KAIJU Machine Mode. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.xAxisMode": {
             "type": "string",
             "enum": [
@@ -1045,7 +1125,8 @@
             ],
             "default": "diameter",
             "description": "How KAIJU Chronoblade interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.cssSurfaceSpeedUnit": {
             "type": "string",
             "enum": [
@@ -1054,39 +1135,45 @@
             ],
             "default": "mPerMin",
             "description": "Unit used for G96 constant surface speed calculations."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.samples": {
             "type": "integer",
             "default": 96,
             "minimum": 12,
             "maximum": 500,
             "description": "Number of samples used for KAIJU Chronoblade path and CSS/RPM-limit estimates."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.compactPanelWidth": {
             "type": "number",
             "default": 0.45,
             "minimum": 0.2,
             "maximum": 0.7,
             "description": "Target width fraction for the KAIJU Chronoblade side editor group when VS Code has a simple two-column layout."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.rapidRate": {
             "type": "number",
             "default": 10000,
             "minimum": 0,
             "description": "Default G0 rapid rate used by the KAIJU Chronoblade cycle-time report, in program units per minute."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.toolChangeSeconds": {
             "type": "number",
             "default": 4,
             "minimum": 0,
             "description": "Default base tool swap time used by the KAIJU Chronoblade cycle-time report, in seconds."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.extraStationSeconds": {
             "type": "number",
             "default": 0.5,
             "minimum": 0,
             "description": "Default extra turret station time added for each station beyond an adjacent tool swap in the KAIJU Chronoblade cycle-time report."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.timingProfiles": {
             "type": "array",
             "default": [],
@@ -1105,17 +1192,20 @@
               }
             },
             "description": "Reusable Chronoblade timing profiles. Each customTimes entry maps a literal M-code, such as M05 or M86, to seconds added to Other."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.significantFiguresOnly": {
             "type": "boolean",
             "default": false,
             "description": "Show Chronoblade report values without insignificant trailing fractional zeros, while retaining a decimal point."
-          },
+          ,
+            "scope": "resource"},
           "kaijuNC.chronoblade.hideZeroTimeLabels": {
             "type": "boolean",
             "default": true,
             "description": "Hide Chronoblade N-label sections whose total estimated time is zero when the report opens."
-          }
+          ,
+            "scope": "resource"}
         }
       }
     ],

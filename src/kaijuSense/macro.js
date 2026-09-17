@@ -20,12 +20,12 @@ const {
 
 function registerKaijuSenseMacro(context) {
 	context.subscriptions.push(
-		vscode.languages.registerDefinitionProvider({ language: "gcode" }, {
+		vscode.languages.registerDefinitionProvider({ language: "gcode", scheme: "*" }, {
 			provideDefinition(document, position) {
 				return provideMacroDefinition(document, position);
 			}
 		}),
-		vscode.languages.registerHoverProvider({ language: "gcode" }, {
+		vscode.languages.registerHoverProvider({ language: "gcode", scheme: "*" }, {
 			provideHover(document, position) {
 				return provideMacroHover(document, position);
 			}

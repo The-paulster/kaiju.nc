@@ -17,7 +17,7 @@ const { getSenseOptions } = require("./options");
 
 function registerKaijuSenseHover(context) {
 	context.subscriptions.push(
-		vscode.languages.registerHoverProvider({ language: "gcode" }, {
+		vscode.languages.registerHoverProvider({ language: "gcode", scheme: "*" }, {
 			provideHover(document, position) {
 				return provideKaijuSenseHover(document, position);
 			}

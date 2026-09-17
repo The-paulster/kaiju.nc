@@ -41,7 +41,7 @@ function registerKaijuQuickToggles(context) {
 
 async function toggleSetting(toggle) {
 	const editor = vscode.window.activeTextEditor;
-	const uri = editor && editor.document ? editor.document.uri : undefined;
+	const uri = editor && editor.document ? editor.document.uri : null;
 	const config = vscode.workspace.getConfiguration(toggle.section, uri);
 	const current = config.get(toggle.key, toggle.defaultValue);
 	const target = getUpdateTarget(config, toggle.key);
@@ -53,7 +53,7 @@ async function toggleSetting(toggle) {
 
 function updateQuickToggleContexts() {
 	const editor = vscode.window.activeTextEditor;
-	const uri = editor && editor.document ? editor.document.uri : undefined;
+	const uri = editor && editor.document ? editor.document.uri : null;
 
 	for (const toggle of Object.values(TOGGLES)) {
 		const value = vscode.workspace

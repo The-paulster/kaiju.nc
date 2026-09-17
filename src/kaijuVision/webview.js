@@ -665,6 +665,7 @@ function isSimpleSideBySideLayout(layout) {
 }
 
 function renderVisionHtml(document, mode, options, result) {
+	const nonce = makeWebviewNonce();
 	const rangeText = result.range.startLine === 0 && result.range.endLine === document.lineCount - 1
 		? "Whole program"
 		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
@@ -700,6 +701,7 @@ function renderVisionHtml(document, mode, options, result) {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 	<style>
 		:root {
 			--rapid: #ff8800;
@@ -1331,8 +1333,8 @@ function renderVisionHtml(document, mode, options, result) {
 	</div>
 	${renderRows(result.rows, options.humanFormat)}
 
-	<script type="application/json" id="vision-data">${escapeScriptJson(payload)}</script>
-	<script>
+	<script nonce="${nonce}" type="application/json" id="vision-data">${escapeScriptJson(payload)}</script>
+	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		const data = JSON.parse(document.getElementById("vision-data").textContent);
 		const savedWebviewState = vscode.getState() || {};
@@ -1792,46 +1794,103 @@ function renderVisionHtml(document, mode, options, result) {
 				events: projected.events.filter(row => isRowVisible(row, visibility))
 			};
 			visible.bounds = makeBounds(visible.rows, visible.cycles, visible.toolChanges, visible.events);
-			visible.rowIndex = buildPathIndex(visible.rows);
-			visible.cycleIndex = buildPathIndex(visible.cycles);
+			try {
+				visible.rowIndex = buildPathIndex(visible.rows);
+				visible.cycleIndex = buildPathIndex(visible.cycles);
+			} catch (error) {
+				// Keep Vision usable and expose the original failure in Developer Tools.
+				// queryPathIndex recognises these row-only fallback nodes.
+				console.error("KAIJU Vision spatial index build failed; using the safe linear fallback.", error);
+				visible.rowIndex = { rows: visible.rows };
+				visible.cycleIndex = { rows: visible.cycles };
+			}
 			visibleSceneCache.set(projected, visible);
 			return visible;
 		}
 
-		// Balanced range tree retains authored draw order and exact segment bounds.
-		function buildPathIndex(rows, start = 0, end = rows.length) {
-			if (start === end) return undefined;
-			if (end - start <= 32) {
+		// A packed R-tree groups neighbouring path bounds rather than adjacent source
+		// rows. Entries retain their original index and are re-sorted before drawing,
+		// preserving the authored paint order after a spatial query.
+		function buildPathIndex(rows) {
+			if (!rows.length) return undefined;
+			const maxChildren = 32;
+			const entries = rows.map((row, index) => ({ row, index, bounds: row.projectedBounds }));
+			const hasUsableBounds = entry => entry.bounds && ["minX", "minY", "maxX", "maxY"].every(key => Number.isFinite(entry.bounds[key]));
+			const boundedEntries = entries.filter(hasUsableBounds);
+			const unboundedEntries = entries.filter(entry => !hasUsableBounds(entry));
+
+			const makeBounds = items => {
 				let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-				for (let i = start; i < end; i++) {
-					const b = rows[i].projectedBounds;
-					if (!b) return { rows, start, end };
-					minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY);
-					maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY);
+				for (const item of items) {
+					const itemBounds = item.bounds;
+					minX = Math.min(minX, itemBounds.minX); minY = Math.min(minY, itemBounds.minY);
+					maxX = Math.max(maxX, itemBounds.maxX); maxY = Math.max(maxY, itemBounds.maxY);
 				}
-				return { rows, start, end, bounds: { minX, minY, maxX, maxY } };
-			}
-			const middle = (start + end) >>> 1;
-			const left = buildPathIndex(rows, start, middle), right = buildPathIndex(rows, middle, end);
-			const a = left.bounds, b = right.bounds;
-			const minX = a && b ? Math.min(a.minX, b.minX) : 0;
-			const minY = a && b ? Math.min(a.minY, b.minY) : 0;
-			return { left, right, bounds: a && b ? { minX, minY,
-				maxX: Math.max(a.maxX, b.maxX),
-				maxY: Math.max(a.maxY, b.maxY) } : undefined };
+				return { minX, minY, maxX, maxY };
+			};
+			const centre = (item, axis) => (item.bounds["min" + axis] + item.bounds["max" + axis]) / 2;
+			const packLevel = (items, leaf) => {
+				if (!items.length) return [];
+				const nodeCount = Math.ceil(items.length / maxChildren);
+				const sliceCount = Math.max(1, Math.ceil(Math.sqrt(nodeCount)));
+				const sliceSize = Math.ceil(items.length / sliceCount);
+				const xSorted = items.slice().sort((left, right) => centre(left, "X") - centre(right, "X"));
+				const packed = [];
+
+				for (let sliceStart = 0; sliceStart < xSorted.length; sliceStart += sliceSize) {
+					const slice = xSorted.slice(sliceStart, sliceStart + sliceSize)
+						.sort((left, right) => centre(left, "Y") - centre(right, "Y"));
+					for (let start = 0; start < slice.length; start += maxChildren) {
+						const children = slice.slice(start, start + maxChildren);
+						packed.push(leaf
+							? { entries: children, bounds: makeBounds(children) }
+							: { children, bounds: makeBounds(children) });
+					}
+				}
+				return packed;
+			};
+
+			let level = packLevel(boundedEntries, true);
+			while (level.length > 1) level = packLevel(level, false);
+			const tree = level[0];
+			return { rows, tree, unboundedEntries, bounds: tree && tree.bounds };
 		}
 
 		function queryPathIndex(node, bounds, result = []) {
-			if (!node || (node.bounds && !rowBoundsIntersect(node.bounds, bounds))) return result;
-			if (node.rows) {
-				for (let i = node.start; i < node.end; i++) {
-					if (rowBoundsIntersect(node.rows[i].projectedBounds, bounds)) result.push(node.rows[i]);
+			if (!node) return result;
+			try {
+				const maxX = bounds.minX + bounds.width;
+				const maxY = bounds.minY + bounds.height;
+				const containsTree = node.bounds
+					&& bounds.minX <= node.bounds.minX && maxX >= node.bounds.maxX
+					&& bounds.minY <= node.bounds.minY && maxY >= node.bounds.maxY;
+				if (containsTree) {
+					result.push(...node.rows);
+					return result;
 				}
-			} else {
-				queryPathIndex(node.left, bounds, result);
-				queryPathIndex(node.right, bounds, result);
+
+				const matches = node.unboundedEntries.slice();
+				const visit = current => {
+					if (!current || !rowBoundsIntersect(current.bounds, bounds)) return;
+					if (current.entries) {
+						for (const entry of current.entries) {
+							if (rowBoundsIntersect(entry.bounds, bounds)) matches.push(entry);
+						}
+						return;
+					}
+					for (const child of current.children) visit(child);
+				};
+				visit(node.tree);
+				matches.sort((left, right) => left.index - right.index);
+				result.push(...matches.map(entry => entry.row));
+				return result;
+			} catch (error) {
+				console.error("KAIJU Vision spatial index query failed; using the safe linear fallback.", error);
+				for (const row of node.rows || []) {
+					if (rowBoundsIntersect(row.projectedBounds, bounds)) result.push(row);
+				}
+				return result;
 			}
-			return result;
 		}
 
 		function makePointSetBounds(points) {
@@ -4140,6 +4199,13 @@ function renderVisionHtml(document, mode, options, result) {
 	</script>
 </body>
 </html>`;
+}
+
+function makeWebviewNonce() {
+	let nonce = "";
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	for (let index = 0; index < 32; index++) nonce += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+	return nonce;
 }
 
 function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, isOpen = false) {

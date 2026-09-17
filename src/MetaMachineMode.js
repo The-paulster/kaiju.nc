@@ -61,10 +61,10 @@ async function setMachineMode(document, profileId) {
 		? vscode.ConfigurationTarget.Global
 		: true;
 
-	await vscode.workspace.getConfiguration("kaijuNC.chronoblade").update("machineMode", profile.id, target);
-	await vscode.workspace.getConfiguration("kaijuNC.chronoblade").update("xAxisMode", profile.xAxisMode, target);
-	await vscode.workspace.getConfiguration("kaijuNC.sense").update("xAxisMode", profile.xAxisMode, target);
-	await vscode.workspace.getConfiguration("kaijuNC.vision").update("xAxisMode", profile.xAxisMode, target);
+	await vscode.workspace.getConfiguration("kaijuNC.chronoblade", null).update("machineMode", profile.id, target);
+	await vscode.workspace.getConfiguration("kaijuNC.chronoblade", null).update("xAxisMode", profile.xAxisMode, target);
+	await vscode.workspace.getConfiguration("kaijuNC.sense", null).update("xAxisMode", profile.xAxisMode, target);
+	await vscode.workspace.getConfiguration("kaijuNC.vision", null).update("xAxisMode", profile.xAxisMode, target);
 
 	return profile;
 }
@@ -89,7 +89,7 @@ async function setGCodeDialect(document, dialectId) {
 	const target = vscode.ConfigurationTarget && vscode.ConfigurationTarget.Global
 		? vscode.ConfigurationTarget.Global
 		: true;
-	await vscode.workspace.getConfiguration("kaijuNC.gCodeDialect").update("defaultProfile", dialect.id, target);
+	await vscode.workspace.getConfiguration("kaijuNC.gCodeDialect", null).update("defaultProfile", dialect.id, target);
 	return dialect;
 }
 
