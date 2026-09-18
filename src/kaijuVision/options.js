@@ -51,6 +51,7 @@ function getVisionOptions(document, rawOptions = {}) {
 		playbackMacroSignificantFiguresOnly: config.get("playbackMacroSignificantFiguresOnly", false) === true,
 		pointMergeDistance: clampNumber(config.get("pointMergeDistance", 20), 0, 80),
 		labelCacheMB: clampNumber(config.get("labelCacheMB", 128), 0, 512),
+		renderer: normalizeVisionRenderer(config.get("renderer", "webgl")),
 		compassSize: clampNumber(config.get("compassSize", 78), 24, 220),
 		compassOffsetX: clampNumber(config.get("compassOffsetX", 14), 0, 240),
 		compassOffsetY: clampNumber(config.get("compassOffsetY", 14), 0, 240),
@@ -59,6 +60,10 @@ function getVisionOptions(document, rawOptions = {}) {
 			maximumDecimalPlaces: clampNumber(displayConfig.get("maximumDecimalPlaces", 3), 0, 9)
 		}
 	};
+}
+
+function normalizeVisionRenderer(value) {
+	return value === "canvas" ? "canvas" : "webgl";
 }
 
 const VISION_COORDINATE_FRAME_CODES = ["G53", "G54", "G55", "G56", "G57", "G58", "G59"];

@@ -1033,6 +1033,15 @@
             "description": "Approximate memory limit for KAIJU Vision merged-label zoom cache, in MB. Use 0 to disable label caching."
           ,
             "scope": "resource"},
+          "kaijuNC.vision.renderer": {
+            "type": "string",
+            "enum": [
+              "webgl",
+              "canvas"
+            ],
+            "default": "webgl",
+            "description": "Renderer used for KAIJU Vision motion paths. WebGL retains path geometry for responsive panning and playback; Canvas remains available as a compatibility fallback.",
+            "scope": "resource"},
           "kaijuNC.vision.compassSize": {
             "type": "number",
             "default": 78,

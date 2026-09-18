@@ -882,18 +882,6 @@ function renderVisionHtml(document, mode, options, result) {
 			margin-top: 8px;
 		}
 
-		.visibility-panel {
-			display: none;
-			border-top: 1px solid var(--vscode-panel-border);
-			border-bottom: 1px solid var(--vscode-panel-border);
-			padding: 10px 0;
-			margin: 0 0 12px;
-		}
-
-		.visibility-panel.open {
-			display: block;
-		}
-
 		.control-panel {
 			display: none;
 			border-top: 1px solid var(--vscode-panel-border);
@@ -923,6 +911,12 @@ function renderVisionHtml(document, mode, options, result) {
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 			gap: 12px;
+		}
+
+		.view-panel-section + .view-panel-section {
+			border-top: 1px solid var(--vscode-panel-border);
+			margin-top: 10px;
+			padding-top: 10px;
 		}
 
 		.visibility-group-title {
@@ -1309,9 +1303,8 @@ function renderVisionHtml(document, mode, options, result) {
 		<aside id="playbackMacroPanel" class="playback-macro-panel" aria-label="Playback macro values"><div class="playback-macro-header"><strong>Macro values</strong><select id="playbackMacroSort" aria-label="Macro sort order"><option value="number">Number</option><option value="recent">Recently updated</option></select><button id="playbackMacroClose" class="playback-macro-close" type="button" title="Close macro values" aria-label="Close macro values">&#215;</button></div><table><thead><tr><th>Macro</th><th>Alias</th><th>Value</th></tr></thead><tbody id="playbackMacroValues"></tbody></table></aside>
 	</section>
 
-	${renderVisionViewPanel(options)}
+	${renderVisionViewPanel(options, result.rows)}
 	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.initialPosition, options.offsetPanelOpen)}
-		${renderVisionVisibilityPanel(result.rows, options)}
 	${renderVisionMacroPanel(macroVariables, savedMacroInputs, options.overrideProgramInitialValues)}
 	<section class="summary">
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
@@ -1373,8 +1366,6 @@ function renderVisionHtml(document, mode, options, result) {
 		const viewPanel = document.getElementById("viewPanel");
 		const offsetsToggle = document.getElementById("offsetsToggle");
 		const offsetPanel = document.getElementById("offsetPanel");
-		const visibilityToggle = document.getElementById("visibilityToggle");
-		const visibilityPanel = document.getElementById("visibilityPanel");
 		const macrosToggle = document.getElementById("macrosToggle");
 		const macroPanel = document.getElementById("macroPanel");
 		const overrideProgramInitialValues = document.getElementById("overrideProgramInitialValues");
@@ -1418,6 +1409,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const visibleSceneCache = new WeakMap();
 		const playbackProjectionIndexes = new WeakMap();
 		const canvasSceneKeys = new WeakMap();
+		const webglRenderers = new WeakMap();
 		const toolColorCache = new Map();
 		const arrowGeometryCache = new WeakMap();
 		let pathChunkCache = new WeakMap();
@@ -1504,18 +1496,22 @@ function renderVisionHtml(document, mode, options, result) {
 			dualViewToggle.textContent = dualView ? "Single View" : "Dual View";
 		}
 
-		function getProjectedPan(plane) {
+		function getProjectedPan(plane, sourceWorldPan = worldPan) {
 			return {
-				x: (worldPan[plane.h] || 0) * plane.hSign,
-				y: -(worldPan[plane.v] || 0) * plane.vSign
+				x: (sourceWorldPan[plane.h] || 0) * plane.hSign,
+				y: -(sourceWorldPan[plane.v] || 0) * plane.vSign
 			};
 		}
 
-		function setProjectedPan(plane, projectedPan, baseWorldPan) {
+		function getWorldPanForProjectedPan(plane, projectedPan, baseWorldPan = worldPan) {
 			const next = Object.assign({}, baseWorldPan || worldPan);
 			next[plane.h] = projectedPan.x / plane.hSign;
 			next[plane.v] = -projectedPan.y / plane.vSign;
-			worldPan = next;
+			return next;
+		}
+
+		function setProjectedPan(plane, projectedPan, baseWorldPan) {
+			worldPan = getWorldPanForProjectedPan(plane, projectedPan, baseWorldPan);
 		}
 
 		if (!sharedAxis) sharedAxis = getSharedAxisForPlane(planeSelect.value);
@@ -2402,12 +2398,13 @@ function renderVisionHtml(document, mode, options, result) {
 			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, { labelSize: labelEntry.labelSize, labelOffset: labelEntry.labelOffset, labelHitboxPadding: labelEntry.labelHitboxPadding }).map(renderPointLabel).join("");
 			const zeroAxes = showZeroLines ? renderZeroAxes(bounds, plane) : "";
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
+			const playbackDot = renderPlaybackDotSvg(currentPlaybackDot, unitsPerPixel);
 			const svgId = viewKey === "primary" ? "vision-svg" : "vision-svg-secondary";
 			const canvasId = viewKey === "primary" ? "vision-canvas" : "vision-canvas-secondary";
 			const overlaySvg = '<svg id="' + svgId + '" class="vision-overlay" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="none" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
 					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
-				'</style>' + zeroAxes + compass + labelsAndMarkers + '</svg>';
+				'</style>' + zeroAxes + compass + playbackDot + labelsAndMarkers + '</svg>';
 
 			let canvas = document.getElementById(canvasId);
 			if (!canvas) {
@@ -2420,7 +2417,7 @@ function renderVisionHtml(document, mode, options, result) {
 				overlayHost.innerHTML = overlaySvg;
 				overlayHost._markup = overlaySvg;
 			}
-			drawCanvasLayer({ canvasId, sceneToken: visible, planeKey, rows: canvasRows, cycles: canvasCycles, bounds, showGrid, gridSize, useToolColors, endpointSize, arrowSize, unitsPerPixel, lineScale, playback: playback && playback.active ? playback : undefined, currentPlaybackDot });
+			drawCanvasLayer({ canvasId, sceneToken: visible, planeKey, rows: canvasRows, cycles: canvasCycles, sceneRows: rows, sceneCycles: cycles, bounds, showGrid, gridSize, useToolColors, endpointSize, arrowSize, unitsPerPixel, lineScale, playback, playbackActive, currentPlaybackDot });
 		}
 
 		function getZoomBucket(value) {
@@ -3275,6 +3272,13 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
+		function renderPlaybackDotSvg(currentDot, unitsPerPixel) {
+			if (!currentDot || !currentDot.point) return "";
+			const radius = Math.max(0.000001, unitsPerPixel * 5);
+			const stroke = Math.max(0.000001, unitsPerPixel * 1.5);
+			return '<circle class="playback-current-dot" cx="' + round(currentDot.point.x) + '" cy="' + round(currentDot.point.y) + '" r="' + radius + '" fill="' + escapeAttribute(currentDot.color) + '" stroke="#1e1e1e" stroke-width="' + stroke + '" />';
+		}
+
 		function drawCanvasLayer(state) {
 			const canvas = document.getElementById(state && state.canvasId ? state.canvasId : "vision-canvas");
 
@@ -3282,6 +3286,11 @@ function renderVisionHtml(document, mode, options, result) {
 				return;
 			}
 
+			if (data.options.renderer !== "canvas" && drawWebglLayer(canvas, state)) return;
+			drawCanvas2dLayer(canvas, state);
+		}
+
+		function drawCanvas2dLayer(canvas, state) {
 			const rect = canvas.getBoundingClientRect();
 			const scale = window.devicePixelRatio || 1;
 			const width = Math.max(1, Math.floor(rect.width * scale));
@@ -3305,10 +3314,6 @@ function renderVisionHtml(document, mode, options, result) {
 			context.clearRect(0, 0, width, height);
 			if (cached && cached.key === sceneKey && cached.token === state.sceneToken) {
 				context.drawImage(cached.surface, 0, 0);
-				context.save();
-				context.scale(scale, scale);
-				drawCurrentPlaybackDot(context, state.currentPlaybackDot, makeCanvasTransform(state.bounds, rect.width, rect.height));
-				context.restore();
 				return;
 			}
 			context.save();
@@ -3326,8 +3331,327 @@ function renderVisionHtml(document, mode, options, result) {
 			surfaceContext.clearRect(0, 0, width, height);
 			surfaceContext.drawImage(canvas, 0, 0);
 			canvasSceneKeys.set(canvas, { key: sceneKey, token: state.sceneToken, surface });
-			drawCurrentPlaybackDot(context, state.currentPlaybackDot, transform);
 			context.restore();
+		}
+
+		function drawWebglLayer(canvas, state) {
+			const renderer = getWebglRenderer(canvas);
+			if (!renderer || renderer.lost) return false;
+			const rect = canvas.getBoundingClientRect();
+			const pixelRatio = window.devicePixelRatio || 1;
+			const width = Math.max(1, Math.floor(rect.width * pixelRatio));
+			const height = Math.max(1, Math.floor(rect.height * pixelRatio));
+			if (canvas.width !== width || canvas.height !== height) {
+				canvas.width = width;
+				canvas.height = height;
+			}
+			const playbackMap = state.playback && state.playback.motionIndexByExecutionIndex;
+			const sceneChanged = renderer.sceneToken !== state.sceneToken
+				|| renderer.useToolColors !== state.useToolColors
+				|| renderer.playbackMap !== playbackMap;
+			if (sceneChanged) {
+				uploadWebglPathScene(renderer, state);
+				renderer.sceneToken = state.sceneToken;
+				renderer.useToolColors = state.useToolColors;
+				renderer.playbackMap = playbackMap;
+			}
+			if (renderer.arrowToken !== state.sceneToken
+				|| renderer.arrowPlaybackMap !== playbackMap
+				|| renderer.arrowSize !== state.arrowSize
+				|| renderer.endpointSize !== state.endpointSize
+				|| renderer.arrowUnitsPerPixel !== state.unitsPerPixel
+				|| renderer.arrowUseToolColors !== state.useToolColors) {
+				uploadWebglArrows(renderer, state);
+				renderer.arrowToken = state.sceneToken;
+				renderer.arrowPlaybackMap = playbackMap;
+				renderer.arrowSize = state.arrowSize;
+				renderer.endpointSize = state.endpointSize;
+				renderer.arrowUnitsPerPixel = state.unitsPerPixel;
+				renderer.arrowUseToolColors = state.useToolColors;
+			}
+			renderer.drawState = state;
+			drawWebglScene(renderer, state, width, height, pixelRatio);
+			return true;
+		}
+
+		function getWebglRenderer(canvas) {
+			if (webglRenderers.has(canvas)) return webglRenderers.get(canvas);
+			let gl;
+			try {
+				gl = canvas.getContext("webgl2", { alpha: true, antialias: true, premultipliedAlpha: true });
+			} catch {
+				return undefined;
+			}
+			if (!gl || typeof gl.createShader !== "function" || typeof gl.drawArraysInstanced !== "function") return undefined;
+			try {
+				const renderer = makeWebglRenderer(gl);
+				canvas.addEventListener("webglcontextlost", event => {
+					event.preventDefault();
+					renderer.lost = true;
+				});
+				canvas.addEventListener("webglcontextrestored", () => {
+					webglRenderers.delete(canvas);
+					render();
+				});
+				webglRenderers.set(canvas, renderer);
+				return renderer;
+			} catch {
+				return undefined;
+			}
+		}
+
+		function makeWebglRenderer(gl) {
+			const lineVertexSource = [
+				"#version 300 es", "precision highp float;",
+				"layout(location=0) in vec2 aStart;", "layout(location=1) in vec2 aEnd;",
+				"layout(location=2) in vec4 aColor;", "layout(location=3) in float aMotion;",
+				"layout(location=4) in float aWidth;", "layout(location=5) in float aRapid;", "layout(location=6) in float aDashPhase;",
+				"uniform vec4 uBounds;", "uniform vec2 uViewport;", "uniform float uPixelRatio;",
+				"out vec4 vColor;", "flat out float vMotion;", "flat out float vRapid;", "flat out vec2 vLineStartPx;", "flat out vec2 vLineTangent;", "flat out float vDashPhase;", "out float vAcrossPx;", "flat out float vHalfWidth;",
+				"void main() {", "  int id = gl_VertexID % 6;",
+				"  float t = (id == 1 || id == 2 || id == 4) ? 1.0 : 0.0;",
+				"  float side = (id == 0 || id == 1 || id == 3) ? -1.0 : 1.0;",
+				"  vec2 startPx = (aStart - uBounds.xy) / uBounds.zw * uViewport;",
+				"  vec2 endPx = (aEnd - uBounds.xy) / uBounds.zw * uViewport;",
+				"  vec2 direction = endPx - startPx;", "  float lengthPx = max(length(direction), 0.0001);",
+				"  vec2 tangent = direction / lengthPx;", "  vec2 normal = vec2(-tangent.y, tangent.x);",
+				"  float halfWidth = aWidth * uPixelRatio * 0.5;", "  float outerHalfWidth = halfWidth + 1.0;",
+				"  float joinOverlap = min(1.0 * uPixelRatio, lengthPx * 0.25);",
+				"  vec2 pixel = mix(startPx, endPx, t) + tangent * mix(-joinOverlap, joinOverlap, t) + normal * side * outerHalfWidth;",
+				"  gl_Position = vec4(pixel.x / uViewport.x * 2.0 - 1.0, 1.0 - pixel.y / uViewport.y * 2.0, 0.0, 1.0);",
+				"  vColor = aColor;", "  vMotion = aMotion;", "  vRapid = aRapid;", "  vLineStartPx = startPx;", "  vLineTangent = tangent;", "  vDashPhase = aDashPhase;", "  vAcrossPx = side * outerHalfWidth / uPixelRatio;", "  vHalfWidth = aWidth * 0.5;", "}"
+			].join("\\n");
+			const sharedFragmentSource = [
+				"#version 300 es", "precision highp float;", "in vec4 vColor;", "flat in float vMotion;",
+				"uniform bool uPlaybackActive;", "uniform float uCurrentMotion;", "out vec4 outColor;",
+				"void main() {", "  float alpha = vColor.a;",
+				"  if (uPlaybackActive) {", "    if (vMotion < 0.0 || vMotion > uCurrentMotion) discard;",
+				"    float age = uCurrentMotion - vMotion;", "    alpha *= age == 0.0 ? 1.0 : max(0.06, 1.0 - age / 24.0);", "  }",
+				// Premultiply only after coverage and playback opacity have been applied.
+				"  outColor = vec4(vColor.rgb * alpha, alpha);", "}"
+			].join("\\n");
+			const lineFragmentSource = sharedFragmentSource.replace("void main() {", "uniform float uPixelRatio; uniform vec2 uViewport; flat in vec2 vLineStartPx; flat in vec2 vLineTangent; flat in float vDashPhase; in float vAcrossPx; flat in float vHalfWidth; flat in float vRapid;\\nvoid main() {")
+				.replace("  float alpha = vColor.a;", "  float alpha = vColor.a;\\n  float crossAa = max(0.5 * length(vec2(dFdx(vAcrossPx), dFdy(vAcrossPx))), 0.0001);\\n  float strokeDistance = abs(vAcrossPx) - vHalfWidth;\\n  float strokeCoverage = 1.0 - smoothstep(-crossAa, crossAa, strokeDistance);\\n  vec2 fragmentPx = vec2(gl_FragCoord.x, uViewport.y - gl_FragCoord.y);\\n  float dashAlong = vDashPhase + dot(fragmentPx - vLineStartPx, vLineTangent) / uPixelRatio;\\n  float dashAa = max(0.5 * length(vec2(dFdx(dashAlong), dFdy(dashAlong))), 0.0001);\\n  float dashDistance = abs(fract((dashAlong - 4.0) / 14.0 + 0.5) - 0.5) * 14.0 - 4.0;\\n  float dashCoverage = vRapid > 0.5 ? 1.0 - smoothstep(-dashAa, dashAa, dashDistance) : 1.0;\\n  alpha *= strokeCoverage * dashCoverage;\\n  if (alpha <= 0.001) discard;");
+			const arrowVertexSource = [
+				"#version 300 es", "precision highp float;", "layout(location=0) in vec2 aPosition;",
+				"layout(location=1) in vec4 aColor;", "layout(location=2) in float aMotion;",
+				"uniform vec4 uBounds;", "uniform vec2 uViewport;", "out vec4 vColor;", "flat out float vMotion;",
+				"void main() {", "  vec2 pixel = (aPosition - uBounds.xy) / uBounds.zw * uViewport;",
+				"  gl_Position = vec4(pixel.x / uViewport.x * 2.0 - 1.0, 1.0 - pixel.y / uViewport.y * 2.0, 0.0, 1.0);",
+				"  vColor = aColor;", "  vMotion = aMotion;", "}"
+			].join("\\n");
+			const gridVertexSource = [
+				"#version 300 es", "precision highp float;", "uniform vec4 uBounds;", "out vec2 vWorld;",
+				"void main() {", "  vec2 clip = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);",
+				"  vWorld = uBounds.xy + vec2(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5) * uBounds.zw;",
+				"  gl_Position = vec4(clip, 0.0, 1.0);", "}"
+			].join("\\n");
+			const gridFragmentSource = [
+				"#version 300 es", "precision highp float;", "in vec2 vWorld;", "uniform float uGridSize;", "uniform float uCssPixelsPerWorld;", "uniform float uPixelRatio;", "out vec4 outColor;",
+				"void main() {", "  vec2 cellDistance = abs(fract(vWorld / uGridSize + 0.5) - 0.5) * uGridSize;",
+				"  float distanceCss = min(cellDistance.x, cellDistance.y) * uCssPixelsPerWorld;", "  float aa = 0.5 / uPixelRatio;",
+				"  float coverage = 1.0 - smoothstep(aa, 2.0 * aa, distanceCss);", "  float alpha = 0.18 * coverage;",
+				"  outColor = vec4(vec3(0.588) * alpha, alpha);", "}"
+			].join("\\n");
+			const lineProgram = makeWebglProgram(gl, lineVertexSource, lineFragmentSource);
+			const arrowProgram = makeWebglProgram(gl, arrowVertexSource, sharedFragmentSource);
+			const gridProgram = makeWebglProgram(gl, gridVertexSource, gridFragmentSource);
+			return {
+				gl, lineProgram, arrowProgram, gridProgram, lineBuffer: gl.createBuffer(), dashPhaseBuffer: gl.createBuffer(), arrowBuffer: gl.createBuffer(),
+				lineCount: 0, arrowCount: 0, sceneToken: undefined, arrowKey: "", lost: false
+			};
+		}
+
+		function makeWebglProgram(gl, vertexSource, fragmentSource) {
+			const compile = (type, source) => {
+				const shader = gl.createShader(type);
+				gl.shaderSource(shader, source);
+				gl.compileShader(shader);
+				if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) || "Vision WebGL shader failed to compile.");
+				return shader;
+			};
+			const program = gl.createProgram();
+			gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexSource));
+			gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentSource));
+			gl.linkProgram(program);
+			if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || "Vision WebGL program failed to link.");
+			return program;
+		}
+
+		function uploadWebglPathScene(renderer, state) {
+			const values = [];
+			const sceneBounds = state.sceneToken && state.sceneToken.bounds;
+			renderer.origin = sceneBounds ? {
+				x: sceneBounds.minX + sceneBounds.width / 2,
+				y: sceneBounds.minY + sceneBounds.height / 2
+			} : { x: 0, y: 0 };
+			const rapidPath = { distance: 0, end: undefined };
+			for (const row of state.sceneRows || []) {
+				const rapid = row.motionCode === 0;
+				if (!rapid) { rapidPath.distance = 0; rapidPath.end = undefined; }
+				appendWebglPolyline(values, row, getMotionStrokeColor(row, state.useToolColors), (rapid ? 1.1 : 1.4) * state.lineScale, rapid, state, rapidPath, renderer.origin);
+			}
+			for (const cycle of state.sceneCycles || []) appendWebglPolyline(values, cycle, state.useToolColors && cycle.toolColor ? boostToolColor(cycle.toolColor) : "#4fc3ff", 1.45 * state.lineScale, false, state, undefined, renderer.origin);
+			const gl = renderer.gl;
+			gl.bindBuffer(gl.ARRAY_BUFFER, renderer.lineBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+			renderer.lineCount = values.length / 12;
+			renderer.dashDistances = new Float64Array(renderer.lineCount);
+			for (let index = 0; index < renderer.lineCount; index++) renderer.dashDistances[index] = values[index * 12 + 11];
+			renderer.dashScaleKey = undefined;
+		}
+
+		function appendWebglPolyline(values, row, color, width, rapid, state, rapidPath = { distance: 0, end: undefined }, origin = { x: 0, y: 0 }) {
+			const points = row && row.projectedPoints;
+			if (!points || points.length < 2) return;
+			const rgba = webglColor(color);
+			const motion = getWebglMotionIndex(row, state);
+			if (rapid && rapidPath.end && getPointDistance(rapidPath.end, points[0]) > 0.000001) rapidPath.distance = 0;
+			for (let index = 1; index < points.length; index++) {
+				const start = points[index - 1], end = points[index];
+				if (!start || !end) continue;
+				const dashOffset = rapid ? rapidPath.distance : 0;
+				values.push(start.x - origin.x, start.y - origin.y, end.x - origin.x, end.y - origin.y, rgba[0], rgba[1], rgba[2], rgba[3], motion, width, rapid ? 1 : 0, dashOffset);
+				if (rapid) rapidPath.distance += getPointDistance(start, end);
+			}
+			if (rapid) rapidPath.end = points[points.length - 1];
+		}
+
+		function uploadWebglArrows(renderer, state) {
+			const values = [];
+			for (const row of state.sceneRows || []) {
+				const segment = makeDirectionArrowSegment(row.projectedPoints, state.endpointSize, state.arrowSize, state.unitsPerPixel);
+				if (!segment) continue;
+				const dx = segment.end.x - segment.start.x, dy = segment.end.y - segment.start.y;
+				const length = Math.hypot(dx, dy);
+				if (!Number.isFinite(length) || length <= 0) continue;
+				const size = Math.max(state.unitsPerPixel * 4, state.arrowSize);
+				const wing = size * 0.45, ux = dx / length, uy = dy / length;
+				const left = { x: segment.end.x - ux * size - uy * wing, y: segment.end.y - uy * size + ux * wing };
+				const right = { x: segment.end.x - ux * size + uy * wing, y: segment.end.y - uy * size - ux * wing };
+				const color = webglColor(getDirectionStrokeColor(row, state.useToolColors));
+				const motion = getWebglMotionIndex(row, state);
+				const origin = renderer.origin || { x: 0, y: 0 };
+				for (const point of [segment.end, left, right]) values.push(point.x - origin.x, point.y - origin.y, color[0], color[1], color[2], color[3], motion);
+			}
+			const gl = renderer.gl;
+			gl.bindBuffer(gl.ARRAY_BUFFER, renderer.arrowBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+			renderer.arrowCount = values.length / 7;
+		}
+
+		function getWebglMotionIndex(row, state) {
+			const map = state.playback && state.playback.motionIndexByExecutionIndex;
+			return map && Number.isFinite(row && row.executionIndex) && map.has(row.executionIndex) ? map.get(row.executionIndex) : -1;
+		}
+
+		function webglColor(value) {
+			const text = String(value || "#ffffff").trim();
+			const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+			if (hex) {
+				const source = hex[1].length === 3 ? hex[1].split("").map(character => character + character).join("") : hex[1];
+				return [parseInt(source.slice(0, 2), 16) / 255, parseInt(source.slice(2, 4), 16) / 255, parseInt(source.slice(4, 6), 16) / 255, 1];
+			}
+			// calculateBoostedToolColor returns modern space-separated HSL. Canvas
+			// resolves that CSS directly; convert the same form before GPU upload.
+			const hsl = text.match(/^hsl[(][ ]*(-?(?:[0-9]+[.]?[0-9]*|[.][0-9]+))[ ]+(-?(?:[0-9]+[.]?[0-9]*|[.][0-9]+))%[ ]+(-?(?:[0-9]+[.]?[0-9]*|[.][0-9]+))%[ ]*[)]$/i);
+			if (!hsl) return [1, 1, 1, 1];
+			const hue = ((Number(hsl[1]) % 360) + 360) % 360 / 360;
+			const saturation = Math.max(0, Math.min(1, Number(hsl[2]) / 100));
+			const lightness = Math.max(0, Math.min(1, Number(hsl[3]) / 100));
+			const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+			const section = hue * 6;
+			const secondary = chroma * (1 - Math.abs(section % 2 - 1));
+			const match = lightness - chroma / 2;
+			const channels = section < 1 ? [chroma, secondary, 0]
+				: section < 2 ? [secondary, chroma, 0]
+					: section < 3 ? [0, chroma, secondary]
+						: section < 4 ? [0, secondary, chroma]
+							: section < 5 ? [secondary, 0, chroma]
+								: [chroma, 0, secondary];
+			return [channels[0] + match, channels[1] + match, channels[2] + match, 1];
+		}
+
+		function drawWebglScene(renderer, state, width, height, pixelRatio) {
+			const gl = renderer.gl;
+			gl.viewport(0, 0, width, height);
+			gl.clearColor(0, 0, 0, 0);
+			gl.clear(gl.COLOR_BUFFER_BIT);
+			gl.enable(gl.BLEND);
+			// Both the shader output and browser compositor use premultiplied alpha.
+			// SRC_ALPHA here would darken edges and square playback trail opacity.
+			gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+			if (state.showGrid) drawWebglGrid(renderer, state, width, pixelRatio);
+			updateWebglDashPhases(renderer, state, width, pixelRatio);
+			drawWebglBuffer(renderer, renderer.lineProgram, renderer.lineBuffer, renderer.lineCount, 12, true, state, width, height, pixelRatio);
+			drawWebglBuffer(renderer, renderer.arrowProgram, renderer.arrowBuffer, renderer.arrowCount, 7, false, state, width, height, pixelRatio);
+		}
+
+		function drawWebglGrid(renderer, state, width, pixelRatio) {
+			const gl = renderer.gl;
+			const cssPixelsPerWorldUnit = width / Math.max(0.000001, pixelRatio * state.bounds.width);
+			const gridSize = normalizeGridSize(state.gridSize);
+			if (!Number.isFinite(gridSize) || gridSize <= 0) return;
+			const originX = Math.floor(state.bounds.minX / gridSize) * gridSize;
+			const originY = Math.floor(state.bounds.minY / gridSize) * gridSize;
+			gl.useProgram(renderer.gridProgram);
+			gl.uniform4f(gl.getUniformLocation(renderer.gridProgram, "uBounds"), state.bounds.minX - originX, state.bounds.minY - originY, state.bounds.width, state.bounds.height);
+			gl.uniform1f(gl.getUniformLocation(renderer.gridProgram, "uGridSize"), gridSize);
+			gl.uniform1f(gl.getUniformLocation(renderer.gridProgram, "uCssPixelsPerWorld"), cssPixelsPerWorldUnit);
+			gl.uniform1f(gl.getUniformLocation(renderer.gridProgram, "uPixelRatio"), pixelRatio);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		}
+
+		function updateWebglDashPhases(renderer, state, width, pixelRatio) {
+			if (!renderer.lineCount || !renderer.dashDistances) return;
+			const cssPixelsPerWorldUnit = width / Math.max(0.000001, pixelRatio * state.bounds.width);
+			const scaleKey = Math.round(cssPixelsPerWorldUnit * 1000000000) / 1000000000;
+			if (renderer.dashScaleKey === scaleKey) return;
+			const periodWorld = 14 / Math.max(0.000001, cssPixelsPerWorldUnit);
+			const phases = new Float32Array(renderer.lineCount);
+			for (let index = 0; index < renderer.lineCount; index++) {
+				const distance = renderer.dashDistances[index];
+				phases[index] = ((distance % periodWorld) + periodWorld) % periodWorld * cssPixelsPerWorldUnit;
+			}
+			const gl = renderer.gl;
+			gl.bindBuffer(gl.ARRAY_BUFFER, renderer.dashPhaseBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, phases, gl.DYNAMIC_DRAW);
+			renderer.dashScaleKey = scaleKey;
+		}
+
+		function drawWebglBuffer(renderer, program, buffer, count, stride, lines, state, width, height, pixelRatio) {
+			if (!count) return;
+			const gl = renderer.gl;
+			gl.useProgram(program);
+			gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+			const bytes = stride * 4;
+			gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, bytes, 0);
+			if (lines) {
+				gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, bytes, 2 * 4);
+				gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, bytes, 4 * 4);
+				gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 1, gl.FLOAT, false, bytes, 8 * 4);
+				gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 1, gl.FLOAT, false, bytes, 9 * 4);
+				gl.enableVertexAttribArray(5); gl.vertexAttribPointer(5, 1, gl.FLOAT, false, bytes, 10 * 4);
+				gl.bindBuffer(gl.ARRAY_BUFFER, renderer.dashPhaseBuffer);
+				gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 1, gl.FLOAT, false, 4, 0);
+				for (const location of [0, 1, 2, 3, 4, 5, 6]) gl.vertexAttribDivisor(location, 1);
+			} else {
+				gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, bytes, 2 * 4);
+				gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, bytes, 6 * 4);
+			}
+			const origin = renderer.origin || { x: 0, y: 0 };
+			gl.uniform4f(gl.getUniformLocation(program, "uBounds"), state.bounds.minX - origin.x, state.bounds.minY - origin.y, state.bounds.width, state.bounds.height);
+			gl.uniform2f(gl.getUniformLocation(program, "uViewport"), width, height);
+			const active = state.playbackActive === true;
+			gl.uniform1i(gl.getUniformLocation(program, "uPlaybackActive"), active ? 1 : 0);
+			gl.uniform1f(gl.getUniformLocation(program, "uCurrentMotion"), active ? state.playback.currentMotionIndex : -1);
+			if (lines) {
+				gl.uniform1f(gl.getUniformLocation(program, "uPixelRatio"), pixelRatio);
+				gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count);
+				for (const location of [0, 1, 2, 3, 4, 5, 6]) gl.vertexAttribDivisor(location, 0);
+			} else {
+				gl.drawArrays(gl.TRIANGLES, 0, count);
+			}
 		}
 
 		function normalizeGridSize(value) {
@@ -4135,20 +4459,81 @@ function renderVisionHtml(document, mode, options, result) {
 				const rect = targetViewer.getBoundingClientRect();
 				const dx = event.clientX - dragState.startX;
 				const dy = event.clientY - dragState.startY;
-				setProjectedPan(dragState.plane, {
+				const projectedPan = {
 					x: dragState.startProjectedPan.x - dx / Math.max(1, rect.width) * dragState.bounds.width,
 					y: dragState.startProjectedPan.y - dy / Math.max(1, rect.height) * dragState.bounds.height
-				}, dragState.startWorldPan);
+				};
+				if (previewWebglPan(dragState, projectedPan)) return;
+				setProjectedPan(dragState.plane, projectedPan, dragState.startWorldPan);
 				saveViewport();
 				render();
 			});
 			const finishDrag = event => {
 				if (!dragState || dragState.viewer !== targetViewer || (event && dragState.pointerId !== event.pointerId)) return;
+				const finishedDrag = dragState;
 				dragState = undefined;
 				targetViewer.classList.remove("dragging");
+				if (finishedDrag.pendingProjectedPan) {
+					setProjectedPan(finishedDrag.plane, finishedDrag.pendingProjectedPan, finishedDrag.startWorldPan);
+					setDualOverlayVisibility("");
+					saveViewport();
+					render();
+				}
 			};
 			targetViewer.addEventListener("pointerup", finishDrag);
 			targetViewer.addEventListener("pointercancel", finishDrag);
+		}
+
+		function previewWebglPan(state, projectedPan) {
+			const canvas = state.viewer && state.viewer.querySelector ? state.viewer.querySelector("canvas") : undefined;
+			const renderer = canvas && webglRenderers.get(canvas);
+			if (!renderer || renderer.lost || !renderer.drawState) return false;
+			state.pendingProjectedPan = projectedPan;
+			setDualOverlayVisibility("hidden");
+			if (state.previewPending) return true;
+			state.previewPending = true;
+			window.requestAnimationFrame(() => {
+				state.previewPending = false;
+				if (dragState !== state || !state.pendingProjectedPan) return;
+				const previewWorldPan = getWorldPanForProjectedPan(state.plane, state.pendingProjectedPan, state.startWorldPan);
+				drawWebglPanPreview(state.viewer, state.viewKey, previewWorldPan);
+				if (dualView) drawWebglPanPreview(state.viewKey === "secondary" ? viewer : secondaryViewer,
+					state.viewKey === "secondary" ? "primary" : "secondary", previewWorldPan);
+			});
+			return true;
+		}
+
+		function drawWebglPanPreview(targetViewer, viewKey, previewWorldPan) {
+			const canvas = targetViewer && targetViewer.querySelector ? targetViewer.querySelector("canvas") : undefined;
+			const renderer = canvas && webglRenderers.get(canvas);
+			const viewState = viewStateByKey.get(viewKey);
+			if (!renderer || renderer.lost || !renderer.drawState || !viewState || !viewState.bounds) return;
+			const planeKey = viewKey === "secondary" ? getSecondaryPlaneKey() : getPrimaryPlaneKey();
+			const plane = planes[planeKey] || planes.xz;
+			const rect = canvas.getBoundingClientRect();
+			const previewState = Object.assign({}, renderer.drawState, {
+				bounds: getPanPreviewBounds(viewState.bounds, plane, getProjectedPan(plane, previewWorldPan))
+			});
+			drawWebglScene(renderer, previewState,
+				Math.max(1, Math.floor(rect.width * (window.devicePixelRatio || 1))),
+				Math.max(1, Math.floor(rect.height * (window.devicePixelRatio || 1))), window.devicePixelRatio || 1);
+		}
+
+		function setDualOverlayVisibility(visibility) {
+			for (const targetViewer of dualView ? [viewer, secondaryViewer] : [viewer]) {
+				const overlayHost = targetViewer.querySelector(".vision-overlay-host");
+				if (overlayHost) overlayHost.style.visibility = visibility;
+			}
+		}
+
+		function getPanPreviewBounds(bounds, plane, pan) {
+			const currentPan = getProjectedPan(plane);
+			return {
+				minX: bounds.minX + pan.x - currentPan.x,
+				minY: bounds.minY + pan.y - currentPan.y,
+				width: bounds.width,
+				height: bounds.height
+			};
 		}
 		bindViewerNavigation(viewer, "primary");
 		bindViewerNavigation(secondaryViewer, "secondary");
@@ -4156,9 +4541,6 @@ function renderVisionHtml(document, mode, options, result) {
 		viewToggle.addEventListener("click", () => viewPanel.classList.toggle("open"));
 		offsetsToggle.addEventListener("click", () => {
 			offsetPanel.classList.toggle("open");
-		});
-		visibilityToggle.addEventListener("click", () => {
-			visibilityPanel.classList.toggle("open");
 		});
 		macrosToggle.addEventListener("click", () => macroPanel.classList.toggle("open"));
 		overrideProgramInitialValues.addEventListener("change", () => {
@@ -4253,15 +4635,25 @@ function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, i
 	</section>`;
 }
 
-function renderVisionViewPanel(options) {
+function renderVisionViewPanel(options, rows) {
+	const toolEntries = getVisibilityEntries(rows, getVisionToolKey, getVisionToolLabel);
+	const wcsEntries = getVisibilityEntries(rows, getVisionWcsKey, getVisionWcsLabel);
+
 	return `<section id="viewPanel" class="control-panel">
-		<div class="visibility-options">
-			<label class="checkbox"><input id="labels" type="checkbox"${options.showLabels ? " checked" : ""}> Labels</label>
-			<label class="checkbox"><input id="endpoints" type="checkbox"${options.showEndpoints ? " checked" : ""}> Endpoints</label>
-			<label class="checkbox"><input id="zeroLines" type="checkbox"${options.showZeroLines ? " checked" : ""}> Zero lines</label>
-			<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
-			<label class="checkbox"><input id="markerLegendToggle" type="checkbox"${options.showMarkerLegend ? " checked" : ""}> Legend</label>
-			<button id="visibilityToggle">Visibility</button>
+		<div class="view-panel-section">
+			<div class="visibility-options">
+				<label class="checkbox"><input id="labels" type="checkbox"${options.showLabels ? " checked" : ""}> Labels</label>
+				<label class="checkbox"><input id="endpoints" type="checkbox"${options.showEndpoints ? " checked" : ""}> Endpoints</label>
+				<label class="checkbox"><input id="zeroLines" type="checkbox"${options.showZeroLines ? " checked" : ""}> Zero lines</label>
+				<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
+				<label class="checkbox"><input id="markerLegendToggle" type="checkbox"${options.showMarkerLegend ? " checked" : ""}> Legend</label>
+				<label class="checkbox" title="Draw a subtle program-unit grid behind the toolpath."><input id="grid" type="checkbox"${options.showGrid ? " checked" : ""}> Grid</label>
+				<label class="grid-size" title="Program units between grid lines.">Size <input id="gridSize" type="number" min="0.001" step="any" value="${escapeAttribute(options.gridSize)}"></label>
+			</div>
+		</div>
+		<div class="view-panel-section visibility-groups">
+			${renderVisibilityGroup("Tools", toolEntries, "tool")}
+			${renderVisibilityGroup("WCS", wcsEntries, "wcs")}
 		</div>
 	</section>`;
 }
@@ -4269,22 +4661,6 @@ function renderVisionViewPanel(options) {
 function formatOffsetInputValue(value) {
 	return Number.isFinite(value) ? String(value) : "0";
 }
-function renderVisionVisibilityPanel(rows, options) {
-	const toolEntries = getVisibilityEntries(rows, getVisionToolKey, getVisionToolLabel);
-	const wcsEntries = getVisibilityEntries(rows, getVisionWcsKey, getVisionWcsLabel);
-
-	return `<section id="visibilityPanel" class="visibility-panel">
-		<div class="visibility-groups">
-			<div>
-				<div class="visibility-group-title">Display</div>
-				<div class="visibility-options"><label class="checkbox" title="Draw a subtle program-unit grid behind the toolpath."><input id="grid" type="checkbox"${options.showGrid ? " checked" : ""}> Grid</label><label class="grid-size" title="Program units between grid lines.">Size <input id="gridSize" type="number" min="0.001" step="any" value="${escapeAttribute(options.gridSize)}"></label></div>
-			</div>
-			${renderVisibilityGroup("Tools", toolEntries, "tool")}
-			${renderVisibilityGroup("WCS", wcsEntries, "wcs")}
-		</div>
-	</section>`;
-}
-
 function renderVisionMacroPanel(macros, savedInputs, overrideProgramInitialValues) {
 	const rows = macros.map(entry => {
 		const saved = savedInputs[entry.macro];

@@ -88,9 +88,9 @@ selection, and the independent Show axes selections. G53 is the default
 reference. The View panel's Zero lines control is the master visibility switch:
 when it is on, every frame selected under Show axes draws axes through its zero
 relative to the selected reference.
-The Visibility drawer also contains an optional Grid control and a program-unit
-Size field. The grid is off by default, is anchored to the displayed zero
-coordinates, and draws behind the toolpath.
+The expanded View panel also contains the optional Grid control and program-unit
+Size field, plus Tools and WCS visibility filters. The grid is off by default,
+is anchored to the displayed zero coordinates, and draws behind the toolpath.
 G53 is selected under Show axes by default. Reset to defaults removes the
 per-program values and restores those G53 defaults, matching the Macro values
 panel's reset behavior.
@@ -173,8 +173,24 @@ remains the per-program saved Vision plane.
 
 ## Rendering and playback performance
 
-Vision coalesces navigation updates into animation frames and retains each
-viewport's canvas and overlay container. Per-projection visibility results,
+Vision uses a retained WebGL renderer for motion paths by default. It keeps
+line-edge coverage and playback opacity in a consistent premultiplied-alpha
+pipeline. Solid edges and the screen-space rapid-dash mask use fragment
+derivatives for a one-device-pixel antialiasing transition at every zoom; rapid
+dash position is measured from each fragment's screen coordinate rather than an
+interpolated path-distance varying. It keeps
+projected segment, colour, and playback-occurrence buffers on the GPU, so pan
+updates change only the viewport transform while labels are committed when the
+drag ends. Rapid-path dash phases are reduced from double-precision path
+distances when the zoom scale changes, keeping their screen-space pattern
+stable without rebuilding geometry during pan. The grid is a WebGL background
+pass: it remains visible while panning and preserves the configured program-unit
+interval at every zoom level. The
+`kaijuNC.vision.renderer`
+setting can select the retained
+Canvas compatibility renderer for environments where WebGL is unavailable or
+unsuitable. SVG remains responsible for sparse labels, markers, zero lines,
+grid, compass, and inspection interaction. Per-projection visibility results,
 fit bounds and path-bound indexes are reused until the geometry or filters
 change. Dual View computes a common units-per-pixel fit for both panes.
 The path index preserves draw order and includes segments crossing the viewport.

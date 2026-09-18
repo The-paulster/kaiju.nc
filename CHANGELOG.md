@@ -4,6 +4,18 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- Fixed dark, uneven WebGL path edges and excessively faint playback trails by correcting alpha compositing; solid-line and rapid-dash smoothing now use display-pixel derivatives, and rapid dashes are measured directly in screen space for a consistent pattern across zoom levels.
+
+- Vision now uses a retained WebGL path renderer by default, with a Canvas compatibility fallback. Panning updates the retained geometry during drag and commits labels after release; Vision Play updates its trail on the GPU.
+
+- Fixed Dual View WebGL pan previews so both derived projections move together while dragging, not only after releasing the pointer.
+
+- Moved the Vision grid into a WebGL background pass so it remains visible while panning while preserving its configured program-unit interval at every zoom level.
+
+- Consolidated Vision display and tool/WCS visibility controls into the expanded View panel, removing the separate Visibility panel.
+
+- Fixed Vision WebGL tool colours so boosted CSS HSL palette values are converted to their intended GPU RGB colours instead of falling back to white, including within the generated webview script.
+
 - Fixed KAIJU settings being resolved against G-code resources without an appropriate configuration scope, preventing repeated VS Code warnings during editor decoration updates.
 
 - Hardened KAIJU Vision, Chronoblade, Machine Mode, Orphan Killer, and Warpaint webviews with content security policies.

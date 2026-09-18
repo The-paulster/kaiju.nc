@@ -139,6 +139,167 @@ test('Vision retained paths preserve stroke grouping, transformed points and fil
   draw(sets.filter((_, i) => i !== 100));
 });
 
+test('Vision WebGL path packets retain a motion index for playback trails', () => {
+  const api = helpers(['getWebglMotionIndex', 'appendWebglPolyline'], {
+    webglColor: () => [1, 0.5, 0, 1],
+    getMotionStrokeColor: () => '#ff8800',
+    getPointDistance: (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+  });
+  const playback = { motionIndexByExecutionIndex: new Map([[17, 4]]) };
+  const values = [];
+  api.appendWebglPolyline(values, {
+    executionIndex: 17,
+    projectedPoints: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }]
+  }, '#ff8800', 1.1, true, { playback });
+  assert.equal(values.length, 24, 'two source segments become two retained GPU instances');
+  assert.equal(values[8], 4);
+  assert.equal(values[20], 4);
+  assert.equal(values[10], 1);
+  assert.equal(values[22], 1);
+  assert.equal(values[11], 0);
+  assert.equal(values[23], 5, 'the second segment continues the rapid dash phase');
+
+  const relative = [];
+  api.appendWebglPolyline(relative, {
+    projectedPoints: [{ x: 1000000.125, y: 2000000.25 }, { x: 1000001.125, y: 2000000.25 }]
+  }, '#ff8800', 1.1, false, {}, undefined, { x: 1000000, y: 2000000 });
+  assert.deepEqual(relative.slice(0, 4), [0.125, 0.25, 1.125, 0.25], 'GPU coordinates stay camera-relative before Float32 packing');
+});
+
+test('Vision WebGL packs boosted CSS HSL tool colours rather than falling back to white', () => {
+  const api = helpers(['webglColor']);
+  const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 0.000001, `${actual} should equal ${expected}`);
+  const red = Array.from(api.webglColor('hsl(0 100% 50%)'));
+  const green = Array.from(api.webglColor('hsl(120 100% 50%)'));
+  const boosted = Array.from(api.webglColor('hsl(210 78% 54%)'));
+  [red[0], red[1], red[2], red[3]].forEach((value, index) => close(value, [1, 0, 0, 1][index]));
+  [green[0], green[1], green[2], green[3]].forEach((value, index) => close(value, [0, 1, 0, 1][index]));
+  assert.notDeepEqual(boosted, [1, 1, 1, 1], 'boosted tool colours must not take the fallback path');
+});
+
+test('Vision WebGL pan preview changes bounds without changing zoom extent', () => {
+  const api = helpers(['getPanPreviewBounds'], { getProjectedPan: () => ({ x: 10, y: -4 }) });
+  assert.deepEqual({ ...api.getPanPreviewBounds({ minX: 2, minY: 3, width: 40, height: 20 }, {}, { x: 13, y: 2 }) }, {
+    minX: 5, minY: 9, width: 40, height: 20
+  });
+});
+
+test('Vision Dual View projects a dragged pane into the same shared world pan', () => {
+  const api = helpers(['getProjectedPan', 'getWorldPanForProjectedPan']);
+  const xy = { h: 'x', hSign: 1, v: 'y', vSign: 1 };
+  const xz = { h: 'x', hSign: 1, v: 'z', vSign: 1 };
+  const startWorldPan = { x: 3, y: 4, z: -2 };
+  const afterDrag = api.getWorldPanForProjectedPan(xy, { x: 11, y: -7 }, startWorldPan);
+  assert.deepEqual({ ...afterDrag }, { x: 11, y: 7, z: -2 });
+  assert.deepEqual({ ...api.getProjectedPan(xz, afterDrag) }, { x: 11, y: 2 },
+    'the companion X-Z pane receives the dragged shared X offset and retains its independent Z offset');
+});
+
+test('Vision grid preserves its configured program-unit interval at every zoom', () => {
+  const uploads = [];
+  const gl = {
+    TRIANGLES: 1, useProgram() {}, getUniformLocation: (_program, name) => name,
+    uniform4f() {}, uniform1f: (name, value) => { if (name === 'uGridSize') uploads.push(value); }, drawArrays() {}
+  };
+  const api = helpers(['drawWebglGrid'], { normalizeGridSize: value => Number(value) > 0 ? Number(value) : 10 });
+  const renderer = { gl, gridProgram: {} };
+  const state = { gridSize: 10, bounds: { minX: 0, minY: 0, width: 100, height: 100 } };
+  api.drawWebglGrid(renderer, state, 100, 1);
+  api.drawWebglGrid(renderer, state, 1000, 1);
+  assert.deepEqual(uploads, [10, 10], 'zoom changes pixels per unit, never the requested 10-unit interval');
+});
+
+test('Vision WebGL shaders calculate rapid dashes from fragment screen coordinates', () => {
+  const shaderSources = [];
+  const gl = {
+    VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, COMPILE_STATUS: 3, LINK_STATUS: 4,
+    createShader: type => ({ type }), shaderSource: (shader, source) => { shaderSources.push(source); }, compileShader() {},
+    getShaderParameter: () => true, getShaderInfoLog: () => '', createProgram: () => ({}), attachShader() {}, linkProgram() {},
+    getProgramParameter: () => true, getProgramInfoLog: () => '', createBuffer: () => ({})
+  };
+  const api = helpers(['makeWebglProgram', 'makeWebglRenderer']);
+  api.makeWebglRenderer(gl);
+  const lineVertex = shaderSources.find(source => source.includes('outerHalfWidth'));
+  const lineFragment = shaderSources.find(source => source.includes('dashDistance'));
+  const gridFragment = shaderSources.find(source => source.includes('uGridSize'));
+  assert.match(lineVertex, /vLineStartPx = startPx/);
+  assert.match(lineVertex, /vLineTangent = tangent/);
+  assert.match(lineVertex, /vDashPhase = aDashPhase/);
+  assert.match(lineVertex, /joinOverlap/);
+  assert.match(lineFragment, /strokeDistance = abs\(vAcrossPx\) - vHalfWidth/);
+  assert.match(lineFragment, /dFdx\(vAcrossPx\).*dFdy\(vAcrossPx\)/);
+  assert.match(lineFragment, /fragmentPx = vec2\(gl_FragCoord\.x, uViewport\.y - gl_FragCoord\.y\)/);
+  assert.match(lineFragment, /dashAlong = vDashPhase \+ dot\(fragmentPx - vLineStartPx, vLineTangent\) \/ uPixelRatio/);
+  assert.match(lineFragment, /fract\(\(dashAlong - 4\.0\) \/ 14\.0 \+ 0\.5\)/);
+  assert.match(lineFragment, /dFdx\(dashAlong\).*dFdy\(dashAlong\)/);
+  assert.match(lineFragment, /vRapid > 0\.5 \? 1\.0 - smoothstep\(-dashAa, dashAa, dashDistance\) : 1\.0/);
+  assert.match(lineFragment, /alpha \*= strokeCoverage \* dashCoverage/);
+  assert.doesNotMatch(lineFragment, /vAlong/);
+  assert.match(gridFragment, /cellDistance = abs\(fract\(vWorld \/ uGridSize \+ 0\.5\) - 0\.5\)/);
+  assert.match(gridFragment, /uCssPixelsPerWorld/);
+  for (const fragment of shaderSources.filter(source => source.includes('out vec4 outColor') && source.includes('vColor'))) {
+    assert.match(fragment, /outColor = vec4\(vColor\.rgb \* alpha, alpha\)/);
+  }
+});
+
+test('Vision WebGL rapid dash phase stays bounded and refreshes only when zoom changes', () => {
+  const uploads = [];
+  const gl = {
+    ARRAY_BUFFER: 1, DYNAMIC_DRAW: 2,
+    bindBuffer() {},
+    bufferData: (_target, values, usage) => uploads.push({ values: Array.from(values), usage })
+  };
+  const renderer = {
+    gl, lineCount: 3, dashPhaseBuffer: {},
+    dashDistances: new Float64Array([0, 1000000000.125, 1000000005.625])
+  };
+  const api = helpers(['updateWebglDashPhases']);
+
+  const expectedPhase = (distance, cssPixelsPerWorldUnit) => {
+    const periodWorld = 14 / cssPixelsPerWorldUnit;
+    return ((distance % periodWorld) + periodWorld) % periodWorld * cssPixelsPerWorldUnit;
+  };
+  api.updateWebglDashPhases(renderer, { bounds: { width: 1000 } }, 1000, 1);
+  assert.equal(uploads.length, 1);
+  assert.deepEqual(uploads[0].values.map(value => value >= 0 && value < 14), [true, true, true]);
+  assert.ok(Math.abs(uploads[0].values[1] - expectedPhase(renderer.dashDistances[1], 1)) < 0.00001);
+
+  api.updateWebglDashPhases(renderer, { bounds: { width: 1000 } }, 1000, 1);
+  assert.equal(uploads.length, 1, 'panning and redraws at the same scale reuse the phase buffer');
+
+  api.updateWebglDashPhases(renderer, { bounds: { width: 100 } }, 1000, 1);
+  assert.equal(uploads.length, 2, 'zooming rebuilds only the one-float-per-segment phase buffer');
+  assert.ok(Math.abs(uploads[1].values[1] - expectedPhase(renderer.dashDistances[1], 10)) < 0.00001);
+  assert.equal(uploads[1].usage, gl.DYNAMIC_DRAW);
+});
+
+test('Vision alpha pipeline preserves edge coverage and faint playback opacity', () => {
+  let contextOptions, blend;
+  const gl = { ONE: 1, SRC_ALPHA: 2, ONE_MINUS_SRC_ALPHA: 3,
+    createShader() {}, drawArraysInstanced() {}, viewport() {}, clearColor() {}, clear() {}, enable() {},
+    blendFunc: (src, dst) => { blend = [src, dst]; } };
+  const renderer = { gl };
+  const api = helpers(['getWebglRenderer', 'drawWebglScene'], {
+    webglRenderers: new WeakMap(), makeWebglRenderer: () => renderer,
+    updateWebglDashPhases() {}, drawWebglBuffer() {}
+  });
+  const canvas = { getContext: (kind, options) => { contextOptions = options; return gl; }, addEventListener() {} };
+  api.getWebglRenderer(canvas);
+  api.drawWebglScene(renderer, {}, 800, 300, 1);
+  assert.equal(contextOptions.premultipliedAlpha, true);
+  const factor = (value, alpha) => value === gl.ONE ? 1 : value === gl.SRC_ALPHA ? alpha : 1 - alpha;
+  for (const alpha of [0.06, 0.25, 0.5, 1]) {
+    // Shader emits premultiplied orange; clear framebuffer is transparent.
+    const storedRed = alpha * factor(blend[0], alpha);
+    const storedAlpha = alpha * factor(blend[0], alpha);
+    assert.equal(storedAlpha, alpha, 'framebuffer must not square edge/trail opacity');
+    const background = 0.07;
+    const compositedRed = storedRed + background * (1 - storedAlpha);
+    assert.equal(compositedRed, alpha + background * (1 - alpha));
+  }
+  assert.equal(blend[1], gl.ONE_MINUS_SRC_ALPHA);
+});
+
 test('Vision lazy tooltips retain all merged entries and START details', () => {
   let calls = 0;
   const api = helpers(['getCachedTooltipItems'], {

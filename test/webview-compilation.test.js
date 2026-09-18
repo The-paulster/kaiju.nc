@@ -77,6 +77,8 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /G\(\?:40\|49\)/);
 	assert.match(html, /id="grid" type="checkbox"/);
 	assert.match(html, /id="gridSize" type="number" min="0\.001"/);
+	assert.match(html, /<section id="viewPanel" class="control-panel">[\s\S]*?visibility-group-title">Tools[\s\S]*?visibility-group-title">WCS[\s\S]*?<\/section>/);
+	assert.doesNotMatch(html, /id="visibilityToggle"|id="visibilityPanel"/);
 	assert.match(html, /function drawGrid\(context, bounds, transform, size, showGrid\)/);
 	assert.match(html, /data-tooltip-merged="true"/);
 	assert.match(html, /function togglePinnedTooltip\(event\)/);
@@ -92,6 +94,15 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /renderViewport\(viewer, getPrimaryPlaneKey\(\), "primary"\)/);
 	assert.match(html, /renderViewport\(secondaryViewer, getSecondaryPlaneKey\(\), "secondary"\)/);
 	assert.match(html, /state && state\.canvasId \? state\.canvasId : "vision-canvas"/);
+	assert.match(html, /function drawWebglLayer\(canvas, state\)/);
+	assert.match(html, /function previewWebglPan\(state, projectedPan\)/);
+	const embeddedScript = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)]
+		.filter(match => !/type=["']application\/json["']/i.test(match[1]))[0][2];
+	const webglColorStart = embeddedScript.indexOf("function webglColor(");
+	const webglColorEnd = embeddedScript.indexOf("\n\t\t}", webglColorStart) + "\n\t\t}".length;
+	const embeddedWebglColor = new Function(`${embeddedScript.slice(webglColorStart, webglColorEnd)}\nreturn webglColor("hsl(120 100% 50%)");`);
+	assert.deepEqual(Array.from(embeddedWebglColor()), [0, 1, 0, 1], "generated Vision script must preserve its HSL tool-colour parser");
+	assert.match(html, /motionIndexByExecutionIndex/);
 });
 
 test("Vision playback only shows C when the program commands C", () => {
