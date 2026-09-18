@@ -33,6 +33,7 @@ flowchart TD
 	sense --> senseHover[kaijuSense/hover.js]
 	sense --> senseStatus[kaijuSense/statusBar.js]
 	sense --> senseFork[kaijuSense/fork.js]
+	sense --> senseMacroHistory[kaijuSense/macroHistory.js]
 	senseMacro --> text[MetaTextRanges.js]
 	senseMacro --> macro[MetaMacroEngine.js]
 	senseTool --> tool[MetaToolModel.js]
@@ -44,6 +45,8 @@ flowchart TD
 	senseStatus --> senseOptions[kaijuSense/options.js]
 	senseOptions --> machine
 	senseFork --> text
+	senseMacroHistory --> trace
+	senseMacroHistory --> macro
 
 	alert --> text
 	alert --> machine

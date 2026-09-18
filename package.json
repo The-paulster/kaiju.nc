@@ -63,6 +63,9 @@
     "Linters"
   ],
   "main": "./src/extension.js",
+  "activationEvents": [
+    "onView:kaijuNC.macroHistory"
+  ],
   "contributes": {
     "languages": [
       {
@@ -1282,6 +1285,11 @@
       {
         "command": "kaijuNC.gCodeDialect.manage",
         "title": "KAIJU Manage G-code Profiles"
+      },
+      {
+        "command": "kaijuNC.macroHistory",
+        "title": "KAIJU Macro Hunter",
+        "icon": "$(symbol-variable)"
       }
     ],
     "keybindings": [
@@ -1387,6 +1395,11 @@
           "group": "0_kaiju@7"
         },
         {
+          "command": "kaijuNC.macroHistory",
+          "when": "editorLangId == gcode",
+          "group": "0_kaiju@8"
+        },
+        {
           "submenu": "kaijuNC.machineModeMenu",
           "when": "editorLangId == gcode",
           "group": "z_kaijuMachineMode"
@@ -1400,6 +1413,13 @@
           "submenu": "kaijuNC.quickTogglesMenu",
           "when": "editorLangId == gcode",
           "group": "z_kaijuQuickToggles"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "kaijuNC.macroHistory",
+          "when": "editorLangId == gcode",
+          "group": "navigation@20"
         }
       ],
       "kaijuNC.quickTogglesMenu": [
@@ -1446,6 +1466,15 @@
           "command": "kaijuNC.gCodeDialect.manage",
           "when": "editorLangId == gcode",
           "group": "navigation@9"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "kaijuNC.macroHistory",
+          "name": "Macro Hunter",
+          "type": "webview"
         }
       ]
     }

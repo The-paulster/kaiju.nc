@@ -4,6 +4,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- Added KAIJU Macro Hunter: a persistent sidebar view that follows the
+  editor caret or can pin a source line, showing every loop occurrence, each
+  occurrence's resolved macro state, and a selected macro's full value history.
+
 - Fixed Vision label, tool-change label, and compass text sizing so it remains
   at its configured CSS-pixel size when changing zoom or toggling Dual View.
 

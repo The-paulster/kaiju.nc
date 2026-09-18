@@ -6,6 +6,7 @@ const { registerKaijuSenseNLabels } = require("./nLabels");
 const { registerKaijuSenseHover } = require("./hover");
 const { registerKaijuSenseStatusBar } = require("./statusBar");
 const { registerKaijuSenseFork } = require("./fork");
+const { registerKaijuSenseMacroHistory } = require("./macroHistory");
 
 function registerKaijuSense(context) {
 	registerKaijuSenseMacro(context);
@@ -14,6 +15,7 @@ function registerKaijuSense(context) {
 	registerKaijuSenseHover(context);
 	registerKaijuSenseStatusBar(context);
 	registerKaijuSenseFork(context);
+	registerKaijuSenseMacroHistory(context);
 }
 
 module.exports = {
@@ -23,5 +25,6 @@ module.exports = {
 	registerKaijuSenseNLabels,
 	registerKaijuSenseHover,
 	registerKaijuSenseStatusBar,
-	registerKaijuSenseFork
+	registerKaijuSenseFork,
+	registerKaijuSenseMacroHistory
 };
