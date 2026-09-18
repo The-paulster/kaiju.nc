@@ -104,6 +104,13 @@ test('Vision render requests coalesce without losing the latest state', () => {
   assert.equal(frames.length, 1);
 });
 
+test('Vision label and compass CSS sizes stay independent of world zoom metrics', () => {
+  assert.match(source, /const labelFontSize = data\.options\.labelFontSize/);
+  assert.match(source, /const compassTextSize = data\.options\.compassSize \* 0\.16/);
+  assert.match(source, /font-size:' \+ labelFontSize \+ 'px/);
+  assert.doesNotMatch(source, /font-size:' \+ labelSize \+ 'px/);
+});
+
 test('Vision macro checkpoints and incremental stepping agree after reverse seeks', () => {
   const entries = Array.from({ length: 450 }, (_, i) => ({ macroChanges: [{ macro: '#1', previous: i - 1, current: i }], macroDisplayPrecisionChanges: [] }));
   const playback = { entries, initialMacroValues: {} };

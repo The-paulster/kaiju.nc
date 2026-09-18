@@ -171,6 +171,9 @@ all three shared view offsets and restores 100% zoom. The dual-view toggle and
 shared-axis selection are webview presentation state; the single-view Plane
 remains the per-program saved Vision plane.
 
+Labels, tool-change labels, and compass lettering retain their configured CSS
+pixel sizes independently of the shared-world fit and zoom level.
+
 ## Rendering and playback performance
 
 Vision uses a retained WebGL renderer for motion paths by default. It keeps

@@ -4,6 +4,9 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- Fixed Vision label, tool-change label, and compass text sizing so it remains
+  at its configured CSS-pixel size when changing zoom or toggling Dual View.
+
 - Fixed dark, uneven WebGL path edges and excessively faint playback trails by correcting alpha compositing; solid-line and rapid-dash smoothing now use display-pixel derivatives, and rapid dashes are measured directly in screen space for a consistent pattern across zoom levels.
 
 - Vision now uses a retained WebGL path renderer by default, with a Canvas compatibility fallback. Panning updates the retained geometry during drag and commits labels after release; Vision Play updates its trail on the GPU.
