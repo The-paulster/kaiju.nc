@@ -331,21 +331,21 @@ G1 X100. Z-20. F5.
 Supports common NC and G-code file extensions
 .nc, .cnc, .tap, .gcode, .gco, .gc, .ngc, .ncc, .eia, .iso, .min, .mpf, .spf, .dnc, .sub
 
-## Example File
+## Example Files
 
-The repository includes a showcase program at `examples/kaiju-showcase.nc`.
+The [examples guide](examples/README.md) links six commented walkthroughs:
 
-Use it to try the main extension tools:
+You can also open them directly from the **Examples** section in **KAIJU Codex**.
 
-- Hover over setup macros such as `#100`, `#104`, or `#500` to see macro definition lookup
-- Run `KAIJU Alias` to toggle numbered macros into readable names by right-clicking in the editor or using `Ctrl+Alt+A`
-- Run `KAIJU Reconstructor` on the marked `FIX THIS AREA` section by right-clicking in the editor or using `Ctrl+Alt+R`
-- Run `KAIJU Orphan Killer` to find the deliberately unused and undefined macros near the bottom by right-clicking in the editor or using `Ctrl+Alt+O`
-- Hover over `G00`, `G01`, and `G02` moves to try `KAIJU Sense` geometry and timing hovers
-- Select one operation and run `KAIJU Vision` with `Ctrl+Alt+V` to preview that section's path
-- Run `KAIJU Chronoblade` with `Ctrl+Alt+C` to compare motion and tool-change timing rows
-- Run `KAIJU Decomposition` with `Ctrl+Alt+D` to inspect a temporary flattened version of the macro loop
-- Look at the marked alert demo lines to see missing-bracket and missing-decimal warnings
+- [Reconstructor](examples/01-reconstructor.nc): deliberately untidy input for formatting, decimals, tool numbers, and loop indentation.
+- [Diagnostics and Orphan Killer](examples/02-diagnostics-and-orphan-killer.nc): intentional errors and unused/undefined macros, with suggested fixes.
+- [Syntax gallery](examples/03-syntax-gallery.nc): every current grammar token family, including comments, addresses, expressions, and control flow.
+- [Vision and Chronoblade](examples/04-vision-and-chronoblade.nc): a rounded plate with three depth passes and a second tool, for path inspection and timing comparisons.
+- [C axis and polar interpolation](examples/05-c-axis-and-polar.nc): full turns, an expanding spiral, retained angles, incremental rotation, and a polar face rectangle.
+- [Macros, Sense, Macro Hunter, and Alias](examples/06-macros-sense-hunter-and-alias.nc): a correctly arranged macro header, readable names, hover histories, and twelve loop occurrences to inspect in Macro Hunter.
+
+Each file explains which commands and profile to use and what to look for.
+These are editor and inspection examples, not machine-ready programs.
 
 ## Important Safety Note
 

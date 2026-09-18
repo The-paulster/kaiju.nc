@@ -1137,7 +1137,7 @@
               "radius"
             ],
             "default": "diameter",
-            "description": "How KAIJU Chronoblade interprets X-axis values. Diameter mode uses X for CSS diameter and half-X for physical X travel."
+            "description": "Legacy compatibility setting. KAIJU Machine Mode now determines X-axis interpretation: Mill and Lathe Radius use radius X; Lathe Diameter halves X for physical travel."
           ,
             "scope": "resource"},
           "kaijuNC.chronoblade.cssSurfaceSpeedUnit": {

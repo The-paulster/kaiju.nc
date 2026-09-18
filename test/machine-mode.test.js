@@ -52,6 +52,17 @@ test("automatic machine mode recognizes radius programming and explicit Settings
 	}
 });
 
+test("automatic Mill mode ignores a stale legacy Diameter X-axis setting", () => {
+	configurationValues.set("kaijuNC.chronoblade.xAxisMode", "diameter");
+	try {
+		const result = machineMode.getMachineModeForDocument(makeDocument("M06\nG43 H01\nG1 X10 Y10"));
+		assert.equal(result.profile.id, "mill");
+		assert.equal(result.xAxisMode, "radius");
+	} finally {
+		configurationValues.delete("kaijuNC.chronoblade.xAxisMode");
+	}
+});
+
 test("custom profiles load from Settings before documents select them", () => {
 	const operations = dialect.G_CODE_OPERATIONS;
 	configurationValues.set("kaijuNC.gCodeDialect.customProfiles", [{

@@ -58,6 +58,10 @@ semantics. Human position formatting includes C when available.
 Machine Mode is saved in workspace state by source-document URI when selected
 from the KAIJU Machine Mode menu. That per-program profile, including its
 radius/diameter X convention, overrides the Settings value for every consumer.
+
+The selected or inferred Machine Mode determines the X convention. The legacy
+`kaijuNC.chronoblade.xAxisMode` setting cannot make a Mill program use Diameter
+X semantics; it is retained only for Settings compatibility.
 For unassigned programs, the default `auto` setting performs conservative
 comment-masked source inference; confident results are marked as inferred in
 the shared read model, while ambiguous code retains the Lathe (Diameter)

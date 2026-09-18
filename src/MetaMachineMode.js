@@ -105,7 +105,10 @@ function getMachineModeForDocument(document) {
 
 	return {
 		profile,
-		xAxisMode: stored && stored.xAxisMode || getConfiguredValue(config, "xAxisMode", profile.xAxisMode),
+		// X convention is part of the selected machine profile. The legacy
+		// chronoblade.xAxisMode setting can otherwise leave an inferred Mill
+		// program reporting Mill while Alert still halves X as Diameter.
+		xAxisMode: stored && stored.xAxisMode || profile.xAxisMode,
 		gCodeDialect,
 		gCodeDialectId: gCodeDialect.id,
 		machineModeSource: stored ? "document" : inferred && inferred.isConfident ? "inferred" : "fallback"

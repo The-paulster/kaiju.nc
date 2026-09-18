@@ -4,6 +4,12 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- Fixed KAIJU Alert applying a stale legacy Diameter X-axis setting to a program automatically identified as Mill, which could incorrectly report valid X-Y arcs as illegal.
+
+- Added an Examples section to KAIJU Codex with direct editor links to all six bundled NC walkthroughs.
+
+- Reworked the NC examples into six commented walkthroughs for Reconstructor, diagnostics and Orphan Killer, syntax highlighting, Vision and Chronoblade, C-axis/polar inspection, and macros with Sense, Macro Hunter, and Alias.
+
 - KAIJU now conservatively detects Mill versus Lathe for unassigned programs when Machine Mode is Automatic, while preserving saved per-program and explicit Settings choices. Confident detections are marked `(Auto)` in the status item; ambiguous code retains the Lathe (Diameter) fallback.
 
 - Added KAIJU Codex: a built-in Markdown guide with a G-code editor context-menu and Command Palette entry, plus practical pages for the main KAIJU tools.
