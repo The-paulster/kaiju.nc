@@ -3,6 +3,7 @@
 // kaijuMachineMode feature.
 const vscode = require("vscode");
 const { getGCodeDialectProfile } = require("./MetaGCodeDialect");
+const { maskProtectedRanges } = require("./MetaTextRanges");
 
 const MACHINE_MODE_PROFILES = {
 	mill: {
@@ -34,6 +35,7 @@ const MACHINE_MODE_PROFILES = {
 const MACHINE_MODE_STORAGE_KEY = "kaijuMachineMode.profilesByDocument";
 const DEFAULT_G_CODE_DIALECT_ID = "fanucIso";
 const machineModeChangeEmitter = new vscode.EventEmitter();
+const inferredMachineModes = new WeakMap();
 let machineModeContext;
 
 function initializeMachineMode(context) {
@@ -96,15 +98,59 @@ async function setGCodeDialect(document, dialectId) {
 function getMachineModeForDocument(document) {
 	const stored = getStoredMachineModes()[getMachineModeDocumentKey(document)];
 	const config = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document && document.uri);
-	const profile = getMachineModeProfile(stored && stored.profileId || config.get("machineMode", "latheDiameter"));
+	const configuredProfileId = config.get("machineMode", "auto");
+	const inferred = !stored && configuredProfileId === "auto" ? inferMachineModeForDocument(document) : undefined;
+	const profile = getMachineModeProfile(stored && stored.profileId || inferred && inferred.profileId || configuredProfileId);
 	const gCodeDialect = getGCodeDialectProfile(stored && stored.gCodeDialectId || getConfiguredGCodeDialectId(document, profile));
 
 	return {
 		profile,
 		xAxisMode: stored && stored.xAxisMode || getConfiguredValue(config, "xAxisMode", profile.xAxisMode),
 		gCodeDialect,
-		gCodeDialectId: gCodeDialect.id
+		gCodeDialectId: gCodeDialect.id,
+		machineModeSource: stored ? "document" : inferred && inferred.isConfident ? "inferred" : "fallback"
 	};
+}
+
+// Keep this deliberately conservative: ambiguous X/Z programs retain the
+// legacy Lathe (Diameter) fallback, and a saved program profile always wins.
+function inferMachineModeForDocument(document) {
+	if (!document || !Number.isInteger(document.lineCount)) return { profileId: "latheDiameter", isConfident: false };
+	const cached = inferredMachineModes.get(document);
+	if (cached && cached.version === document.version) return cached.result;
+
+	const evidence = new Set();
+	let latheRadius = false;
+	for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+		const line = maskProtectedRanges(document.lineAt(lineNumber).text).toUpperCase();
+		if (/\bG\s*0*(?:96|97)\b|\bG\s*50\b[^\r\n]*\bS\s*[+-]?(?:\d|\.)/.test(line)) evidence.add("lathe-spindle");
+		if (/\bG\s*0*(?:71|72|75|76)\b/.test(line)) evidence.add("lathe-cycle");
+		if (/\bG\s*0*7\b/.test(line)) evidence.add("lathe-diameter");
+		if (/\bG\s*0*8\b/.test(line)) { evidence.add("lathe-radius"); latheRadius = true; }
+		if (/\b[UW]\s*[+-]?(?:\d|\.)/.test(line)) evidence.add("lathe-incremental-axis");
+		if (/\bT\s*\d{4,}\b/.test(line)) evidence.add("lathe-tool-call");
+
+		if (/\bG\s*0*(?:43|49)\b/.test(line)) evidence.add("mill-tool-length");
+		if (/\bG\s*0*(?:81|82|83|84|85|86|87|88|89)\b/.test(line)) evidence.add("mill-cycle");
+		if (/\bM\s*0*6\b/.test(line)) evidence.add("mill-tool-change");
+		if (/\bY\s*[+-]?(?:\d|\.)/.test(line)) evidence.add("mill-y-axis");
+	}
+	const latheScore = scoreEvidence(evidence, ["lathe-spindle", "lathe-cycle", "lathe-diameter", "lathe-radius", "lathe-incremental-axis", "lathe-tool-call"]);
+	const millScore = scoreEvidence(evidence, ["mill-tool-length", "mill-cycle", "mill-tool-change", "mill-y-axis"]);
+
+	const result = latheScore > millScore && latheScore >= 2
+		? { profileId: latheRadius ? "latheRadius" : "latheDiameter", isConfident: true }
+		: millScore > latheScore && millScore >= 2
+			? { profileId: "mill", isConfident: true }
+			: { profileId: "latheDiameter", isConfident: false };
+	inferredMachineModes.set(document, { version: document.version, result });
+	return result;
+}
+
+function scoreEvidence(evidence, names) {
+	return names.reduce((score, name) => score + (evidence.has(name)
+		? name === "lathe-spindle" || name === "lathe-diameter" || name === "lathe-radius" || name === "mill-tool-length" || name === "lathe-tool-call" ? 3 : name === "lathe-cycle" ? 2 : 1
+		: 0), 0);
 }
 
 function getConfiguredGCodeDialectId(document, profile) {
@@ -174,6 +220,7 @@ module.exports = {
 	initializeMachineMode,
 	getMachineModeProfile,
 	getMachineModeForDocument,
+	inferMachineModeForDocument,
 	setMachineMode,
 	setGCodeDialect,
 	onDidChangeMachineMode: machineModeChangeEmitter.event,

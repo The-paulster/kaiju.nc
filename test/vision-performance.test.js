@@ -104,11 +104,29 @@ test('Vision render requests coalesce without losing the latest state', () => {
   assert.equal(frames.length, 1);
 });
 
-test('Vision label and compass CSS sizes stay independent of world zoom metrics', () => {
-  assert.match(source, /const labelFontSize = data\.options\.labelFontSize/);
-  assert.match(source, /const compassTextSize = data\.options\.compassSize \* 0\.16/);
-  assert.match(source, /font-size:' \+ labelFontSize \+ 'px/);
-  assert.doesNotMatch(source, /font-size:' \+ labelSize \+ 'px/);
+test('Vision label and compass sizes use explicit zoom-adjusted SVG user units', () => {
+  assert.match(source, /const labelFontSize = unitsPerPixel \* data\.options\.labelFontSize/);
+  assert.match(source, /const compassTextSize = unitsPerPixel \* data\.options\.compassSize \* 0\.16/);
+  assert.match(source, /font-size="' \+ round\(fontSize\) \+ '"/);
+  assert.match(source, /stroke-width="' \+ round\(outlineWidth\) \+ '"/);
+  assert.doesNotMatch(source, /font-size:' \+ labelFontSize \+ 'px/);
+  assert.doesNotMatch(source, /stroke-width:' \+ endpointLabelOutline/);
+});
+
+test('Vision point labels carry explicit screen-adjusted font and outline metrics', () => {
+  const api = helpers(['renderPointLabel'], {
+    round: value => value,
+    escapeAttribute: value => value,
+    getMarkerLegendKeys: () => [],
+    renderPointMarker: () => '',
+    svgEscape: value => value
+  });
+  const markup = api.renderPointLabel({
+    point: { x: 1, y: 2 }, labelX: 3, firstBaselineY: 4,
+    labelClass: 'endpoint-label', labelLine: 'L10', coordinateLine: 'X1 Y2'
+  }, 2.2, 0.3);
+  assert.match(markup, /font-size="2\.2"/);
+  assert.match(markup, /stroke-width="0\.3"/);
 });
 
 test('Vision macro checkpoints and incremental stepping agree after reverse seeks', () => {
@@ -392,7 +410,19 @@ test('Vision embedded renderer retains canvases, shares scale and handles playba
   context.setPlaybackCursor(0); flush();
   assert.equal(get('vision-canvas'), canvas);
   assert.equal(get('vision-canvas-secondary'), secondary);
+  vm.runInContext('playback.active = false', context);
+  context.setZoom(2.5); flush();
+  const getRenderedOverlayTextPixels = () => {
+    const markup = get('viewer').querySelector('.vision-overlay-host').markup;
+    const fontSize = Number(markup.match(/class="compass" font-size="([0-9.]+)"/)[1]);
+    const boundsHeight = vm.runInContext('viewStateByKey.get("primary").bounds.height', context);
+    return fontSize * get('viewer').getBoundingClientRect().height / boundsHeight;
+  };
+  const dualOverlayTextPixels = getRenderedOverlayTextPixels();
+  vm.runInContext('worldPan = { x: 11, y: -7, z: 3 };', context);
   get('dualViewToggle').listeners.click(); flush();
   assert.equal(get('secondaryViewer').hidden, true);
   assert.equal(get('planeControl').hidden, false);
+  assert.ok(Math.abs(getRenderedOverlayTextPixels() - dualOverlayTextPixels) < 0.01,
+    'Dual View to Single View retains the configured screen-pixel overlay text size');
 });

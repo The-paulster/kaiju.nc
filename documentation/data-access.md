@@ -26,6 +26,7 @@ the complete per-program interpretation context:
 | `profile` | Mill/lathe profile and default feed behavior. |
 | `xAxisMode` | Radius or diameter interpretation used by motion geometry. |
 | `gCodeDialect` / `gCodeDialectId` | Selected controller keybinding table. |
+| `machineModeSource` | `document` for a saved selection, `inferred` for confident automatic detection, or `fallback` for the configured/ambiguous fallback. |
 
 Pass the derived feature options into Motion Engine calls. Do not read another
 feature's setting directly to infer machine state.

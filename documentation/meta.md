@@ -58,8 +58,11 @@ semantics. Human position formatting includes C when available.
 Machine Mode is saved in workspace state by source-document URI when selected
 from the KAIJU Machine Mode menu. That per-program profile, including its
 radius/diameter X convention, overrides the Settings value for every consumer.
-The `kaijuNC.chronoblade.machineMode` setting remains the fallback for programs
-that have not yet been assigned a profile.
+For unassigned programs, the default `auto` setting performs conservative
+comment-masked source inference; confident results are marked as inferred in
+the shared read model, while ambiguous code retains the Lathe (Diameter)
+fallback. A specific `kaijuNC.chronoblade.machineMode` setting overrides
+inference.
 
 The same per-program record stores a G-code interpretation profile. Programs
 without one use `kaijuNC.gCodeDialect.defaultProfile`, which defaults to

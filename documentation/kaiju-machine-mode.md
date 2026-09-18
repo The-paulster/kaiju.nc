@@ -6,8 +6,9 @@
 
 The Machine Mode feature owns the editor commands, user notifications, and
 right-side machine/profile and Alias status indicators. `MetaMachineMode` owns
-the shared per-document state, workspace persistence, Settings fallback, and
-change event consumed by other features.
+the shared per-document state, workspace persistence, Settings fallback,
+conservative automatic machine inference, and change event consumed by other
+features.
 
 It also owns the **KAIJU Manage G-code Profiles** webview. The editor is a
 controller-profile keybinding table, not a second motion interpreter.
@@ -71,6 +72,18 @@ directly.
 The built-in FANUC / ISO profile uses G94/G95 for mill feed/min and feed/rev,
 while its lathe table uses G98/G99. Those words remain independent of the mill
 table's G98/G99 canned-cycle return meanings.
+
+## Automatic inference
+
+With `kaijuNC.chronoblade.machineMode` set to its default **Automatic** value,
+an unassigned program is inspected outside comments and angle-bracket text.
+Strong turning evidence such as CSS (`G96`/`G97`), `G50 S...`, turning cycles,
+diameter/radius programming, U/W moves, or four-digit tool calls selects a
+lathe profile; `G08` selects Lathe (Radius). Strong milling evidence such as
+`G43`/`G49`, combined milling-style cycle/tool-change/Y-axis use selects Mill.
+Ambiguous programs retain the prior Lathe (Diameter) fallback. The status item
+marks a confident inferred result with **(Auto)**. A saved program selection or
+a specific setting always overrides inference.
 
 ## Boundary
 

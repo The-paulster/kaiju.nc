@@ -1121,12 +1121,13 @@
           "kaijuNC.chronoblade.machineMode": {
             "type": "string",
             "enum": [
+              "auto",
               "mill",
               "latheRadius",
               "latheDiameter"
             ],
-            "default": "latheDiameter",
-            "description": "Fallback machine mode used until a program is assigned its own KAIJU Machine Mode. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
+            "default": "auto",
+            "description": "Automatic mode conservatively infers Mill or Lathe from unassigned program code, otherwise retaining the Lathe (Diameter) fallback. Choose a specific mode to override detection. Mill uses radius X and feed-per-minute defaults; lathe modes use feed-per-rev defaults."
           ,
             "scope": "resource"},
           "kaijuNC.chronoblade.xAxisMode": {
@@ -1290,6 +1291,10 @@
         "command": "kaijuNC.macroHistory",
         "title": "KAIJU Macro Hunter",
         "icon": "$(symbol-variable)"
+      },
+      {
+        "command": "kaijuNC.codex",
+        "title": "KAIJU Codex"
       }
     ],
     "keybindings": [
@@ -1398,6 +1403,11 @@
           "command": "kaijuNC.macroHistory",
           "when": "editorLangId == gcode",
           "group": "0_kaiju@8"
+        },
+        {
+          "command": "kaijuNC.codex",
+          "when": "editorLangId == gcode",
+          "group": "0_kaiju@9"
         },
         {
           "submenu": "kaijuNC.machineModeMenu",

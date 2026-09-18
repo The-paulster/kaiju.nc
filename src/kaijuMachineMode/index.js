@@ -100,8 +100,9 @@ function updateMachineModeStatusBar(statusBar) {
 	const machineMode = getMachineModeForDocument(document);
 	const profile = machineMode.profile;
 	const useModeColors = displayConfig.get("statusBarModeColors", false);
-	statusBar.machineItem.text = `KAIJU: ${profile.statusLabel}`;
-	statusBar.machineItem.tooltip = `Machine Mode: ${profile.label}\nG-code profile: ${machineMode.gCodeDialect.label}`;
+	const inferredSuffix = machineMode.machineModeSource === "inferred" ? " (Auto)" : "";
+	statusBar.machineItem.text = `KAIJU: ${profile.statusLabel}${inferredSuffix}`;
+	statusBar.machineItem.tooltip = `Machine Mode: ${profile.label}${inferredSuffix}\nG-code profile: ${machineMode.gCodeDialect.label}`;
 	statusBar.machineItem.color = useModeColors ? MACHINE_MODE_STATUS_COLORS[profile.id] || MACHINE_MODE_STATUS_COLORS.latheDiameter : undefined;
 	statusBar.machineItem.show();
 

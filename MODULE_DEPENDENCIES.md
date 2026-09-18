@@ -21,6 +21,7 @@ flowchart TD
 	extension --> rangefinder[kaijuRangefinder/index.js]
 	extension --> warpaint[kaijuWarpaint/index.js]
 	extension --> quickToggles[kaijuQuickToggles/index.js]
+	extension --> codex[kaijuCodex/index.js]
 
 	reconCommand --> reconFormatter
 	reconCommand --> reconOptions[kaijuReconstructor/options.js]
@@ -105,6 +106,7 @@ flowchart TD
 	motion --> modalDefs[MetaModalDefs.json]
 	motion --> dialect[MetaGCodeDialect.js]
 	machine --> dialect
+	machine --> text
 	trace --> text
 	trace --> macro
 	macro --> text
@@ -121,7 +123,7 @@ flowchart LR
 	meta --> utility[Shared parsing helpers]
 
 	entryModules["extension.js"]
-	featureModules["kaijuSense/<br/>kaijuAlert/<br/>kaijuReconstructor/<br/>kaijuChronoblade/<br/>kaijuVision/<br/>kaijuDecomposition/<br/>kaijuMachineMode/<br/>kaijuTrace/<br/>kaijuRangefinder/<br/>kaijuAlias/<br/>kaijuOrphanKiller/<br/>kaijuWarpaint/<br/>kaijuQuickToggles/"]
+	featureModules["kaijuSense/<br/>kaijuAlert/<br/>kaijuReconstructor/<br/>kaijuChronoblade/<br/>kaijuVision/<br/>kaijuDecomposition/<br/>kaijuMachineMode/<br/>kaijuTrace/<br/>kaijuRangefinder/<br/>kaijuAlias/<br/>kaijuOrphanKiller/<br/>kaijuWarpaint/<br/>kaijuQuickToggles/<br/>kaijuCodex/"]
 	metaModules["MetaMotionEngine.js<br/>MetaExecutionTrace.js<br/>MetaMachineMode.js<br/>MetaGCodeDialect.js<br/>MetaMacroEngine.js<br/>MetaToolModel.js<br/>MetaHumanFormat.js<br/>MetaModalDefs.json"]
 	utilityModules["MetaTextRanges.js"]
 
@@ -135,6 +137,7 @@ flowchart LR
 
 - `extension.js` wires feature folders and root meta modules together.
 - Feature folders own commands, hovers, webviews, diagnostics, status bars, and their `options.js` files.
+- `kaijuCodex/` maps an optional feature topic to a packaged user-facing Markdown page; it does not render or interpret feature data.
 - Root `Meta...` modules are shared infrastructure, not user-facing feature surfaces.
 - `MetaMotionEngine.js` is the shared motion/modal interpreter for Sense, Vision, and Chronoblade.
 - `MetaGCodeDialect.js` maps profile-specific G-code patterns to stable shared

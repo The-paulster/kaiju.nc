@@ -4,6 +4,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- KAIJU now conservatively detects Mill versus Lathe for unassigned programs when Machine Mode is Automatic, while preserving saved per-program and explicit Settings choices. Confident detections are marked `(Auto)` in the status item; ambiguous code retains the Lathe (Diameter) fallback.
+
+- Added KAIJU Codex: a built-in Markdown guide with a G-code editor context-menu and Command Palette entry, plus practical pages for the main KAIJU tools.
+
 - Added KAIJU Macro Hunter: a persistent sidebar view that follows the
   editor caret or can pin a source line, showing every loop occurrence, each
   occurrence's resolved macro state, and a selected macro's full value history.

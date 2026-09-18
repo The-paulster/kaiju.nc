@@ -2362,11 +2362,11 @@ function renderVisionHtml(document, mode, options, result) {
 			const gridSize = normalizeGridSize(gridSizeInput.value);
 			const useToolColors = toolColorsInput.checked;
 			const unitsPerPixel = bounds.height / Math.max(1, viewerRect.height);
-			const labelFontSize = data.options.labelFontSize;
+			const labelFontSize = unitsPerPixel * data.options.labelFontSize;
 			const compassSize = unitsPerPixel * data.options.compassSize;
 			const compassOffsetX = unitsPerPixel * data.options.compassOffsetX;
 			const compassOffsetY = unitsPerPixel * data.options.compassOffsetY;
-			const compassTextSize = data.options.compassSize * 0.16;
+			const compassTextSize = unitsPerPixel * data.options.compassSize * 0.16;
 			const endpointSize = unitsPerPixel * data.options.endpointSize;
 			const arrowSize = unitsPerPixel * 8 * data.options.arrowSize;
 			const endpointLabelOutline = unitsPerPixel * 1.5;
@@ -2395,15 +2395,15 @@ function renderVisionHtml(document, mode, options, result) {
 			const canvasCycles = queryPathIndex(visible.cycleIndex, drawBounds);
 			const currentPlaybackDot = getCurrentPlaybackDot(projected);
 			if (viewKey === "primary") updatePlaybackPositionReadout(getCurrentPlaybackPosition(projected));
-			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, { labelSize: labelEntry.labelSize, labelOffset: labelEntry.labelOffset, labelHitboxPadding: labelEntry.labelHitboxPadding }).map(renderPointLabel).join("");
+			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, { labelSize: labelEntry.labelSize, labelOffset: labelEntry.labelOffset, labelHitboxPadding: labelEntry.labelHitboxPadding }).map(target => renderPointLabel(target, labelFontSize, endpointLabelOutline)).join("");
 			const zeroAxes = showZeroLines ? renderZeroAxes(bounds, plane) : "";
-			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY);
+			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY, compassTextSize);
 			const playbackDot = renderPlaybackDotSvg(currentPlaybackDot, unitsPerPixel);
 			const svgId = viewKey === "primary" ? "vision-svg" : "vision-svg-secondary";
 			const canvasId = viewKey === "primary" ? "vision-canvas" : "vision-canvas-secondary";
 			const overlaySvg = '<svg id="' + svgId + '" class="vision-overlay" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="none" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + compassTextSize + 'px;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-size:' + labelFontSize + 'px;}.endpoint-label{stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-size:' + labelFontSize + 'px;font-weight:600;stroke:#000;stroke-width:' + endpointLabelOutline + ';stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;}.endpoint-label{stroke:#000;stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-weight:600;stroke:#000;stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
 				'</style>' + zeroAxes + compass + playbackDot + labelsAndMarkers + '</svg>';
 
 			let canvas = document.getElementById(canvasId);
@@ -3208,7 +3208,7 @@ function renderVisionHtml(document, mode, options, result) {
 			};
 		}
 
-		function renderPointLabel(target) {
+		function renderPointLabel(target, fontSize, outlineWidth) {
 			const x = round(target.point.x);
 			const y = round(target.point.y);
 			const tooltipAttribute = target.hoverId ? ' data-tooltip-id="' + escapeAttribute(target.hoverId) + '"' : "";
@@ -3222,7 +3222,7 @@ function renderVisionHtml(document, mode, options, result) {
 			}
 
 			return '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker +
-				'<text class="point-label ' + target.labelClass + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
+				'<text class="point-label ' + target.labelClass + '" font-size="' + round(fontSize) + '" stroke-width="' + round(outlineWidth) + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
 					'<tspan x="' + round(target.labelX) + '">' + svgEscape(target.labelLine) + '</tspan>' +
 					(target.coordinateLine ? '<tspan x="' + round(target.labelX) + '" dy="1.15em">' + svgEscape(target.coordinateLine) + '</tspan>' : "") +
 				'</text>' +
@@ -4093,7 +4093,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 			return length;
 		}
-		function renderCompass(bounds, plane, compassSize, offsetX, offsetY) {
+		function renderCompass(bounds, plane, compassSize, offsetX, offsetY, fontSize) {
 			const x = bounds.minX + offsetX + compassSize * 0.55;
 			const y = bounds.minY + offsetY + compassSize * 0.55;
 			const arm = compassSize * 0.42;
@@ -4101,7 +4101,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const stroke = 0.85;
 
 			return [
-				'<g class="compass">',
+				'<g class="compass" font-size="' + round(fontSize) + '">',
 				'<line x1="' + x + '" y1="' + y + '" x2="' + (x + arm) + '" y2="' + y + '" stroke="#d4d4d4" stroke-width="' + stroke + '" vector-effect="non-scaling-stroke" />',
 				'<line x1="' + x + '" y1="' + y + '" x2="' + x + '" y2="' + (y - arm) + '" stroke="#d4d4d4" stroke-width="' + stroke + '" vector-effect="non-scaling-stroke" />',
 				'<text x="' + (x + arm + text * 0.4) + '" y="' + (y + text * 0.35) + '">' + axisDirectionLabel(plane.hLabel, plane.hSign) + '</text>',
