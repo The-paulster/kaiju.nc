@@ -1276,9 +1276,12 @@ function renderVisionHtml(document, mode, options, result) {
 		<button id="dualViewToggle" type="button" aria-pressed="false" title="Toggle a synchronized second projection">Dual View</button>
 		<label id="sharedAxisControl" class="shared-axis-control" hidden>Shared axis
 			<select id="sharedAxis">
-				<option value="x">X</option>
-				<option value="y">Y</option>
-				<option value="z">Z</option>
+				<option value="xHorizontal">X horizontal</option>
+				<option value="xVertical">X vertical</option>
+				<option value="yHorizontal">Y horizontal</option>
+				<option value="yVertical">Y vertical</option>
+				<option value="zHorizontal">Z horizontal</option>
+				<option value="zVertical">Z vertical</option>
 			</select>
 		</label>
 		<button id="offsetsToggle">Offsets</button>
@@ -1394,9 +1397,12 @@ function renderVisionHtml(document, mode, options, result) {
 			? { x: Number(savedWebviewState.worldPan.x), y: Number(savedWebviewState.worldPan.y), z: Number(savedWebviewState.worldPan.z) }
 			: { x: 0, y: 0, z: 0 };
 		let dualView = savedWebviewState.dualView === true;
-		let sharedAxis = ["x", "y", "z"].includes(savedWebviewState.sharedAxis)
+		const sharedAxisModes = ["xHorizontal", "xVertical", "yHorizontal", "yVertical", "zHorizontal", "zVertical"];
+		let sharedAxis = sharedAxisModes.includes(savedWebviewState.sharedAxis)
 			? savedWebviewState.sharedAxis
-			: "";
+			: ["x", "y", "z"].includes(savedWebviewState.sharedAxis)
+				? savedWebviewState.sharedAxis + "Horizontal"
+				: "";
 		zoomLabel.textContent = Math.round(zoom * 100) + "%";
 		let currentFitBounds;
 		let currentBounds;
@@ -1468,13 +1474,18 @@ function renderVisionHtml(document, mode, options, result) {
 			worldPan[savedPlane.v] = -Number(savedViewport.pan.y) / savedPlane.vSign;
 		}
 
-		function getSharedAxisForPlane(planeKey) {
-			return planes[planeKey] ? planes[planeKey].h : "x";
+		function getSharedAxisModeForPlane(planeKey) {
+			if (planeKey === "yx" || planeKey === "yz") return "yHorizontal";
+			if (planeKey === "zx" || planeKey === "zy") return "zHorizontal";
+			return "xHorizontal";
 		}
 
-		function getDualPlanePair(axis) {
-			if (axis === "y") return ["yx", "yz"];
-			if (axis === "z") return ["zx", "zy"];
+		function getDualPlanePair(axisMode) {
+			if (axisMode === "xVertical") return ["yx", "zx"];
+			if (axisMode === "yHorizontal") return ["yx", "yz"];
+			if (axisMode === "yVertical") return ["xy", "zy"];
+			if (axisMode === "zHorizontal") return ["zx", "zy"];
+			if (axisMode === "zVertical") return ["xz", "yz"];
 			return ["xy", "xz"];
 		}
 
@@ -1514,7 +1525,7 @@ function renderVisionHtml(document, mode, options, result) {
 			worldPan = getWorldPanForProjectedPan(plane, projectedPan, baseWorldPan);
 		}
 
-		if (!sharedAxis) sharedAxis = getSharedAxisForPlane(planeSelect.value);
+		if (!sharedAxis) sharedAxis = getSharedAxisModeForPlane(planeSelect.value);
 		updateDualViewControls();
 
 
@@ -4213,7 +4224,7 @@ function renderVisionHtml(document, mode, options, result) {
 		});
 		dualViewToggle.addEventListener("click", () => {
 			dualView = !dualView;
-			if (dualView && !sharedAxis) sharedAxis = getSharedAxisForPlane(planeSelect.value);
+			if (dualView && !sharedAxis) sharedAxis = getSharedAxisModeForPlane(planeSelect.value);
 			updateDualViewControls();
 			saveViewport();
 			resetView();

@@ -45,6 +45,8 @@ Lathe polar interpolation is also dialect-owned: built-in lathe profiles map
 `MetaMotionEngine` maps authored `X/C` (and incremental `U/H`) motion into its
 Cartesian point stream, including sampled I/J and R arcs; Vision and
 Chronoblade consume that same geometry.
+An omitted in-plane I/J/K centre offset is zero, including NLX-style polar
+full circles such as `G3 I-6.`.
 
 Outside polar interpolation, lathe C words are angular degrees and H is an
 incremental C move. The shared engine retains C in authored positions and

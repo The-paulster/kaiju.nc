@@ -39,6 +39,14 @@ test("polar interpolation is modal and G13.1 cancels it", () => {
 	assert.equal(motion.getModalStateAtLine(document, 2, OPTIONS).polarInterpolation, false);
 });
 
+test("polar interpolation appears in cursor modal groups until cancelled", () => {
+	const document = makeDocument("G12.1\nG1 C20 F100\nG13.1");
+	assert.deepEqual(motion.getModalStateAtLine(document, 1, OPTIONS).modalGroups.find(entry => entry.key === "polarInterpolation"), {
+		key: "polarInterpolation", order: 75, code: "G12.1", label: "Polar interpolation on"
+	});
+	assert.equal(motion.getModalStateAtLine(document, 2, OPTIONS).modalGroups.some(entry => entry.key === "polarInterpolation"), false);
+});
+
 test("polar X/C linear interpolation produces Cartesian face geometry", () => {
 	const document = makeDocument("G0 X100\nG12.1\nG1 X80 C30 F100");
 	const row = motionRows(motion.analyzeVisionRange(document, undefined, OPTIONS)).at(-1);
@@ -112,6 +120,17 @@ test("polar I/J arcs are sampled as curved geometry", () => {
 	closeTo(row.points.at(-1).y, 10);
 	closeTo(row.distance, Math.PI * 10 / 2, 0.02);
 	assert.equal(motion.analyzeArcsInDocument(document, OPTIONS).get(2).validation.valid, true);
+});
+
+test("polar full circles accept an omitted zero J centre offset", () => {
+	const rows = motionRows(motion.analyzeVisionRange(makeDocument("G0 X40 C0\nG12.1\nG3 I-6 F100"), undefined, OPTIONS));
+	const row = rows.at(-1);
+	assert.ok(row);
+	assert.ok(row.points.length > 8);
+	closeTo(row.points[0].x, 20);
+	closeTo(row.points.at(-1).x, 20);
+	closeTo(row.points.at(-1).y, 0);
+	closeTo(row.distance, Math.PI * 12, 0.02);
 });
 
 test("polar R arcs are sampled rather than reduced to a chord", () => {

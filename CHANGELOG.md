@@ -4,6 +4,20 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.0]
 
+- Expanded Vision Dual View's Shared axis selector with horizontal and vertical
+  X/Y/Z orientations, including X vertical as Y-X plus Z-X. Existing X/Y/Z
+  saved Dual View choices retain their horizontal orientation.
+
+- Simplified KAIJU Manage G-code Profiles to one dirty-state-aware **Save
+  profiles** action and a **Use for this program** profile selector. The editor
+  context menu now opens that complete profile list directly, rather than
+  exposing only the two built-in profiles; successful actions persistently
+  confirm their result.
+
+- Fixed NLX-style polar full circles with an omitted zero centre offset, such
+  as `G3 I-6.`, being reduced to a straight fallback in Vision; Sense now also
+  shows active polar interpolation in its cursor modal state.
+
 - Fixed KAIJU Alert applying a stale legacy Diameter X-axis setting to a program automatically identified as Mill, which could incorrectly report valid X-Y arcs as illegal.
 
 - Added an Examples section to KAIJU Codex with direct editor links to all six bundled NC walkthroughs.

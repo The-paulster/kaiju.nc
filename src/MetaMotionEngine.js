@@ -512,6 +512,10 @@ function applyStatusModalState(words, statusState, options = {}) {
 	}
 
 	for (const match of resolveGCodeOperations(words, options)) {
+		if (match.operation === G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE) {
+			statusState.delete("polarInterpolation");
+			continue;
+		}
 		setDialectStatusModalEntry(statusState, match);
 	}
 }
@@ -830,22 +834,23 @@ function buildArcPathPoints(motionCode, start, end, words, arcPlane, options, po
 		const primaryWord = getArcOffsetWord(words, plane.primaryAxis);
 		const secondaryWord = getArcOffsetWord(words, plane.secondaryAxis);
 
+		// The omitted in-plane centre offset is zero. This is especially common
+		// for NLX polar full circles such as G3 I-6., where J is implicit.
 		if (Number.isFinite(start[plane.primaryAxis])
 			&& Number.isFinite(start[plane.secondaryAxis])
 			&& Number.isFinite(end[plane.primaryAxis])
 			&& Number.isFinite(end[plane.secondaryAxis])
-			&& primaryWord
-			&& secondaryWord
-			&& Number.isFinite(primaryWord.value)
-			&& Number.isFinite(secondaryWord.value)) {
+			&& (primaryWord || secondaryWord)
+			&& (!primaryWord || Number.isFinite(primaryWord.value))
+			&& (!secondaryWord || Number.isFinite(secondaryWord.value))) {
 			return buildPlanarArcPath(
 				motionCode,
 				start,
 				end,
 				plane.primaryAxis,
 				plane.secondaryAxis,
-				primaryWord.value,
-				secondaryWord.value,
+				primaryWord ? primaryWord.value : 0,
+				secondaryWord ? secondaryWord.value : 0,
 				options,
 				polarInterpolation
 			);
@@ -1944,7 +1949,13 @@ function hasMotionAxisWords(words, options, state) {
 	const letters = state && state.polarInterpolation
 		? ["X", "C", "Z", "U", "H", "W"]
 		: ["X", "Y", "Z", "U", "V", "W", ...(options.machineMode !== "mill" ? ["C", "H"] : [])];
-	return words.some(word => letters.includes(word.letter));
+	if (words.some(word => letters.includes(word.letter))) return true;
+
+	// A centre-defined full circle has no endpoint axis word. Treat it as
+	// motion so the shared arc builder can sample forms such as G3 I-6.
+	const motionCode = getMotionCode(words, options);
+	return (motionCode === 2 || motionCode === 3)
+		&& words.some(word => ["I", "J", "K", "R"].includes(word.letter));
 }
 
 function hasMCode(words, targetCode) {

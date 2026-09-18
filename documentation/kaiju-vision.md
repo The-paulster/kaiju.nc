@@ -156,8 +156,9 @@ C appears in that readout only when the source program commands a C word.
 
 Vision can toggle a synchronized second projection inside the same webview. In
 Dual View, the individual Plane control is replaced by **Shared axis**. Vision
-derives both panes from that one selection: X shows X-Y and X-Z, Y shows Y-X
-and Y-Z, and Z shows Z-X and Z-Y. The panes consume the same motion rows,
+derives both panes from that one selection. **X horizontal** shows X-Y and X-Z,
+while **X vertical** shows Y-X and Z-X; the same horizontal/vertical choices
+are available for Y and Z. The panes consume the same motion rows,
 Trace/playback position, visibility, offsets, labels, endpoints, grid, tool
 colours, and other inspection state. Pressing **Single View** returns to the
 saved per-program Plane selection.

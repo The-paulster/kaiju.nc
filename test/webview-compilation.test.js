@@ -86,9 +86,10 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /pinned-tooltip-list/);
 	assert.match(html, /id="dualViewToggle"/);
 	assert.match(html, /id="sharedAxis"/);
-	assert.match(html, /function getDualPlanePair\(axis\)/);
+	assert.match(html, /value="xHorizontal">X horizontal[\s\S]*value="xVertical">X vertical[\s\S]*value="yHorizontal">Y horizontal[\s\S]*value="yVertical">Y vertical[\s\S]*value="zHorizontal">Z horizontal[\s\S]*value="zVertical">Z vertical/);
+	assert.match(html, /function getDualPlanePair\(axisMode\)/);
 	assert.match(html, /function getDualViewFitHeight\(viewportAspect = 1\)/);
-	assert.match(html, /function getSharedAxisForPlane\(planeKey\)/);
+	assert.match(html, /function getSharedAxisModeForPlane\(planeKey\)/);
 	assert.match(html, /worldPan: \{ x: worldPan\.x, y: worldPan\.y, z: worldPan\.z \}/);
 	assert.match(html, /sharedAxis/);
 	assert.match(html, /renderViewport\(viewer, getPrimaryPlaneKey\(\), "primary"\)/);
@@ -127,5 +128,12 @@ test("Orphan Killer generated webview scripts compile", () => {
 
 test("G-code profile editor scripts compile", () => {
 	const render = loadPrivateRenderer("src/kaijuMachineMode/profileEditor.js", "renderGCodeProfilesHtml");
-	compileEmbeddedScripts(render([], "fanucIso"));
+	const html = render([], "fanucIso", undefined, "Profiles saved.");
+	compileEmbeddedScripts(html);
+	assert.match(html, /id="saveProfile" class="primary" type="button" disabled>Save profiles/);
+	assert.match(html, /id="useProfile" class="primary" type="button">Use for this program/);
+	assert.doesNotMatch(html, /Save and use for this program|Save as fallback/);
+	assert.match(html, /function markDirty\(\) \{ dirty = true; saveProfile\.disabled = false; \}/);
+	assert.match(html, /type: 'useGCodeProfile', profiles: customProfiles, profileId: selected\.id/);
+	assert.match(html, /initial\.notice \|\| ''/);
 });

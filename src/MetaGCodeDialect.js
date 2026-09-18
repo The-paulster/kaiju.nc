@@ -42,7 +42,7 @@ const G_CODE_OPERATION_DEFINITIONS = Object.freeze({
 	[G_CODE_OPERATIONS.SPINDLE_CSS]: operationDefinition({ statusGroup: "spindleSpeedMode", label: "CSS" }),
 	[G_CODE_OPERATIONS.SPINDLE_FIXED_RPM]: operationDefinition({ statusGroup: "spindleSpeedMode", label: "Fixed RPM" }),
 	[G_CODE_OPERATIONS.SPINDLE_RPM_LIMIT]: operationDefinition({ statusGroup: "speedLimit", label: "Spindle limit" }),
-	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: operationDefinition({ label: "Polar interpolation on" }),
+	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: operationDefinition({ statusGroup: "polarInterpolation", label: "Polar interpolation on" }),
 	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: operationDefinition({ label: "Polar interpolation off" }),
 	[G_CODE_OPERATIONS.DWELL]: operationDefinition(),
 	[G_CODE_OPERATIONS.MACHINE_COORDINATE]: operationDefinition(),

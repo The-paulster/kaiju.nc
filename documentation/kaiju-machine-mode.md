@@ -10,7 +10,7 @@ the shared per-document state, workspace persistence, Settings fallback,
 conservative automatic machine inference, and change event consumed by other
 features.
 
-It also owns the **KAIJU Manage G-code Profiles** webview. The editor is a
+It also owns the **KAIJU G-code Profile** webview. The editor is a
 controller-profile keybinding table, not a second motion interpreter.
 
 ## Connections
@@ -25,10 +25,10 @@ controller-profile keybinding table, not a second motion interpreter.
 
 ## Custom G-code profiles
 
-Open a G-code document, then choose **KAIJU G-code Profile > KAIJU Manage
-G-code Profiles** in the editor context menu. Built-in profiles are read-only;
-use **Duplicate** to start a custom profile from a built-in table, or **New**
-to start with unbound operations.
+Open a G-code document, then choose **KAIJU G-code Profile** in the editor
+context menu. The list contains built-in and saved custom profiles. Built-in
+profiles are read-only; use **Duplicate** to start a custom profile from a
+built-in table, or **New** to start with unbound operations.
 
 Each profile has independent **Mill bindings** and **Lathe bindings**. A row
 names a stable KAIJU function; its binding cell accepts `G98`, or `G50 S` when
@@ -38,11 +38,11 @@ that word in the same machine table. This prevents a source block from
 acquiring two controller meanings.
 
 **Save profiles** writes reusable custom profiles to
-`kaijuNC.gCodeDialect.customProfiles`. **Save and use for this program** also
-selects the chosen profile for the active document. **Save as fallback** sets
-`kaijuNC.gCodeDialect.defaultProfile`, the Settings default for documents
-without an assigned profile. It ships as `fanucIso` (FANUC / ISO), and can name
-either built-in profile or a custom profile ID.
+`kaijuNC.gCodeDialect.customProfiles`. It is disabled until a profile change is
+made and, after a successful write, the editor visibly confirms **Profiles
+saved.** **Use for this program** assigns the selected built-in or saved custom
+profile to the active program and visibly confirms the selection. The fallback
+profile remains a Settings choice.
 
 The saved shape is intentionally declarative:
 

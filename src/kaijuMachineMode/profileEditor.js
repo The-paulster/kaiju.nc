@@ -4,6 +4,7 @@ const vscode = require("vscode");
 const {
 	G_CODE_OPERATION_DEFINITIONS,
 	getGCodeDialectProfiles,
+	getGCodeDialectProfile,
 	getBuiltInGCodeDialectProfiles,
 	setCustomGCodeDialectProfiles,
 	normalizeCustomGCodeDialectProfiles
@@ -12,6 +13,7 @@ const { setGCodeDialect } = require("../MetaMachineMode");
 
 const CUSTOM_PROFILES_SETTING = "customProfiles";
 let profilesPanel;
+let profilesPanelDocument;
 
 function registerGCodeProfileEditor(context) {
 	context.subscriptions.push(vscode.commands.registerCommand("kaijuNC.gCodeDialect.manage", async () => {
@@ -37,29 +39,26 @@ function reloadConfiguredGCodeDialectProfiles(document) {
 
 async function showGCodeProfileEditor(document) {
 	if (!document) return;
+	profilesPanelDocument = document;
 	const loadError = reloadConfiguredGCodeDialectProfiles(document);
 	if (!profilesPanel) {
 		profilesPanel = vscode.window.createWebviewPanel("kaijuGCodeProfiles", "KAIJU G-code Profiles", vscode.ViewColumn.Beside, { enableScripts: true });
-		profilesPanel.onDidDispose(() => { profilesPanel = undefined; });
+		profilesPanel.onDidDispose(() => { profilesPanel = undefined; profilesPanelDocument = undefined; });
 		profilesPanel.webview.onDidReceiveMessage(async message => {
-			if (!message || !["saveGCodeProfiles", "saveAndUseGCodeProfile", "saveAndSetFallbackGCodeProfile"].includes(message.type)) return;
-			const editor = vscode.window.activeTextEditor;
-			if (!editor || editor.document.languageId !== "gcode") return;
+			if (!message || !["saveGCodeProfiles", "useGCodeProfile"].includes(message.type)) return;
+			const targetDocument = profilesPanelDocument;
 			try {
+				if (!targetDocument) throw new Error("The profile editor no longer has an associated G-code document. Reopen it and try again.");
 				const profiles = normalizeCustomGCodeDialectProfiles(message.profiles);
-				await vscode.workspace.getConfiguration("kaijuNC.gCodeDialect", editor.document.uri).update(CUSTOM_PROFILES_SETTING, serializeProfiles(profiles), true);
+				await vscode.workspace.getConfiguration("kaijuNC.gCodeDialect", targetDocument.uri).update(CUSTOM_PROFILES_SETTING, serializeProfiles(profiles), true);
 				setCustomGCodeDialectProfiles(profiles);
-				const selected = profiles.find(profile => profile.id === message.profileId);
-				if (message.type === "saveAndUseGCodeProfile") {
-					if (!selected) throw new Error("Choose a custom profile before assigning it to this program.");
-					await setGCodeDialect(editor.document, selected.id);
+				if (message.type === "useGCodeProfile") {
+					const selected = getGCodeDialectProfile(message.profileId);
+					await setGCodeDialect(targetDocument, selected.id);
+					await renderGCodeProfileEditor(targetDocument, undefined, `Profile set to ${selected.label}.`);
+				} else {
+					await renderGCodeProfileEditor(targetDocument, undefined, "Profiles saved.");
 				}
-				if (message.type === "saveAndSetFallbackGCodeProfile") {
-					if (!selected) throw new Error("Choose a custom profile before setting the fallback.");
-					await setGCodeDialect(undefined, selected.id);
-				}
-				profilesPanel.webview.postMessage({ type: "saved", profileId: selected && selected.id });
-				await renderGCodeProfileEditor(editor.document);
 			} catch (error) {
 				profilesPanel.webview.postMessage({ type: "error", message: error instanceof Error ? error.message : String(error) });
 			}
@@ -70,12 +69,12 @@ async function showGCodeProfileEditor(document) {
 	await renderGCodeProfileEditor(document, loadError);
 }
 
-async function renderGCodeProfileEditor(document, loadError) {
+async function renderGCodeProfileEditor(document, loadError, notice) {
 	if (!profilesPanel) return;
 	const builtInIds = new Set(getBuiltInGCodeDialectProfiles().map(profile => profile.id));
 	const profiles = getGCodeDialectProfiles().map(profile => Object.assign(serializeProfile(profile), { builtIn: builtInIds.has(profile.id) }));
 	const current = getCurrentDialectId(document);
-	profilesPanel.webview.html = renderGCodeProfilesHtml(profiles, current, loadError);
+	profilesPanel.webview.html = renderGCodeProfilesHtml(profiles, current, loadError, notice);
 }
 
 function getCurrentDialectId(document) {
@@ -113,9 +112,9 @@ function serializeBindingTable(table) {
 	}));
 }
 
-function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
+function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) {
 	const nonce = makeWebviewNonce();
-	const initialData = JSON.stringify({ profiles, currentProfileId, operations: G_CODE_OPERATION_DEFINITIONS, loadError }).replace(/</g, "\\u003c");
+	const initialData = JSON.stringify({ profiles, currentProfileId, operations: G_CODE_OPERATION_DEFINITIONS, loadError, notice }).replace(/</g, "\\u003c");
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -168,7 +167,7 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 	</aside>
 	<section>
 		<div id="notice" class="notice hidden" role="status"></div>
-		<div class="profile-actions"><h2 id="profileHeading"></h2><button id="deleteProfile" type="button">Delete</button><button id="saveProfile" class="primary" type="button">Save profiles</button><button id="useProfile" class="primary" type="button">Save and use for this program</button><button id="fallbackProfile" type="button">Save as fallback</button></div>
+		<div class="profile-actions"><h2 id="profileHeading"></h2><button id="deleteProfile" type="button">Delete</button><button id="saveProfile" class="primary" type="button" disabled>Save profiles</button><button id="useProfile" class="primary" type="button">Use for this program</button></div>
 		<div class="field"><label for="profileName">Profile name</label><input id="profileName" maxlength="80" placeholder="My controller"></div>
 		<div class="field"><label for="profileDescription">Description</label><textarea id="profileDescription" maxlength="240" placeholder="Optional notes about this controller."></textarea></div>
 		<p class="key-help">Each row is one KAIJU function. Enter a G word such as <code>G98</code>; use <code>G50 S</code> when the function requires and reads an <code>S</code> companion word. Leave a cell blank to leave that function unbound. Reusing a G word in this table clears its previous binding.</p>
@@ -181,7 +180,7 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 	const initial = JSON.parse(document.getElementById('profileData').textContent);
 	const builtInProfiles = initial.profiles.filter(profile => profile.builtIn);
 	let customProfiles = initial.profiles.filter(profile => !profile.builtIn).map(copy);
-	let selectedId = customProfiles.some(profile => profile.id === initial.currentProfileId) ? initial.currentProfileId : (customProfiles[0] && customProfiles[0].id || builtInProfiles[0] && builtInProfiles[0].id);
+	let selectedId = initial.profiles.some(profile => profile.id === initial.currentProfileId) ? initial.currentProfileId : (customProfiles[0] && customProfiles[0].id || builtInProfiles[0] && builtInProfiles[0].id);
 	let mode = 'mill';
 	let sequence = 0;
 	const profileList = document.getElementById('profileList');
@@ -191,11 +190,15 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 	const profileDescription = document.getElementById('profileDescription');
 	const deleteProfile = document.getElementById('deleteProfile');
 	const heading = document.getElementById('profileHeading');
+	const saveProfile = document.getElementById('saveProfile');
+	const useProfile = document.getElementById('useProfile');
+	let dirty = false;
 
 	function copy(value) { return JSON.parse(JSON.stringify(value)); }
 	function getSelected() { return customProfiles.find(profile => profile.id === selectedId) || builtInProfiles.find(profile => profile.id === selectedId); }
 	function isCustom(profile) { return profile && !profile.builtIn; }
 	function showNotice(message, error) { notice.textContent = message || ''; notice.classList.toggle('hidden', !message); notice.classList.toggle('error', Boolean(error)); }
+	function markDirty() { dirty = true; saveProfile.disabled = false; }
 	function makeId() { sequence += 1; return 'custom-profile-' + Date.now().toString(36) + '-' + sequence; }
 	function render() {
 		const selected = getSelected();
@@ -207,8 +210,8 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 		profileName.disabled = !editable;
 		profileDescription.disabled = !editable;
 		deleteProfile.disabled = !editable;
-		document.getElementById('useProfile').disabled = !editable;
-		document.getElementById('fallbackProfile').disabled = !editable;
+		saveProfile.disabled = !dirty;
+		useProfile.disabled = !selected;
 		for (const tab of document.querySelectorAll('.mode-tab')) tab.classList.toggle('primary', tab.dataset.mode === mode);
 		renderBindings(selected, editable);
 	}
@@ -244,19 +247,17 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError) {
 	function escapeHtml(value) { return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 	function escapeAttribute(value) { return escapeHtml(value); }
 	profileList.addEventListener('click', event => { const button = event.target.closest('[data-profile-id]'); if (!button) return; selectedId = button.dataset.profileId; showNotice(''); render(); });
-	document.getElementById('newProfile').addEventListener('click', () => { const profile = { id: makeId(), label: 'New profile', description: '', bindings: { mill: {}, lathe: {} } }; customProfiles.push(profile); selectedId = profile.id; showNotice(''); render(); });
-	document.getElementById('duplicateProfile').addEventListener('click', () => { const source = getSelected(); if (!source) return; const profile = copy(source); profile.id = makeId(); profile.label = source.label + ' copy'; delete profile.builtIn; customProfiles.push(profile); selectedId = profile.id; showNotice(''); render(); });
-	deleteProfile.addEventListener('click', () => { const selected = getSelected(); if (!isCustom(selected)) return; customProfiles = customProfiles.filter(profile => profile.id !== selected.id); selectedId = customProfiles[0] && customProfiles[0].id || builtInProfiles[0] && builtInProfiles[0].id; showNotice(''); render(); });
-	profileName.addEventListener('input', () => { const selected = getSelected(); if (isCustom(selected)) { selected.label = profileName.value; heading.textContent = selected.label || 'Unnamed profile'; } });
-	profileDescription.addEventListener('input', () => { const selected = getSelected(); if (isCustom(selected)) selected.description = profileDescription.value; });
-	bindingsBody.addEventListener('change', event => { const input = event.target.closest('.binding-input'); if (!input) return; try { setBinding(input.dataset.operation, input.value); showNotice(''); renderBindings(getSelected(), true); } catch (error) { showNotice(error.message, true); input.focus(); } });
+	document.getElementById('newProfile').addEventListener('click', () => { const profile = { id: makeId(), label: 'New profile', description: '', bindings: { mill: {}, lathe: {} } }; customProfiles.push(profile); selectedId = profile.id; markDirty(); showNotice(''); render(); });
+	document.getElementById('duplicateProfile').addEventListener('click', () => { const source = getSelected(); if (!source) return; const profile = copy(source); profile.id = makeId(); profile.label = source.label + ' copy'; delete profile.builtIn; customProfiles.push(profile); selectedId = profile.id; markDirty(); showNotice(''); render(); });
+	deleteProfile.addEventListener('click', () => { const selected = getSelected(); if (!isCustom(selected)) return; customProfiles = customProfiles.filter(profile => profile.id !== selected.id); selectedId = customProfiles[0] && customProfiles[0].id || builtInProfiles[0] && builtInProfiles[0].id; markDirty(); showNotice(''); render(); });
+	profileName.addEventListener('input', () => { const selected = getSelected(); if (isCustom(selected)) { selected.label = profileName.value; heading.textContent = selected.label || 'Unnamed profile'; markDirty(); } });
+	profileDescription.addEventListener('input', () => { const selected = getSelected(); if (isCustom(selected)) { selected.description = profileDescription.value; markDirty(); } });
+	bindingsBody.addEventListener('change', event => { const input = event.target.closest('.binding-input'); if (!input) return; try { setBinding(input.dataset.operation, input.value); markDirty(); showNotice(''); renderBindings(getSelected(), true); } catch (error) { showNotice(error.message, true); input.focus(); } });
 	for (const tab of document.querySelectorAll('.mode-tab')) tab.addEventListener('click', () => { mode = tab.dataset.mode; render(); });
-	function save(type) { const selected = getSelected(); vscode.postMessage({ type, profiles: customProfiles, profileId: isCustom(selected) ? selected.id : '' }); }
-	document.getElementById('saveProfile').addEventListener('click', () => save('saveGCodeProfiles'));
-	document.getElementById('useProfile').addEventListener('click', () => save('saveAndUseGCodeProfile'));
-	document.getElementById('fallbackProfile').addEventListener('click', () => save('saveAndSetFallbackGCodeProfile'));
-	window.addEventListener('message', event => { const message = event.data || {}; if (message.type === 'error') showNotice(message.message, true); if (message.type === 'saved') showNotice('Profiles saved.'); });
-	showNotice(initial.loadError ? 'Configured custom profiles could not be loaded: ' + initial.loadError : '');
+	saveProfile.addEventListener('click', () => { if (dirty) vscode.postMessage({ type: 'saveGCodeProfiles', profiles: customProfiles }); });
+	useProfile.addEventListener('click', () => { const selected = getSelected(); if (selected) vscode.postMessage({ type: 'useGCodeProfile', profiles: customProfiles, profileId: selected.id }); });
+	window.addEventListener('message', event => { const message = event.data || {}; if (message.type === 'error') showNotice(message.message, true); });
+	showNotice(initial.loadError ? 'Configured custom profiles could not be loaded: ' + initial.loadError : initial.notice || '');
 	render();
 </script>
 </body>

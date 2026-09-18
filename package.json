@@ -1285,7 +1285,7 @@
       },
       {
         "command": "kaijuNC.gCodeDialect.manage",
-        "title": "KAIJU Manage G-code Profiles"
+        "title": "KAIJU G-code Profile"
       },
       {
         "command": "kaijuNC.macroHistory",
@@ -1353,10 +1353,6 @@
         "label": "KAIJU Machine Mode"
       },
       {
-        "id": "kaijuNC.gCodeDialectMenu",
-        "label": "KAIJU G-code Profile"
-      },
-      {
         "id": "kaijuNC.quickTogglesMenu",
         "label": "KAIJU Quick Toggles"
       }
@@ -1415,7 +1411,7 @@
           "group": "z_kaijuMachineMode"
         },
         {
-          "submenu": "kaijuNC.gCodeDialectMenu",
+          "command": "kaijuNC.gCodeDialect.manage",
           "when": "editorLangId == gcode",
           "group": "z_kaijuGCodeDialect"
         },
@@ -1459,23 +1455,6 @@
           "command": "kaijuNC.machineMode.latheDiameter",
           "when": "editorLangId == gcode",
           "group": "navigation@3"
-        }
-      ],
-      "kaijuNC.gCodeDialectMenu": [
-        {
-          "command": "kaijuNC.gCodeDialect.fanucIso",
-          "when": "editorLangId == gcode",
-          "group": "navigation@1"
-        },
-        {
-          "command": "kaijuNC.gCodeDialect.dmgMori",
-          "when": "editorLangId == gcode",
-          "group": "navigation@2"
-        },
-        {
-          "command": "kaijuNC.gCodeDialect.manage",
-          "when": "editorLangId == gcode",
-          "group": "navigation@9"
         }
       ]
     },
