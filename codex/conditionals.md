@@ -1,6 +1,6 @@
-<img src="../media/kaiju-nc_banner_400.png" alt="KAIJU.NC banner" width="900">
-
 # Conditionals and branches
+
+[Back to KAIJU Codex](README.md)
 
 KAIJU Trace understands structured macro branches and follows the path selected
 by their current macro values. Vision, Chronoblade, and Decomposition reuse
@@ -9,8 +9,8 @@ the decomposed program.
 
 ## Structured branches
 
-Use a body-less `IF [...] THEN` to start a block, then close it with `ENDIF`.
-`ELSE` is optional.
+A structured block starts with a body-less `IF [...] THEN` and ends with
+`ENDIF`. `ELSE` is optional.
 
 ```gcode
 IF [#100 EQ 1] THEN
@@ -43,7 +43,7 @@ contributes either the move to `X500.` or the move to `X400.`, never both.
 
 ## More than two choices
 
-Use a nested block for an additional condition. KAIJU intentionally recognises
+An additional condition uses a nested block. KAIJU intentionally recognises
 the explicit nested form, not an unverified `ELSEIF` keyword.
 
 ```gcode
@@ -68,5 +68,5 @@ With the **Unmatched flow markers** alert enabled, KAIJU reports a missing
 `ELSE` in the same block.
 
 KAIJU can inspect this syntax in any program; it does not claim that every
-controller supports it. Confirm the accepted macro syntax, options, and limits
-against the manual for the control that will run the program.
+controller supports it. The target control's manual remains authoritative for
+accepted macro syntax, options, and limits.

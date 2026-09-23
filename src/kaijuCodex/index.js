@@ -10,7 +10,7 @@ const TOPICS = Object.freeze({
 	machineMode: "machine-mode.md",
 	macroHunter: "macro-hunter.md",
 	reconstructor: "reconstructor.md",
-	sections: "sections.md",
+	rangefinder: "rangefinder.md",
 	sense: "sense.md",
 	syntax: "syntax.md",
 	vision: "vision.md"

@@ -16,19 +16,19 @@ Click a program to open it in the editor. Each example includes comments explain
 
 ## Tools
 
-- [Vision — Toolpath visualizer](vision.md)
-- [Chronoblade — Cycle time estimator](chronoblade.md)
-- [Decomposition — Program flow inspector](decomposition.md)
-- [Sense — presents data and tooltips](sense.md)
-- [Macro Hunter — follow macro values through program execution](macro-hunter.md)
-- [Alias — present macro variables as named symbols](alias.md)
-- [Orphan Killer — find unresolved and unused macros](orphan-killer.md)
-- [Alerts — Diagnostics](alerts.md)
-- [Syntax and editor colours](syntax.md)
-- [Reconstructor — Automatic formatting](reconstructor.md)
-- [Rangefinder and Warpaint — Selection tools](sections.md)
-- [Machine Mode and G-code Profiles](machine-mode.md)
+- [Vision — inspect toolpaths, loops, and playback](vision.md)
+- [Chronoblade — estimate cycle time and compare program sections](chronoblade.md)
+- [Decomposition — expand the executed path into readable G-code](decomposition.md)
+- [Sense — inspect motion, macros, and modal state at the cursor](sense.md)
+- [Macro Hunter — follow macro values through loop occurrences](macro-hunter.md)
+- [Alias — toggle between numbered macros and readable names](alias.md)
+- [Orphan Killer — find undefined uses and unused definitions](orphan-killer.md)
+- [Alerts — inspect suspicious code and static diagnostics](alerts.md)
+- [Syntax and editor colours — identify G-code token types](syntax.md)
+- [Reconstructor — format G-code presentation](reconstructor.md)
+- [Rangefinder — select tool and N-label ranges](rangefinder.md)
+- [Machine Mode and G-code Profiles — set machine and controller meanings](machine-mode.md)
 
 ## Advanced
 
-- [Conditionals and branches — inspect IF / THEN / ELSE logic](conditionals.md)
+- [Conditionals and branches — understand executed IF / THEN / ELSE paths](conditionals.md)

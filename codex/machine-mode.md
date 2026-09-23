@@ -2,58 +2,50 @@
 
 [Back to KAIJU Codex](README.md)
 
-KAIJU normally starts in **Automatic** Machine Mode for an unassigned program.
-It scans executable code once (not comments or angle-bracket text) and marks a
-confident result in the status bar with **(Auto)**. Choose Mill, Lathe (Radius),
-or Lathe (Diameter) from the editor context menu whenever you know the machine;
-KAIJU saves that selection for that program.
+Machine Mode tells KAIJU whether a program is a mill or lathe program and how to interpret lathe X values. The G-code Profile supplies the controller's word bindings. Together they determine the motion and modal meanings shown by Vision, Sense, Chronoblade, and other inspection tools.
 
-## KAIJU Machine Mode
+## Quick start
 
-`KAIJU Machine Mode` sets the active document's machine profile so KAIJU.NC can interpret motion using the correct defaults.
+1. Open the NC program and check the machine/profile indicator on the right side of the VS Code status bar.
+2. If the inferred mode is unsuitable, choose **KAIJU Machine Mode** from the editor context menu and select **Mill**, **Lathe - Radius**, or **Lathe - Diameter**. That choice is saved for the program.
+3. Choose **KAIJU G-code Profile** from the same menu to select a built-in or saved custom profile for the program. For another controller, open **KAIJU Manage G-code Profiles**.
 
-Choose the machine mode from the editor's right-click menu:
+The mode and profile are document-specific choices. They affect KAIJU's analysis; selecting them does not rewrite the NC program.
 
-* Mill
-* Lathe - Radius
-* Lathe - Diameter
+## Machine modes and motion meaning
 
-Use the adjacent `KAIJU G-code Profile` submenu to choose the controller word
-bindings saved for that program, such as `FANUC / ISO` or `DMG MORI`.
+| Mode | X interpretation | Default feed behavior |
+| --- | --- | --- |
+| **Mill** | X is a linear axis. | Feed per minute. |
+| **Lathe - Radius** | X represents radial distance. | Feed per revolution. |
+| **Lathe - Diameter** | X represents diameter; physical radial travel uses half the X change. | Feed per revolution. |
 
-Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned. It synchronizes their X-axis interpretation and selects the appropriate default feed behavior: feed per minute for mills or feed per revolution for lathes. The program's G-code profile determines which authored words select those functions—for example, FANUC/ISO uses `G94/G95`, while DMG MORI turning uses `G98/G99`.
+An incorrect mode can change displayed geometry, CSS estimates, and timing. The selected G-code Profile determines which authored codes switch functions within that mode. For example, the built-in **FANUC / ISO** profile uses `G94/G95` for mill feed modes and `G98/G99` for lathe feed per minute and feed per revolution. Mill and lathe bindings are separate even when a code has different meanings in the two contexts.
 
-Choose **KAIJU G-code Profile > KAIJU Manage G-code Profiles** to duplicate a
-built-in profile or create a controller-specific profile. The editor provides
-separate mill and lathe keybinding tables; changing a binding updates the
-shared interpretation used by Sense, Vision, and Chronoblade. The built-in
-FANUC / ISO profile uses G94/G95 for mill feed modes and G98/G99 for lathe
-feed/min and feed/rev modes.
+## Automatic detection and selection precedence
 
+For an unassigned program, the default **Automatic** setting scans executable code outside comments and angle-bracket text. A confident inferred mode appears with **(Auto)** in the status bar.
 
-## What Automatic mode looks for
-
-| Likely machine | Evidence |
+| Likely mode | Strong evidence |
 | --- | --- |
-| Lathe | CSS `G96`/`G97`, `G50 S...`, turning cycles `G71`, `G72`, `G75`, or `G76`, diameter/radius programming `G07`/`G08`, U/W incremental moves, or a four-digit tool call such as `T0101`. `G08` specifically selects Lathe (Radius). |
-| Mill | Tool-length commands `G43`/`G49`, or a combination of milling canned cycles `G81`-`G89`, `M06`, and Y-axis motion. |
+| Lathe | CSS `G96/G97`, `G50 S...`, turning cycles `G71`, `G72`, `G75`, or `G76`, diameter/radius programming `G07/G08`, U/W moves, or a four-digit tool call such as `T0101`. `G08` selects Lathe - Radius. |
+| Mill | Tool-length commands `G43/G49`, or a combination of milling canned cycles `G81`–`G89`, `M06`, and Y-axis motion. |
 
-The detector is intentionally conservative: repeated weak clues do not add up
-on their own. If the program is ambiguous, KAIJU keeps the Lathe (Diameter)
-fallback instead of guessing. Automatic mode is a convenience, not a controller
-identification system.
+Repeated weak clues do not add up on their own. An ambiguous program retains the Lathe - Diameter fallback. For Machine Mode, the selection order is:
 
-## Which choice wins 
-
-1. A Machine Mode saved for the active program.
-2. An explicit `kaijuNC.chronoblade.machineMode` Setting.
+1. A mode saved for the active program.
+2. An explicit `kaijuNC.chronoblade.machineMode` setting.
 3. Automatic inference for an unassigned program.
-4. Lathe (Diameter) when automatic inference is inconclusive.
+4. Lathe - Diameter when inference is inconclusive.
 
-Choose a G-code profile the same way. FANUC / ISO and DMG MORI are included;
-**KAIJU Manage G-code Profiles** lets you create a custom declarative binding
-table for another controller.
+## G-code profiles
 
-Machine Mode and the selected profile affect how KAIJU presents and interprets
-relevant motion semantics. They do not replace the controller manual or verify
-that a program is safe for a particular machine.
+**KAIJU G-code Profile** lists the built-in **FANUC / ISO** and **DMG MORI** profiles alongside saved custom profiles. A program's selected profile takes priority over the fallback profile setting. The profile defines which G words activate functions such as feed modes, spindle modes, interpolation, and limits for Mill and Lathe separately.
+
+**KAIJU Manage G-code Profiles** opens the profile editor. **Duplicate** starts from a built-in profile; **New** starts with unbound operations. A blank binding leaves a function unbound. Assigning a G word to one function clears another function's use of that word in the same machine table, avoiding conflicting meanings. Some operations also require a companion address word, such as `G50 S` for an RPM limit.
+
+**Save profiles** stores changed custom profiles for later use. **Use for this program** selects the currently displayed built-in or saved custom profile for the active NC program. Built-in profiles are read-only, so a controller-specific variation starts as a duplicate or new profile.
+
+## Interpretation limits
+
+Automatic detection is a conservative starting point, especially for programs with few distinctive words. A custom binding changes how KAIJU interprets and presents a code; it does not establish that the controller accepts that code or that the finished toolpath is safe. For a visual comparison of mill and lathe behavior, see the [Vision and Chronoblade](../examples/04-vision-and-chronoblade.nc) and [C-axis and polar](../examples/05-c-axis-and-polar.nc) examples.

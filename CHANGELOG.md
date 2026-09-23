@@ -4,6 +4,22 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.1]
 
+- Gave Live report updates their own sections in both Vision and Chronoblade Codex guides.
+
+- Aligned KAIJU Codex guide openings, navigation, and tool descriptions; expanded the Reconstructor and Machine Mode guides with workflows, settings, and interpretation limits.
+
+- Expanded the Sense Codex guide with motion and macro hovers, label navigation, tool markers, cursor modal status, settings, and analysis limits.
+
+- Expanded the Orphan Killer Codex guide with definition and reference rules, Alias handling, ignored ranges, and report interpretation limits.
+
+- Expanded the Syntax Codex page with token families, default colours, address expressions, comment scopes, and the distinction between highlighting and validation.
+
+- Revised KAIJU Codex explanations to describe feature behavior while retaining guided quick starts and examples.
+
+- Expanded the Vision Codex guide with Trace, playback, Dual View, tool colours, the marker legend, visibility filters, macro inputs, offsets, and rotary inspection workflows.
+
+- Replaced the combined Codex selection page with a dedicated Rangefinder guide.
+
 - Added a clean three-tool plate showcase example with macro-driven facing and circular-groove loops for Vision.
 
 - Added a dedicated KAIJU Codex guide for Orphan Killer.
