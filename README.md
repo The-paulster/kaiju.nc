@@ -59,7 +59,7 @@ A loop may contain one motion line and produce dozens of passes. Vision shows th
 </p>
 
 <p align="center">
-  <img src="examples/complex_vision_example.png" alt="Vision Demo 3" width="1000">
+  <img src="examples/Complex_vision_example.png" alt="Vision toolpath example" width="1000">
 </p>
 
 ## Macro Hunter
@@ -75,11 +75,11 @@ Pick a line inside a loop and see every time it executes, with the macro values 
 Hover over a macro or motion line to see its value and context where you’re working. The cursor status follows the active modal state, so you can check what applies at a particular line without tracing back through the file yourself.
 
 <p align="center">
-  <img src="examples/kaiju_sense_example.png" alt="Vision Demo 1" width="300">
+  <img src="examples/kaiju_sense_example.png" alt="KAIJU Sense motion hover" width="300">
 </p>
 
 <p align="center">
-  <img src="examples/kaiju_sense_example_2.png" alt="Vision Demo 2" width="300">
+  <img src="examples/kaiju_sense_example_2.png" alt="KAIJU Sense macro hover" width="300">
 </p>
 
 ## Supported File Types
