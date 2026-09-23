@@ -8,6 +8,29 @@ confident result in the status bar with **(Auto)**. Choose Mill, Lathe (Radius),
 or Lathe (Diameter) from the editor context menu whenever you know the machine;
 KAIJU saves that selection for that program.
 
+## KAIJU Machine Mode
+
+`KAIJU Machine Mode` sets the active document's machine profile so KAIJU.NC can interpret motion using the correct defaults.
+
+Choose the machine mode from the editor's right-click menu:
+
+* Mill
+* Lathe - Radius
+* Lathe - Diameter
+
+Use the adjacent `KAIJU G-code Profile` submenu to choose the controller word
+bindings saved for that program, such as `FANUC / ISO` or `DMG MORI`.
+
+Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned. It synchronizes their X-axis interpretation and selects the appropriate default feed behavior: feed per minute for mills or feed per revolution for lathes. The program's G-code profile determines which authored words select those functions—for example, FANUC/ISO uses `G94/G95`, while DMG MORI turning uses `G98/G99`.
+
+Choose **KAIJU G-code Profile > KAIJU Manage G-code Profiles** to duplicate a
+built-in profile or create a controller-specific profile. The editor provides
+separate mill and lathe keybinding tables; changing a binding updates the
+shared interpretation used by Sense, Vision, and Chronoblade. The built-in
+FANUC / ISO profile uses G94/G95 for mill feed modes and G98/G99 for lathe
+feed/min and feed/rev modes.
+
+
 ## What Automatic mode looks for
 
 | Likely machine | Evidence |
@@ -20,7 +43,7 @@ on their own. If the program is ambiguous, KAIJU keeps the Lathe (Diameter)
 fallback instead of guessing. Automatic mode is a convenience, not a controller
 identification system.
 
-## Which choice wins
+## Which choice wins 
 
 1. A Machine Mode saved for the active program.
 2. An explicit `kaijuNC.chronoblade.machineMode` Setting.

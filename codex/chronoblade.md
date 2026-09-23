@@ -19,3 +19,23 @@ counts prepared execution occurrences; As written counts each authored line.
 
 Unresolved values, controller behaviour, acceleration, tool load, and shop
 process time can all make actual time differ from the estimate.
+
+## KAIJU Chronoblade
+
+`KAIJU Chronoblade` cuts through wasted motion and expose the inefficiences hiding inside large NC programs.
+
+Chronoblade opens a cycle-time analysis panel where it breaks down machine motion to help identify where cycle time is used.
+
+* Command: `KAIJU Chronoblade`
+* Shortcut: `Ctrl+Alt+C`
+
+Chronoblade reports:
+
+* Motion timing
+* Tool-change timing
+* Start and end positions
+* Feed and spindle state
+* RPM range during CSS cutting
+* Estimated cycle contribution by operation
+
+For CSS cutting, KAIJU.NC samples along the motion path so RPM clamp conditions from `G50` and diameter changes are reflected in the estimated timing output.

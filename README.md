@@ -2,35 +2,42 @@
 
 # KAIJU.NC
 
-KAIJU.NC is the world’s first kaiju-themed Visual Studio Code extension for numerical control programming. 
+KAIJU.NC is the world’s first kaiju-themed Visual Studio Code extension for numerical control programming.
+Built for Fanuc-style G-code and macro-heavy machining, KAIJU.NC turns Visual Studio Code into a command center for G-code: understand the program, hunt down problems, dissect its motion, and push the machine to its limits.
+Syntax highlighting, diagnostics, visualization, motion analysis, and macro inspection tools, all purpose-built for engineering beast-mode programs.
 
-Developed for Fanuc-style G-code and macro-heavy machining, it turns Visual Studio Code into a command center for machining development. Syntax highlighting, diagnostics, visualization, motion analysis, and macro inspection tools designed for engineering beast mode programs.
+<p align="center">
+  <img src="examples/vision_demo.gif" alt="KAIJU Vision Demo" width="1000">
+</p>
 
-## KAIJU Machine Mode
+# KAIJU Philosophy
 
-`KAIJU Machine Mode` sets the active document's machine profile so KAIJU.NC can interpret motion using the correct defaults.
+KAIJU.NC is built for creating and finishing NC programs by hand, with a focus on parametric programs with loops and macro variables. It grew out of work where CAM software was a poor fit and I needed a better way to edit, inspect, and check the code as it changed. I couldn’t find a tool that brought those needs together, so I built KAIJU.NC. 
 
-Choose the machine mode from the editor's right-click menu:
+KAIJU.NC isn’t intended as a replacement for CAM. Instead by exposing loops, macro values, and toolpaths to the user, it makes errors easier to find and programs easier to optimize when working directly with NC code.
 
-* Mill
-* Lathe - Radius
-* Lathe - Diameter
+# KAIJU Tools
 
-Use the adjacent `KAIJU G-code Profile` submenu to choose the controller word
-bindings saved for that program, such as `FANUC / ISO` or `DMG MORI`.
+- Syntax and editor colours
+- Vision — toolpath visualization
+- Chronoblade — cycle time estimates
+- Decomposition — program flow inspection
+- Sense — contextual data and tooltips
+- Macro Hunter — macro value tracking
+- Alias — named macro variables
+- Orphan Killer — unresolved and unused macros
+- Alert — diagnostics and error detection
+- Reconstructor — automatic formatting
+- Rangefinder — selection tool
+- Machine Mode and G-code Profiles - tailor KAIJU.NC to your machine
 
-Changing the mode keeps KAIJU Vision, KAIJU Sense, and KAIJU Chronoblade aligned. It synchronizes their X-axis interpretation and selects the appropriate default feed behavior: feed per minute for mills or feed per revolution for lathes. The program's G-code profile determines which authored words select those functions—for example, FANUC/ISO uses `G94/G95`, while DMG MORI turning uses `G98/G99`.
+For in-depth explanations of all the tools, including example code, open KAIJU Codex from the editor context menu or the Command Palette.
 
-Choose **KAIJU G-code Profile > KAIJU Manage G-code Profiles** to duplicate a
-built-in profile or create a controller-specific profile. The editor provides
-separate mill and lathe keybinding tables; changing a binding updates the
-shared interpretation used by Sense, Vision, and Chronoblade. The built-in
-FANUC / ISO profile uses G94/G95 for mill feed modes and G98/G99 for lathe
-feed/min and feed/rev modes.
+Some highlights as follows:
 
-## KAIJU Highlighting
+## Syntax Colouring
 
-KAIJU.NC highlights common CNC program elements to help you lock on to your target:
+KAIJU.NC highlights common program elements
 
 - Program numbers, such as `O1000`
 - Block numbers, such as `N100`
@@ -41,311 +48,44 @@ KAIJU.NC highlights common CNC program elements to help you lock on to your targ
 - Math and comparison operators, including `EQ`, `NE`, `GT`, `GE`, `LT`, `LE`, `SIN`, `COS`, `SQRT`, `ABS`, `ROUND`, `FIX`, `FUP`
 - Gutter markers that show which tool is active in each section of the program
 
-### Comment colour variants
-
-KAIJU.NC recognises these comment forms, each with its own syntax scope and
-colour treatment:
-
-- `(ROUGHING PASS)` — normal parenthesis comment; default `#67825E`
-- `(- SECTION COMMENT)` — section/title comment; default bold `#F2AD0C`
-- `(/ META COMMENT)` — meta comment; default `#95B8BF`
-- `(= VALUE COMMENT)` — equals comment; default `#C4F20C`
-- `<MAIN TITLE>` — angle-bracket main-title comment; default bold `#D0FF00`
-
-Within a parenthesis comment, `[SUBCOMMENT]` and `{VALUE}` are also recognised
-as nested comment forms.
-
-### In-Editor Example
-
 <img src="examples/highlight_example.png" alt="KAIJU.NC syntax highlighting example" width="600">
 
-## KAIJU Alias
+## Vision
 
-`KAIJU Alias` makes macro-heavy programs easier to read by temporarily converting numbered macro variables into readable aliases.
+A loop may contain one motion line and produce dozens of passes. Vision shows those executed paths, with tool colours, direction, depth, and motion details you can inspect. Switch to Dual View or step through playback to see how the shape builds.
 
-* Command: `KAIJU Alias`
-* Shortcut: `Ctrl+Alt+A`
+<p align="center">
+  <img src="examples/kaiju_vision_example.png" alt="Vision Demo 2" width="1000">
+</p>
 
-The command scans setup comments before the first executable `G` or `M` code.
+<p align="center">
+  <img src="examples/complex_vision_example.png" alt="Vision Demo 3" width="1000">
+</p>
 
-Standalone alias notes:
+## Macro Hunter
 
-```gcode
-(#140 = FINISH ALLOWANCE DIA)
-(#141 = ROUGHING FEED)
-```
+Pick a line inside a loop and see every time it executes, with the macro values resolved for each occurrence. Follow one variable from pass to pass, or pin the line while you investigate the rest of the program.
 
-Inline assignment comments:
+<p align="center">
+  <img src="examples/macrohunter_demo.gif" alt="Macro Hunter Demo" width="1000">
+</p>
 
-```gcode
-#140 = 0.20 (FINISH ALLOWANCE DIA)
-#141 = 0.30 (ROUGHING FEED)
-```
+## Sense
 
-When activated, KAIJU Alias toggles numeric macros into readable names:
+Hover over a macro or motion line to see its value and context where you’re working. The cursor status follows the active modal state, so you can check what applies at a particular line without tracing back through the file yourself.
 
-Before
-```gcode
-G1 X[10.00 + #140] F#141
+<p align="center">
+  <img src="examples/kaiju_sense_example.png" alt="Vision Demo 1" width="300">
+</p>
 
-```
-After
-```gcode
-G1 X[10.00 + #FINISH_ALLOWANCE_DIA] F#ROUGHING_FEED
-```
-
-Run the command again to restore the original numeric macros.
-
-Alias names are generated automatically by converting comment text into lowercase underscore-separated names.
-
-
-## KAIJU Reconstructor
-
-
-`KAIJU Reconstructor` is the NC formatting and cleanup command for KAIJU.NC. It normalizes spacing, repairs common layout issues, formats decimal values, and can optionally normalize tool codes.
-
-Named alias macros such as `#finish_allowance` are preserved during formatting.
-
-* Command: `KAIJU Reconstructor`
-* Shortcut: `Ctrl+Alt+R`
-
-Before:
-```gcode
-g1x1.z-2.5f.2
-T9
-T606
-```
-After:
-```gcode
-G01 X1.000 Z-2.500 F0.200
-T09
-T0606
-```
-
-## KAIJU Rangefinder
-
-`KAIJU Rangefinder` quickly selects useful sections of the active NC program without changing the code.
-
-* Command: `KAIJU Rangefinder`
-* Shortcut: `Ctrl+Alt+F` / `Cmd+Alt+F`
-
-Rangefinder can select:
-
-* The current tool range
-* A tool range chosen from the program
-* The span between two `N` labels
-* The current `N` block
-
-## KAIJU Vision
-
-`KAIJU Vision` opens a live 2D toolpath preview for the active NC program or selected section.
-
-Vision projects sampled `G0`, `G1`, `G2`, and `G3` motion onto `X-Z`, `X-Y`, or `Z-Y` planes with direction-aware toolpaths, endpoint labeling, and machine-position visualization.
-
-* Command: `KAIJU Vision`
-* Shortcut: `Ctrl+Alt+V`
-
-Vision walks the active document before drawing so that modal state, macro assignments, feeds, and arc context are resolved before preview generation begins.
-
-### In-Editor Example
-
-<img src="examples/kaiju_vision_example.png" alt="KAIJU vision example" width="1000">
-
-## KAIJU Orphan Killer
-
-`KAIJU Orphan Killer` hunts down and kills orphaned macro variables and unresolved macro usage inside the active NC document.
-
-It helps expose hidden mistakes, dead setup values, and missing variables before they turn into production issues.
-
-* Command: `KAIJU Orphan Killer`
-* Shortcut: `Ctrl+Alt+O`
-
-The inspection reports:
-
-* Undefined macro usage
-* Unused macro definitions
-
-Example:
-
-```gcode id="50zy1w"
-#100 = 1.0
-#101 = 2.0
-
-G1 X#100 Z#150
-```
-
-KAIJU Orphan Killer would report:
-
-```text id="d4k8cl"
-Undefined macro usage:
-#150
-
-Unused macro definitions:
-#101
-```
-
-Macro-like text inside comments and protected angle-bracket ranges is ignored automatically. Configured macro ranges can also be excluded from inspection with `kaijuNC.orphanKiller.ignoredMacros`.
-
-The report's optional per-program **Live** control refreshes the open findings shortly after you edit that program. Leave it off to keep a manual snapshot and use **Refresh** when wanted.
-
-### In-Editor Example
-
-<img src="examples/orphan_killer_example.png" alt="KAIJU Orphan Killer display example" width="400">
-
-## KAIJU Decomposition
-
-`KAIJU Decomposition` tears apart macro-heavy NC programs and generates a temporary flattened inspection copy for analysis.
-
-Built to dissect dense production code, it tracks macro assignments, resolves expressions, and strips away resolved macro logic to expose the underlying motion path more clearly.
-
-* Command: `KAIJU Decomposition`
-* Shortcut: `Ctrl+Alt+D`
-
-The generated output is automatically formatted with KAIJU Reconstructor and includes `KAIJU flow` comments where jumps, conditionals, and loops affected the decomposed path.
-
-When required values cannot be resolved automatically, KAIJU prompts for manual numeric input and records those assumptions in the generated file.
-
-Decomposed output can also be inspected directly with `KAIJU Vision`, making it easier to visualize complex macro-generated toolpaths.
-
-## KAIJU Sense
-
-`KAIJU Sense` is the quick diagnostic system for KAIJU.NC.
-
-Hover over explicit `G0`, `G1`, `G2`, and `G3` moves to inspect motion geometry, cutting data, timing estimates, spindle state, and modal information directly inside the editor.
-
-Kaiju Sense exposes motion behavior, macro logic, and assists identifying weaknesses in your NC code.
-
-Sense can display:
-
-* Start and end coordinates
-* Axis deltas
-* Path length
-* Linear move angle
-* Arc direction, radius, sweep, center, and endpoint deltas
-* Estimated motion time
-* Feed and spindle state
-* RPM range during CSS cutting
-
-Sense also includes macro-assist features for advanced NC workflows:
-
-* Hover lookup for macro variables
-* Alias-aware macro inspection
-* Bracket expression highlighting
-* Address-aware macro expression parsing
-* Hover details and amber line highlighting for `GOTO` label references
-* Ctrl+Click navigation from a `GOTO` reference to its matching `N` label
-
-KAIJU Sense also provides a cursor-state status bar readout showing the active modal codes at the current line, such as motion mode and coolant state. It can display descriptive labels like `G00 (Rapid)` and `M08 (Coolant on)`, or compact codes such as `G00 M08`.
-
-Example:
-
-```gcode id="6dqv4n"
-#FINISH_ALLOWANCE_DIA = 0.20
-
-G1 X[#FINISH_ALLOWANCE_DIA + 1.00]
-Z[#FINISH_Z - 0.50]
-F#ROUGHING_FEED
-```
-KAIJU Sense walks the active document to resolve modal state, spindle behavior, feed mode, CSS conditions, and previous machine position before generating hover analysis.
-
-### In-Editor Example 
-
-#### G01
-<img src="examples/kaiju_sense_example.png" alt="KAIJU.NC sense G01 example" width="350">
-
-#### Macro
-<img src="examples/kaiju_sense_example_2.png" alt="KAIJU.NC sense macro example" width="350">
-
-## KAIJU Chronoblade
-
-`KAIJU Chronoblade` cuts through wasted motion and expose the inefficiences hiding inside large NC programs.
-
-Chronoblade opens a cycle-time analysis panel where it breaks down machine motion to help identify where cycle time is used.
-
-* Command: `KAIJU Chronoblade`
-* Shortcut: `Ctrl+Alt+C`
-
-Chronoblade reports:
-
-* Motion timing
-* Tool-change timing
-* Start and end positions
-* Feed and spindle state
-* RPM range during CSS cutting
-* Estimated cycle contribution by operation
-
-For CSS cutting, KAIJU.NC samples along the motion path so RPM clamp conditions from `G50` and diameter changes are reflected in the estimated timing output.
-
-### In-Editor Example
-
-<img src="examples/kaiju_chronoblade_example.png" alt="KAIJU.NC Chronoblade example" width="1000">
-
-## KAIJU Alert
-
-KAIJU.NC includes live diagnostics for common NC patterns that can lead to ambiguous, misleading, or dangerous code.
-
-The inspection system can detect:
-
-* Missing macro-expression brackets
-* Misplaced address words inside expressions
-* Suspicious motion values without decimal points
-* `GOTO` targets without a matching `N` label
-* Duplicate `N` sequence numbers
-* Out-of-order `N` sequence numbers
-* Mixed KAIJU Alias mode, where aliases and their original numbered macros are both used
-* Undefined KAIJU Alias names
-* Nested or separate parenthesis-comment pairs
-
-Every KAIJU Alert check can be toggled on or off individually in the KAIJU.NC settings.
-
-Example:
-
-```gcode id="hdtlyu"
-G1 X[#PART_OD + #FINISH_ALLOWANCE
-```
-
-```gcode id="2njr1h"
-G01 U4.000 [F#121 * 0.600]
-```
-
-Corrected:
-
-```gcode id="8qd9q9"
-G01 U4.000 F[#121 * 0.600]
-```
-
-Before:
-
-```gcode id="y85r7x"
-G1 X100 Z-20 F5
-```
-
-After:
-
-```gcode id="61g7g8"
-G1 X100. Z-20. F5.
-```
+<p align="center">
+  <img src="examples/kaiju_sense_example_2.png" alt="Vision Demo 2" width="300">
+</p>
 
 ## Supported File Types
 
 Supports common NC and G-code file extensions
 .nc, .cnc, .tap, .gcode, .gco, .gc, .ngc, .ncc, .eia, .iso, .min, .mpf, .spf, .dnc, .sub
-
-## Example Files
-
-The [examples guide](examples/README.md) links six commented walkthroughs:
-
-You can also open them directly from the **Examples** section in **KAIJU Codex**.
-
-- [Reconstructor](examples/01-reconstructor.nc): deliberately untidy input for formatting, decimals, tool numbers, and loop indentation.
-- [Diagnostics and Orphan Killer](examples/02-diagnostics-and-orphan-killer.nc): intentional errors and unused/undefined macros, with suggested fixes.
-- [Syntax gallery](examples/03-syntax-gallery.nc): every current grammar token family, including comments, addresses, expressions, and control flow.
-- [Vision and Chronoblade](examples/04-vision-and-chronoblade.nc): a rounded plate with three depth passes and a second tool, for path inspection and timing comparisons.
-- [C axis and polar interpolation](examples/05-c-axis-and-polar.nc): full turns, an expanding spiral, retained angles, incremental rotation, and a polar face rectangle.
-- [Macros, Sense, Macro Hunter, and Alias](examples/06-macros-sense-hunter-and-alias.nc): a correctly arranged macro header, readable names, hover histories, and twelve loop occurrences to inspect in Macro Hunter.
-
-Each file explains which commands and profile to use and what to look for.
-These are editor and inspection examples, not machine-ready programs.
 
 ## Important Safety Note
 

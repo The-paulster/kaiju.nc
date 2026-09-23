@@ -2,6 +2,16 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.6.1]
+
+- Added a clean three-tool plate showcase example with macro-driven facing and circular-groove loops for Vision.
+
+- Added a dedicated KAIJU Codex guide for Orphan Killer.
+
+- Added a dedicated KAIJU Codex guide for Macro Hunter.
+
+- Massive readme updates
+
 ## [0.6.0]
 
 - Added a dedicated KAIJU Codex page for `IF` / `THEN` / `ELSE` / `ENDIF` branches, including nested and inline examples.

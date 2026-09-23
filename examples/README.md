@@ -12,6 +12,7 @@ tour. These are demonstrations for the extension, not machine-ready programs.
 | [04-vision-and-chronoblade.nc](04-vision-and-chronoblade.nc) | Mill, FANUC / ISO; KAIJU Vision and KAIJU Chronoblade | Three rounded-rectangle passes and a central circle; compare Trace with As written, tool colours, depth, dwell, and timing assumptions. |
 | [05-c-axis-and-polar.nc](05-c-axis-and-polar.nc) | Lathe Diameter, FANUC / ISO; KAIJU Vision in X-Y | Physical C circles and a spiral, followed by a straight-sided polar rectangle. Physical rotary time remains unknown. |
 | [06-macros-sense-hunter-and-alias.nc](06-macros-sense-hunter-and-alias.nc) | KAIJU Alias, Sense hovers, and KAIJU Macro Hunter | Two supported header styles, readable alias toggling, definition navigation, and twelve loop occurrences with known macro values to inspect and pin. |
+| [07-showcase.nc](07-showcase.nc) | Mill, FANUC / ISO; KAIJU Vision with Trace and Play | A clean three-tool plate program: seven macro-driven facing lanes, three expanding circular grooves, and four corner spots. |
 
 For complete-program reports, clear any editor selection before opening the
 tool. Select the machine mode and G-code interpretation profile through KAIJU

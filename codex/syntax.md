@@ -16,6 +16,20 @@ check. Use [Alerts](alerts.md) for editor diagnostics.
   so a block is easier to read at a glance.
 - Program and N block numbers have their own presentation too.
 
+## Comment colour variants
+
+KAIJU.NC recognises these comment forms, each with its own syntax scope and
+colour treatment:
+
+- `(ROUGHING PASS)` — normal parenthesis comment; default `#67825E`
+- `(- SECTION COMMENT)` — section/title comment; default bold `#F2AD0C`
+- `(/ META COMMENT)` — meta comment; default `#95B8BF`
+- `(= VALUE COMMENT)` — equals comment; default `#C4F20C`
+- `<MAIN TITLE>` — angle-bracket main-title comment; default bold `#D0FF00`
+
+Within a parenthesis comment, `[SUBCOMMENT]` and `{VALUE}` are also recognised
+as nested comment forms.
+
 ## Comments
 
 Ordinary parenthesis comments are coloured as comments. KAIJU also recognizes

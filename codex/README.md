@@ -12,6 +12,7 @@ Click a program to open it in the editor. Each example includes comments explain
 - [Vision and Chronoblade](../examples/04-vision-and-chronoblade.nc) - Inspect a rounded plate, repeated depth passes, and cycle-time estimates.
 - [C axis and polar interpolation](../examples/05-c-axis-and-polar.nc) - Inspect full turns, a spiral, retained angles, and a polar face path.
 - [Macros, Sense, Macro Hunter, and Alias](../examples/06-macros-sense-hunter-and-alias.nc) - Try readable macro names, hovers, and loop-occurrence histories.
+- [Showcase](../examples/07-showcase.nc) - View a complete three-tool plate program with changing macro loops in Vision Trace and Play.
 
 ## Tools
 
@@ -19,7 +20,9 @@ Click a program to open it in the editor. Each example includes comments explain
 - [Chronoblade — Cycle time estimator](chronoblade.md)
 - [Decomposition — Program flow inspector](decomposition.md)
 - [Sense — presents data and tooltips](sense.md)
+- [Macro Hunter — follow macro values through program execution](macro-hunter.md)
 - [Alias — present macro variables as named symbols](alias.md)
+- [Orphan Killer — find unresolved and unused macros](orphan-killer.md)
 - [Alerts — Diagnostics](alerts.md)
 - [Syntax and editor colours](syntax.md)
 - [Reconstructor — Automatic formatting](reconstructor.md)

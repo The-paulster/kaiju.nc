@@ -8,6 +8,7 @@ const TOPICS = Object.freeze({
 	conditionals: "conditionals.md",
 	decomposition: "decomposition.md",
 	machineMode: "machine-mode.md",
+	macroHunter: "macro-hunter.md",
 	reconstructor: "reconstructor.md",
 	sections: "sections.md",
 	sense: "sense.md",
