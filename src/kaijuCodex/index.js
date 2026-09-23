@@ -5,6 +5,7 @@ const TOPICS = Object.freeze({
 	alerts: "alerts.md",
 	alias: "alias.md",
 	chronoblade: "chronoblade.md",
+	conditionals: "conditionals.md",
 	decomposition: "decomposition.md",
 	machineMode: "machine-mode.md",
 	reconstructor: "reconstructor.md",
