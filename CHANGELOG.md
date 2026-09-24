@@ -4,6 +4,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.1]
 
+- Added the Macro Hunter view icon for when the view is moved out of Explorer.
+
 - Gave Live report updates their own sections in both Vision and Chronoblade Codex guides.
 
 - Aligned KAIJU Codex guide openings, navigation, and tool descriptions; expanded the Reconstructor and Machine Mode guides with workflows, settings, and interpretation limits.

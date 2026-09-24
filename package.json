@@ -45,7 +45,6 @@
     "cycle-time",
     "cycle-time-estimator",
     "vision",
-    "chronoblade",
     "kakou",
     "加工",
     "マシニング"
@@ -63,9 +62,6 @@
     "Linters"
   ],
   "main": "./src/extension.js",
-  "activationEvents": [
-    "onView:kaijuNC.macroHistory"
-  ],
   "contributes": {
     "languages": [
       {
@@ -1463,7 +1459,8 @@
         {
           "id": "kaijuNC.macroHistory",
           "name": "Macro Hunter",
-          "type": "webview"
+          "type": "webview",
+          "icon": "$(symbol-variable)"
         }
       ]
     }
