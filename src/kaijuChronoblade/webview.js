@@ -643,6 +643,10 @@ function renderChronobladeHtml(options, result) {
 			color: #4A90E2;
 		}
 
+		.position-cell .axis-c {
+			color: #C678DD;
+		}
+
 		.position-cell .axis-letter {
 			font-weight: 700;
 		}
@@ -871,7 +875,7 @@ function renderChronobladeHtml(options, result) {
 
 		function renderVirtualPositionCell(positionText) {
 			if (!positionText) return '-';
-			return escapeHtml(formatVirtualSignificant(String(positionText))).replace(/([XYZ])([^XYZ\\s]+)/gi, (_match, axis, value) => '<span class="coord axis-' + axis.toLowerCase() + '"><span class="axis-letter">' + axis.toUpperCase() + '</span>' + value + '</span>');
+			return escapeHtml(formatVirtualSignificant(String(positionText))).replace(/([XYZC])([^XYZC\\s]+)/gi, (_match, axis, value) => '<span class="coord axis-' + axis.toLowerCase() + '"><span class="axis-letter">' + axis.toUpperCase() + '</span>' + value + '</span>');
 		}
 
 		function formatVirtualDistance(row) {
@@ -1023,7 +1027,7 @@ function renderPositionCell(positionText) {
 
 	const text = String(positionText);
 	const parts = [];
-	const coordinateRegex = /([XYZ])([^XYZ\s]+)/gi;
+	const coordinateRegex = /([XYZC])([^XYZC\s]+)/gi;
 	let lastIndex = 0;
 	let match;
 

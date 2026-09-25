@@ -74,6 +74,9 @@ Large programs therefore preserve scrolling, N-label collapse controls,
 accumulated totals, and display toggles without creating a browser node for
 every motion.
 
+Position cells colour X, Y, Z, and C coordinates to match the editor and Vision;
+C uses purple when it appears in the shared motion result.
+
 ## Connections
 
 - Consumes `MetaMotionEngine` analysis and human-readable row data.

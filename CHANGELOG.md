@@ -4,6 +4,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.2]
 
+- Coloured C-axis coordinates purple in Chronoblade position cells, matching Vision and editor syntax highlighting.
+
 - Both built-in lathe profiles now default C-axis mode to `M45`/`M46`. Sense shows the active mode until `M46`; that command resets KAIJU's shared tracked C position to `0.000` for subsequent Sense hovers, Chronoblade estimates, and Vision geometry and playback.
 
 ## [0.6.1]
