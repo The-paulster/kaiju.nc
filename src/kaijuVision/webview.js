@@ -681,6 +681,7 @@ function renderVisionHtml(document, mode, options, result) {
 		: {};
 	const payload = {
 		rows: result.rows,
+		positionEvents: result.positionEvents || [],
 		options,
 		rangeText,
 		sourceName: document.fileName || document.uri.toString(),
@@ -1726,7 +1727,12 @@ function renderVisionHtml(document, mode, options, result) {
 				rows: [],
 				cycles: [],
 				toolChanges: [],
-				events: []
+				events: [],
+				positionEvents: (data.positionEvents || []).map(event => ({
+					executionIndex: event.executionIndex,
+					projectedPoint: project(event.point || {}, plane),
+					position: event.position
+				}))
 			};
 
 			for (const row of data.rows) {
@@ -3705,7 +3711,7 @@ function renderVisionHtml(document, mode, options, result) {
 		function getPlaybackProjectionIndex(projected) {
 			let index = playbackProjectionIndexes.get(projected);
 			if (index) return index;
-			const candidates = [...projected.rows, ...projected.cycles, ...projected.toolChanges, ...projected.events]
+			const candidates = [...(projected.positionEvents || []), ...projected.rows, ...projected.cycles, ...projected.toolChanges, ...projected.events]
 				.filter(row => Number.isFinite(row.executionIndex)).sort((a, b) => a.executionIndex - b.executionIndex);
 			let point, position;
 			const positions = candidates.map(row => {

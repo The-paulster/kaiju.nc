@@ -81,13 +81,16 @@ test('Vision playback lookup matches execution order during forward and backward
   const api = helpers(['getPlaybackProjectionIndex', 'getPlaybackLocation', 'getCurrentPlaybackDot', 'getCurrentPlaybackPosition'], {
     playback, playbackProjectionIndexes: new WeakMap(), getPlaybackDotColor: () => 'yellow'
   });
-  const projected = { rows: [2, 8].map(i => ({ executionIndex: i, projectedEnd: { x: i, y: 0 }, end: { x: i, c: 90 } })),
-    cycles: [], events: [{ executionIndex: 5, projectedPoint: { x: 5, y: 1 }, position: { x: 5, c: 90 } }], toolChanges: [] };
-  for (const cursor of [0, 2, 3, 5, 10, 3, 0, 8]) {
+  const projected = { rows: [2, 8].map(i => ({ executionIndex: i, projectedEnd: { x: i, y: 0 }, end: { x: i, c: i >= 8 ? 0 : 90 } })),
+    cycles: [], events: [{ executionIndex: 5, projectedPoint: { x: 5, y: 1 }, position: { x: 5, c: 90 } }],
+    positionEvents: [{ executionIndex: 6, projectedPoint: { x: 6, y: 0 }, position: { x: 5, c: 0 } }], toolChanges: [] };
+  for (const cursor of [0, 2, 3, 5, 6, 7, 10, 3, 0, 8]) {
     playback.cursor = cursor;
-    const expected = cursor >= 8 ? 8 : cursor >= 5 ? 5 : cursor >= 2 ? 2 : undefined;
-    assert.equal(api.getCurrentPlaybackPosition(projected)?.x, expected);
-    assert.equal(api.getCurrentPlaybackDot(projected)?.point.x, expected);
+    const expectedPoint = cursor >= 8 ? 8 : cursor >= 6 ? 6 : cursor >= 5 ? 5 : cursor >= 2 ? 2 : undefined;
+    const expectedX = cursor >= 8 ? 8 : cursor >= 5 ? 5 : cursor >= 2 ? 2 : undefined;
+    assert.equal(api.getCurrentPlaybackPosition(projected)?.x, expectedX);
+    assert.equal(api.getCurrentPlaybackPosition(projected)?.c, cursor >= 6 ? 0 : expectedX === undefined ? undefined : 90);
+    assert.equal(api.getCurrentPlaybackDot(projected)?.point.x, expectedPoint);
   }
   assert.equal(api.getPlaybackProjectionIndex(projected), api.getPlaybackProjectionIndex(projected));
 });

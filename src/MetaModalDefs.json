@@ -33,6 +33,7 @@
   } },
   { "key": "plane", "order": 70, "letter": "G", "codes": {} },
   { "key": "polarInterpolation", "order": 75, "letter": "G", "codes": {} },
+  { "key": "cAxisMode", "order": 76, "letter": "M", "codes": {} },
   { "key": "cutterCompensation", "order": 80, "letter": "G", "codes": {
     "40": { "code": "G40", "millLabel": "Cutter comp off", "latheLabel": "Nose comp off" },
     "41": { "code": "G41", "millLabel": "Cutter comp left", "latheLabel": "Nose comp left" },

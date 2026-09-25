@@ -34,7 +34,9 @@ Each profile has independent **Mill bindings** and **Lathe bindings**. A row
 names a stable KAIJU function; its binding cell accepts `G98`, or `G50 S` when
 the operation requires and reads a companion `S` word. A blank cell means the
 function is unbound. Assigning a G word clears the previous function bound to
-that word in the same machine table. This prevents a source block from
+that word in the same machine table. C-axis mode on/off rows instead accept
+M words, with `M45`/`M46` bound in both built-in lathe profiles. Mill rows
+leave these operations unbound. This prevents a source block from
 acquiring two controller meanings.
 
 **Save profiles** writes reusable custom profiles to
@@ -72,6 +74,8 @@ directly.
 The built-in FANUC / ISO profile uses G94/G95 for mill feed/min and feed/rev,
 while its lathe table uses G98/G99. Those words remain independent of the mill
 table's G98/G99 canned-cycle return meanings.
+The `M45`/`M46` defaults are KAIJU interpretation defaults for the two built-in
+lathe profiles, not a claim that all FANUC-controlled machines use those M codes.
 
 ## Automatic inference
 

@@ -1,4 +1,4 @@
-// Role: map controller-specific G-code words to stable KAIJU motion/modal
+// Role: map controller-specific G/M words to stable KAIJU motion/modal
 // operations. Keep calculation and modal state updates in MetaMotionEngine.
 const G_CODE_OPERATIONS = Object.freeze({
 	MOTION_RAPID: "motion.rapid",
@@ -20,6 +20,8 @@ const G_CODE_OPERATIONS = Object.freeze({
 	CYCLE_RETURN_R: "cycle.returnR",
 	POLAR_INTERPOLATION_ENABLE: "interpolation.polarEnable",
 	POLAR_INTERPOLATION_DISABLE: "interpolation.polarDisable",
+	C_AXIS_ENABLE: "spindle.cAxisEnable",
+	C_AXIS_DISABLE: "spindle.cAxisDisable",
 	DWELL: "motion.dwell",
 	MACHINE_COORDINATE: "coordinate.machine",
 	COORDINATE_SETTING: "coordinate.setting"
@@ -44,6 +46,8 @@ const G_CODE_OPERATION_DEFINITIONS = Object.freeze({
 	[G_CODE_OPERATIONS.SPINDLE_RPM_LIMIT]: operationDefinition({ statusGroup: "speedLimit", label: "Spindle limit" }),
 	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: operationDefinition({ statusGroup: "polarInterpolation", label: "Polar interpolation on" }),
 	[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: operationDefinition({ label: "Polar interpolation off" }),
+	[G_CODE_OPERATIONS.C_AXIS_ENABLE]: operationDefinition({ wordLetter: "M", statusGroup: "cAxisMode", label: "C-axis mode on" }),
+	[G_CODE_OPERATIONS.C_AXIS_DISABLE]: operationDefinition({ wordLetter: "M", label: "C-axis mode off" }),
 	[G_CODE_OPERATIONS.DWELL]: operationDefinition(),
 	[G_CODE_OPERATIONS.MACHINE_COORDINATE]: operationDefinition(),
 	[G_CODE_OPERATIONS.COORDINATE_SETTING]: operationDefinition()
@@ -77,7 +81,7 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 	fanucIso: makeProfile({
 		id: "fanucIso",
 		label: "FANUC / ISO",
-		description: "Mill G94/G95 feed modes, lathe G98/G99 feed modes, mill G98/G99 canned-cycle return modes, and lathe G12.1/G13.1 polar interpolation.",
+		description: "Mill G94/G95 feed modes, lathe G98/G99 feed modes, mill G98/G99 canned-cycle return modes, lathe G12.1/G13.1 polar interpolation, and lathe M45/M46 C-axis mode.",
 		bindings: {
 			mill: {
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
@@ -93,14 +97,16 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 				[G_CODE_OPERATIONS.FEED_PER_MINUTE]: binding(98),
 				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99),
 				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: binding(12.1),
-				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: binding(13.1)
+				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: binding(13.1),
+				[G_CODE_OPERATIONS.C_AXIS_ENABLE]: binding(45, { letter: "M" }),
+				[G_CODE_OPERATIONS.C_AXIS_DISABLE]: binding(46, { letter: "M" })
 			}
 		}
 	}),
 	dmgMori: makeProfile({
 		id: "dmgMori",
 		label: "DMG MORI",
-		description: "DMG MORI turning G98/G99 feed modes with ISO mill feed/canned-cycle return modes and lathe G12.1/G13.1 polar interpolation.",
+		description: "DMG MORI turning G98/G99 feed modes with ISO mill feed/canned-cycle return modes, lathe G12.1/G13.1 polar interpolation, and lathe M45/M46 C-axis mode.",
 		bindings: {
 			mill: {
 				[G_CODE_OPERATIONS.DISTANCE_ABSOLUTE]: binding(90),
@@ -114,7 +120,9 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 				[G_CODE_OPERATIONS.FEED_PER_MINUTE]: binding(98),
 				[G_CODE_OPERATIONS.FEED_PER_REVOLUTION]: binding(99),
 				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE]: binding(12.1),
-				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: binding(13.1)
+				[G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE]: binding(13.1),
+				[G_CODE_OPERATIONS.C_AXIS_ENABLE]: binding(45, { letter: "M" }),
+				[G_CODE_OPERATIONS.C_AXIS_DISABLE]: binding(46, { letter: "M" })
 			}
 		}
 	})
@@ -125,13 +133,15 @@ let customGCodeDialectProfiles = Object.freeze({});
 
 function binding(code, options = {}) {
 	const numericCode = Number(code);
-	if (!Number.isFinite(numericCode)) throw new Error(`Invalid G-code binding: ${code}`);
+	const letter = String(options.letter || "G").toUpperCase();
+	if (!["G", "M"].includes(letter) || !Number.isFinite(numericCode)) throw new Error(`Invalid G/M-code binding: ${letter}${code}`);
 	const requiredWords = Array.isArray(options.requiredWords) ? options.requiredWords.map(normalizeLetter).sort() : [];
 	const argumentWord = options.argumentWord ? normalizeLetter(options.argumentWord) : undefined;
 	if (argumentWord && !requiredWords.includes(argumentWord)) {
-		throw new Error(`Binding G${numericCode} selects ${argumentWord}, but does not require it.`);
+		throw new Error(`Binding ${letter}${numericCode} selects ${argumentWord}, but does not require it.`);
 	}
 	return Object.freeze({
+		letter,
 		code: numericCode,
 		requiredWords: Object.freeze(requiredWords),
 		argumentWord
@@ -150,6 +160,9 @@ function makeBindingTable(...sources) {
 			if (candidate === null) {
 				table[operation] = null;
 				continue;
+			}
+			if ((candidate.letter || "G") !== (G_CODE_OPERATION_DEFINITIONS[operation].wordLetter || "G")) {
+				throw new Error(`${operation} requires a ${(G_CODE_OPERATION_DEFINITIONS[operation].wordLetter || "G")} word.`);
 			}
 
 			const triggerKey = getBindingTriggerKey(candidate);
@@ -255,7 +268,7 @@ function formatGCodeBinding(candidate, options = {}) {
 	if (options.padSingleDigit === true && Number.isInteger(candidate.code) && candidate.code >= 0 && candidate.code < 10) {
 		code = code.padStart(2, "0");
 	}
-	return `G${code}`;
+	return `${candidate.letter || "G"}${code}`;
 }
 
 function resolveGCodeOperations(words, options = {}) {
@@ -267,10 +280,11 @@ function resolveGCodeOperations(words, options = {}) {
 	const matches = [];
 
 	for (const word of words || []) {
-		if (word.letter !== "G" || !Number.isFinite(word.value)) continue;
+		if (!["G", "M"].includes(word.letter) || !Number.isFinite(word.value)) continue;
 
 		for (const [operation, candidate] of Object.entries(profile.bindings[mode])) {
 			if (!candidate) continue;
+			if ((candidate.letter || "G") !== word.letter) continue;
 			if (!sameCode(candidate.code, word.value)) continue;
 			if (!candidate.requiredWords.every(letter => hasFiniteWord(words, letter))) continue;
 
@@ -322,8 +336,8 @@ function normalizeLetter(value) {
 
 function getBindingTriggerKey(candidate) {
 	// A block can contain every companion word, so different companion
-	// requirements on the same G word would still be ambiguous at runtime.
-	return String(candidate.code);
+	// requirements on the same G/M word would still be ambiguous at runtime.
+	return `${candidate.letter || "G"}${candidate.code}`;
 }
 
 function validateProfiles(profiles) {

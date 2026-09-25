@@ -33,8 +33,9 @@ feature's setting directly to infer machine state.
 
 Controller words are inputs, not stable meanings. Use canonical operations and
 the active profile through `MetaGCodeDialect`. `resolveGCodeOperations(words,
-options)` interprets authored words; `getGCodeWordForOperation(operation,
-options)` supplies the profile spelling for presentation. A missing binding is
+options)` interprets authored G/M words; `getGCodeWordForOperation(operation,
+options)` supplies the profile spelling for presentation, including M words.
+A missing binding is
 `undefined`/`null`, not permission to fall back to an ISO word.
 
 Machine Mode owns custom-profile Settings and its editor. Its only Meta-facing

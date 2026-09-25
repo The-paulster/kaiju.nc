@@ -51,6 +51,10 @@ Once resolved, C is included in visible endpoint labels, merged-node summaries,
 and hover details, retaining its last value on subsequent linear moves.
 C coordinates in hovers and the playback readout use the editor's default
 C-axis purple (#C678DD).
+Both built-in lathe profiles interpret `M45` as C-axis engagement and `M46` as
+cancellation. After `M46`, Vision uses C0 for subsequent turning moves, labels,
+and details; playback updates its C readout at the `M46` block itself without
+drawing a move. `G13.1` cancels polar interpolation separately.
 The first C move assumes C0 if no previous angle is known. This inspection convention does not infer
 controller-specific shortest-path indexing, spindle engagement M codes, or
 rotary timing. G12.1 continues to interpret C as a virtual Cartesian coordinate.

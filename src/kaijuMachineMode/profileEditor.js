@@ -105,6 +105,7 @@ function serializeBindingTable(table) {
 	return Object.fromEntries(Object.keys(G_CODE_OPERATION_DEFINITIONS).map(operation => {
 		const binding = table && table[operation];
 		return [operation, binding ? {
+			letter: binding.letter || "G",
 			code: binding.code,
 			requiredWords: [...(binding.requiredWords || [])],
 			argumentWord: binding.argumentWord
@@ -170,7 +171,7 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 		<div class="profile-actions"><h2 id="profileHeading"></h2><button id="deleteProfile" type="button">Delete</button><button id="saveProfile" class="primary" type="button" disabled>Save profiles</button><button id="useProfile" class="primary" type="button">Use for this program</button></div>
 		<div class="field"><label for="profileName">Profile name</label><input id="profileName" maxlength="80" placeholder="My controller"></div>
 		<div class="field"><label for="profileDescription">Description</label><textarea id="profileDescription" maxlength="240" placeholder="Optional notes about this controller."></textarea></div>
-		<p class="key-help">Each row is one KAIJU function. Enter a G word such as <code>G98</code>; use <code>G50 S</code> when the function requires and reads an <code>S</code> companion word. Leave a cell blank to leave that function unbound. Reusing a G word in this table clears its previous binding.</p>
+		<p class="key-help">Each row is one KAIJU function. Enter a G word such as <code>G98</code>, or an M word such as <code>M45</code> for C-axis mode. Use <code>G50 S</code> when the function reads an <code>S</code> companion word. Leave a cell blank to leave that function unbound. Reusing a word in this table clears its previous binding.</p>
 		<div class="tabs"><button class="mode-tab primary" data-mode="mill" type="button">Mill bindings</button><button class="mode-tab" data-mode="lathe" type="button">Lathe bindings</button></div>
 		<div class="table-wrap"><table><thead><tr><th>Function</th><th>Binding</th></tr></thead><tbody id="bindingsBody"></tbody></table></div>
 	</section>
@@ -219,24 +220,26 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 		if (!profile) { bindingsBody.innerHTML = ''; return; }
 		bindingsBody.innerHTML = Object.entries(initial.operations).map(([operation, definition]) => {
 			const binding = profile.bindings[mode][operation];
-			const value = binding ? 'G' + formatCode(binding.code) + (binding.requiredWords && binding.requiredWords.length ? ' ' + binding.requiredWords.join(' ') : '') : '';
-			return '<tr><td><strong>' + escapeHtml(definition.label || operation) + '</strong><div class="operation-code">' + escapeHtml(operation) + '</div></td><td><input class="binding-input" data-operation="' + escapeAttribute(operation) + '" value="' + escapeAttribute(value) + '" placeholder="Unbound" title="G word, optionally followed by one companion letter"' + (editable ? '' : ' disabled') + '></td></tr>';
+			const letter = definition.wordLetter || 'G';
+			const value = binding ? (binding.letter || 'G') + formatCode(binding.code) + (binding.requiredWords && binding.requiredWords.length ? ' ' + binding.requiredWords.join(' ') : '') : '';
+			return '<tr><td><strong>' + escapeHtml(definition.label || operation) + '</strong><div class="operation-code">' + escapeHtml(operation) + '</div></td><td><input class="binding-input" data-operation="' + escapeAttribute(operation) + '" value="' + escapeAttribute(value) + '" placeholder="Unbound" title="' + letter + ' word, optionally followed by one companion letter"' + (editable ? '' : ' disabled') + '></td></tr>';
 		}).join('');
 	}
 	function formatCode(code) { return Number.isInteger(Number(code)) ? String(Number(code)) : String(code); }
-	function parseBinding(value) {
+	function parseBinding(value, operation) {
 		const text = String(value || '').trim();
 		if (!text) return null;
-		const match = /^G\\s*(\\d+(?:\\.\\d+)?)\\s*(?:([A-Z])\\s*)?$/i.exec(text);
-		if (!match) throw new Error('Use G98, G50 S, or leave the cell blank.');
-		const companion = match[2] ? match[2].toUpperCase() : undefined;
-		return { code: Number(match[1]), requiredWords: companion ? [companion] : [], argumentWord: companion };
+		const letter = initial.operations[operation].wordLetter || 'G';
+		const match = /^([GM])\\s*(\\d+(?:\\.\\d+)?)\\s*(?:([A-Z])\\s*)?$/i.exec(text);
+		if (!match || match[1].toUpperCase() !== letter) throw new Error('Use a ' + letter + ' word or leave the cell blank.');
+		const companion = match[3] ? match[3].toUpperCase() : undefined;
+		return { letter, code: Number(match[2]), requiredWords: companion ? [companion] : [], argumentWord: companion };
 	}
-	function bindingKey(binding) { return binding ? String(binding.code) : ''; }
+	function bindingKey(binding) { return binding ? (binding.letter || 'G') + String(binding.code) : ''; }
 	function setBinding(operation, value) {
 		const selected = getSelected();
 		if (!isCustom(selected)) return;
-		const binding = parseBinding(value);
+		const binding = parseBinding(value, operation);
 		selected.bindings[mode][operation] = binding;
 		if (binding) {
 			for (const [otherOperation, otherBinding] of Object.entries(selected.bindings[mode])) {

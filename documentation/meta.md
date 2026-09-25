@@ -48,9 +48,18 @@ Chronoblade consume that same geometry.
 An omitted in-plane I/J/K centre offset is zero, including NLX-style polar
 full circles such as `G3 I-6.`.
 
+Both built-in lathe profiles bind `M45`/`M46` to C-axis engagement and
+cancellation. These operations are independent of polar interpolation.
+`M46` resets the interpreted C value to zero for subsequent turning geometry
+and position displays. Vision receives a position event for Trace playback at
+the cancellation block. Sense shows `M45` while
+active and clears that modal entry at `M46`.
+
 Outside polar interpolation, lathe C words are angular degrees and H is an
 incremental C move. The shared engine retains C in authored positions and
-samples rotary sweeps for Vision, including simultaneous X/Y/Z motion. Physical
+samples rotary sweeps for Vision, including simultaneous X/Y/Z motion. For
+programs without an explicit C-axis mode command, authored C motion retains
+the existing rotary inspection behavior. Physical
 placement rotates the linear XY position about Z; diameter X is halved first.
 C0 points along +X and positive C rotates toward +Y. Absolute angles are used
 as written, preserving signed and multiple turns, without shortest-path wrap.
@@ -78,25 +87,24 @@ The built-in `DMG MORI` profile binds those functions to `G98` and `G99` in
 turning mode while retaining ISO mill feed modes and mill canned-cycle return
 meanings.
 
-`MetaGCodeDialect` is a deliberately bounded rebinding layer. Authored G words
+`MetaGCodeDialect` is a deliberately bounded rebinding layer. Authored G/M words
 resolve to stable operations such as `feed.perMinute`, `motion.linear`, or
 `spindle.rpmLimit`; `MetaMotionEngine` applies those operations. Bindings may
 require a companion word and select its value, as the lathe RPM-limit binding
 does with `G50 S...`. Profiles are declarative, validated for conflicts, and
 schema-versioned. Each profile owns separate `bindings.mill` and
 `bindings.lathe` keybinding tables. Canonical operations are the stable rows;
-each cell contains a G-word binding or `null` when that function is unbound in
-that mode. Assigning the same G word to another operation uses last-assignment
+each cell contains a G/M-word binding or `null` when that function is unbound in
+that mode. Assigning the same word to another operation uses last-assignment
 wins and clears the previous owner's cell. The exported binding/table builders
-preserve that rule for a future profile editor. Later motion operations or
-optional M-event mappings can therefore be added without changing existing
-profile meaning.
+preserve that rule for the profile editor. A C-axis operation requires an M word;
+the existing G operations require G words.
 
 Built-in profiles are immutable. `kaijuMachineMode/profileEditor.js` sends its
 custom tables through `normalizeCustomGCodeDialectProfiles()` and
 `setCustomGCodeDialectProfiles()` before they become available through
 `getGCodeDialectProfile()` or `getGCodeDialectProfiles()`. A profile may have
-only one binding for a numeric G word within a mill or lathe table, even when a
+only one binding for a numeric G/M word within a mill or lathe table, even when a
 binding needs a companion word. That conservative rule prevents ambiguous
 source blocks such as `G50 S...` from resolving to two operations.
 

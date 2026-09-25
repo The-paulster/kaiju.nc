@@ -24,6 +24,8 @@ machine mode, or the global fallback when it has not been assigned one.
   profile, keeping cursor status and motion hovers aligned with reports.
 - When active, lathe polar interpolation appears in the cursor modal strip as
   `G12.1 (Polar interpolation on)` until its dialect-owned cancel command.
+- Profile-bound `M45` appears as `M45 (C-axis mode on)` until `M46` cancels
+  that mode. Polar interpolation and C-axis engagement have separate entries.
 - Motion hover entry words are resolved through `MetaMotionEngine`; Sense does
   not use a literal `G0`-through-`G3` recognizer.
 

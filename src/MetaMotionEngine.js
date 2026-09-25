@@ -100,6 +100,7 @@ function getModalStateAtLine(document, targetLineNumber, options = {}) {
 		feedMode: state.feedMode,
 		spindleMode: state.spindleMode,
 		polarInterpolation: state.polarInterpolation,
+		cAxisMode: state.cAxisMode,
 		modalGroups: getStatusModalEntries(statusState)
 	};
 }
@@ -124,6 +125,7 @@ function makeInitialState(options = {}) {
 		motionCode: undefined,
 		arcPlane: "xy",
 		polarInterpolation: false,
+		cAxisMode: undefined,
 		polarPreviousArcPlane: undefined,
 		polarPreviousY: undefined,
 		distanceMode: "absolute",
@@ -316,6 +318,14 @@ function applyModalState(words, motionCode, state, options = {}) {
 			case G_CODE_OPERATIONS.PLANE_YZ: state.arcPlane = "yz"; break;
 			case G_CODE_OPERATIONS.POLAR_INTERPOLATION_ENABLE: enablePolarInterpolation(state); break;
 			case G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE: disablePolarInterpolation(state); break;
+			case G_CODE_OPERATIONS.C_AXIS_ENABLE:
+				state.cAxisMode = true;
+				break;
+			case G_CODE_OPERATIONS.C_AXIS_DISABLE:
+				state.cAxisMode = false;
+				state.position.c = 0;
+				if (state.polarInterpolation) state.polarPreviousC = 0;
+				break;
 			case G_CODE_OPERATIONS.CYCLE_CANCEL: cancelCycle = true; break;
 			case G_CODE_OPERATIONS.SPINDLE_CSS: state.spindleMode = "css"; break;
 			case G_CODE_OPERATIONS.SPINDLE_FIXED_RPM: state.spindleMode = "fixed"; break;
@@ -512,8 +522,8 @@ function applyStatusModalState(words, statusState, options = {}) {
 	}
 
 	for (const match of resolveGCodeOperations(words, options)) {
-		if (match.operation === G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE) {
-			statusState.delete("polarInterpolation");
+		if (match.operation === G_CODE_OPERATIONS.POLAR_INTERPOLATION_DISABLE || match.operation === G_CODE_OPERATIONS.C_AXIS_DISABLE) {
+			statusState.delete(match.operation === G_CODE_OPERATIONS.C_AXIS_DISABLE ? "cAxisMode" : "polarInterpolation");
 			continue;
 		}
 		setDialectStatusModalEntry(statusState, match);
@@ -531,14 +541,14 @@ function setDialectStatusModalEntry(statusState, match) {
 	statusState.set(group.key, {
 		key: group.key,
 		order: group.order,
-		code: `${formatDialectGCode(match.word.value)}${argument}`,
+		code: `${formatDialectWord(match.word.value, match.word.letter)}${argument}`,
 		label: definition.label
 	});
 }
 
-function formatDialectGCode(value) {
+function formatDialectWord(value, letter = "G") {
 	const code = formatCodeNumber(value);
-	return `G${Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) < 10 ? code.padStart(2, "0") : code}`;
+	return `${letter}${Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) < 10 ? code.padStart(2, "0") : code}`;
 }
 
 function getStatusModalCode(value) {
@@ -1754,6 +1764,7 @@ function analyzeVisionRange(document, range, options) {
 	const macroAliases = buildMacroAliasMap(document);
 	const toolRanges = getToolRanges(document);
 	const rows = [];
+	const positionEvents = [];
 	const targetRange = normalizeLineRange(range, document.lineCount);
 	const executionEntries = options.executionTrace && Array.isArray(options.executionTrace.executionEntries)
 		? options.executionTrace.executionEntries
@@ -1781,6 +1792,13 @@ function analyzeVisionRange(document, range, options) {
 
 		applyModalState(words, motionCode, state, options);
 		rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
+		if (executionEntry && hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options)) {
+			positionEvents.push({
+				executionIndex: executionEntry.executionIndex,
+				position: clonePosition(state.position),
+				point: toVisionPoint(state.position, options, state.positionCoordinateSystem || state.coordinateSystem)
+			});
+		}
 		const startCoordinateSystem = state.positionCoordinateSystem || state.coordinateSystem;
 
 		if (isLineInRange(lineNumber, targetRange)) {
@@ -1863,6 +1881,7 @@ function analyzeVisionRange(document, range, options) {
 
 	return {
 		rows,
+		positionEvents,
 		range: targetRange,
 		motionDisplayWords: getMotionDisplayWords(options)
 	};

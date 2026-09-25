@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { makeDocument } = require("./helpers");
 const dialect = require("../src/MetaGCodeDialect");
 const motion = require("../src/MetaMotionEngine");
+const { buildExecutionTrace } = require("../src/MetaExecutionTrace");
 const modalDefinitions = require("../src/MetaModalDefs.json");
 
 test("keybinding collisions unbind the previous operation", () => {
@@ -97,6 +98,72 @@ test("FANUC / ISO lathe status and motion use G99 for feed per revolution", () =
 	assert.equal(explicitState.modalGroups.find(entry => entry.key === "feedMode").code, "G99");
 	assert.equal(row.feedMode, "perRev");
 	assert.equal(row.feedModeWord, "G99");
+});
+
+test("both built-in lathe profiles bind C-axis M45/M46 and Sense clears the active mode", () => {
+	const operations = dialect.G_CODE_OPERATIONS;
+	for (const gCodeDialectId of ["fanucIso", "dmgMori"]) {
+		const options = { machineMode: "latheDiameter", gCodeDialectId, xAxisMode: "diameter" };
+		const profile = dialect.getGCodeDialectProfile(gCodeDialectId);
+		assert.equal(profile.bindings.lathe[operations.C_AXIS_ENABLE].letter, "M");
+		assert.equal(profile.bindings.lathe[operations.C_AXIS_ENABLE].code, 45);
+		assert.equal(profile.bindings.lathe[operations.C_AXIS_DISABLE].code, 46);
+		assert.equal(profile.bindings.mill[operations.C_AXIS_ENABLE], null);
+		const document = makeDocument("M45\nG12.1\nG13.1\nM46");
+		const active = motion.getModalStateAtLine(document, 2, options);
+		const canceled = motion.getModalStateAtLine(document, 3, options);
+		assert.equal(active.cAxisMode, true);
+		assert.equal(active.polarInterpolation, false);
+		assert.equal(active.modalGroups.find(entry => entry.key === "cAxisMode").code, "M45");
+		assert.equal(canceled.cAxisMode, false);
+		assert.equal(canceled.modalGroups.some(entry => entry.key === "cAxisMode"), false);
+	}
+});
+
+test("custom profiles can rebind the C-axis M commands", () => {
+	const operations = dialect.G_CODE_OPERATIONS;
+	try {
+		dialect.setCustomGCodeDialectProfiles([{
+			id: "custom-c-axis",
+			label: "Custom C axis",
+			bindings: {
+				lathe: {
+					[operations.C_AXIS_ENABLE]: { letter: "M", code: 145 },
+					[operations.C_AXIS_DISABLE]: { letter: "M", code: 146 }
+				},
+				mill: {}
+			}
+		}]);
+		const options = { machineMode: "latheDiameter", gCodeDialectId: "custom-c-axis" };
+		const document = makeDocument("M45\nM145\nM146");
+		assert.equal(motion.getModalStateAtLine(document, 0, options).cAxisMode, undefined);
+		assert.equal(motion.getModalStateAtLine(document, 1, options).cAxisMode, true);
+		assert.equal(motion.getModalStateAtLine(document, 2, options).cAxisMode, false);
+	} finally {
+		dialect.setCustomGCodeDialectProfiles([]);
+	}
+});
+
+test("Vision resets C to zero on M46 before subsequent turning moves", () => {
+	const document = makeDocument("G18\nG0 X400 Z20\nM45\nG0 C120\nM46\nG0 Z10\nG1 X390 F0.3");
+	const executionTrace = buildExecutionTrace(document, { includeExecutionEntries: true });
+	const result = motion.analyzeVisionRange(document, undefined, {
+		machineMode: "latheDiameter", xAxisMode: "diameter", gCodeDialectId: "dmgMori", rapidRate: 10000, executionTrace
+	});
+	const indexed = result.rows.find(row => row.type === "motion" && row.lineNumber === 4);
+	const firstTurning = result.rows.find(row => row.type === "motion" && row.lineNumber === 6);
+	const turning = result.rows.find(row => row.type === "motion" && row.lineNumber === 7);
+	assert.ok(indexed.points.at(-1).y > 0);
+	assert.equal(firstTurning.start.c, 0);
+	assert.equal(firstTurning.end.c, 0);
+	assert.equal(turning.end.c, 0);
+	assert.equal(result.positionEvents.length, 1);
+	assert.equal(result.positionEvents[0].executionIndex, executionTrace.executionEntries.find(entry => entry.lineNumber === 4).executionIndex);
+	assert.equal(result.positionEvents[0].position.c, 0);
+	assert.equal(result.positionEvents[0].point.x, 200);
+	assert.equal(result.positionEvents[0].point.y, 0);
+	assert.equal(turning.points.at(-1).x, 195);
+	assert.equal(turning.points.at(-1).y, 0);
 });
 
 test("dialect-owned status groups do not duplicate word meanings", () => {
