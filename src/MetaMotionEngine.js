@@ -176,10 +176,31 @@ function parseWords(codeLine, macroValues, macroAliases) {
 	let index = 0;
 
 	while (index < codeLine.length) {
+		if (codeLine[index] === "#") {
+			const macro = codeLine.slice(index).match(/^#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/);
+			if (macro) {
+				index += macro[0].length;
+				continue;
+			}
+		}
+
+		if (codeLine[index] === "[") {
+			const expression = readBracketToken(codeLine, index);
+			if (expression) {
+				index = expression.end;
+				continue;
+			}
+		}
+
 		const letter = codeLine[index];
 
 		if (!/[A-Za-z]/.test(letter)) {
 			index++;
+			continue;
+		}
+		const identifier = codeLine.slice(index).match(/^[A-Za-z]+/)[0];
+		if (identifier.length > 1) {
+			index += identifier.length;
 			continue;
 		}
 

@@ -15,6 +15,8 @@ without changing its side or bottom spacing.
 
 Chronoblade uses the active editor selection when it opens; its report does
 not include controls to resend the whole program or selection.
+Macro expressions such as `SQRT[...]` and `TAN[...]` are evaluated by the
+shared macro engine; their function names do not count as tool commands.
 
 Chronoblade offers the same per-program Trace methodology as Vision: Motion
 defaults to Trace and can be changed per program to As written, Line selects

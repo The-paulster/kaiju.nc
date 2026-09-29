@@ -18,6 +18,9 @@ macro inputs are requested when the user explicitly runs Decomposition.
 The module also exposes the formatted output instruction and its exact,
 one-based generated-document line number for consumers that need to identify a
 specific execution occurrence.
+Decomposition uses the shared `kaijuNC.trace.maxExecutionSteps` cap. It emits
+output for every recorded occurrence without a separate output-line cap, so
+consumers can map all completed occurrences to the generated trace.
 
 ## Connections
 

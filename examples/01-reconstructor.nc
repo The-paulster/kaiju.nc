@@ -18,9 +18,10 @@ g0 x50.12345 z5. (round to the selected decimal precision)
 
 (- 2 - TOOL NUMBERS AND ADJACENT WORDS)
 (/ T9 becomes T09; T606 becomes T0606 with tool normalization enabled.)
-(/ The H address is separated from Z without making H a decimal axis.)
+(/ G43 H2 keeps its offset number; motion H90 gains selected decimals.)
 t9
 t606
+g1h90w-1
 g43z4.h2
 g49
 

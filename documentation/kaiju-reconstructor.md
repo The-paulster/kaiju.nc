@@ -7,6 +7,10 @@
 Reconstructor owns deterministic document formatting. `formatter.js` contains
 the formatting rules and VS Code formatting provider; `command.js` owns the
 command-palette flow; `options.js` exposes formatting options.
+H is included in the default decimal-address list for incremental C moves.
+An H after an explicit same-block `G43`/`G44` tool-length command retains its
+written offset value, including bracketed expressions. The formatter does not
+track modal context across lines.
 
 ## Connections
 

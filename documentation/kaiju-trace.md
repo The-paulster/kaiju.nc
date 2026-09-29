@@ -7,6 +7,10 @@
 KAIJU Trace runs a debounced, bounded execution pass after a G-code document
 settles. It presents trace health in the right-side status bar. Its tooltip
 lists every assumed-zero macro and every safety or flow problem.
+`kaijuNC.trace.maxExecutionSteps` is the one configured execution-step cap for
+passive Trace and explicit traces used by Decomposition, Vision, Chronoblade,
+and Macro Hunter. The default is 20,000 steps. A repeated execution state can
+still stop a trace earlier.
 
 ## Connections
 

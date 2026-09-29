@@ -22,6 +22,10 @@ integer codes.
 - `language-configuration.json` provides editor language behavior.
 - The grammar's scopes are styled by the extension's contributed color defaults
   and may be used by VS Code themes.
+- The existing `support.code.h.gcode` scope uses a lighter C purple by default.
+  A same-block `G43` or `G44` before H adds `meta.tool-length-offset.gcode`
+  context so H uses bold green. This is lexical highlighting; the grammar does
+  not track controller modes across lines.
 
 ## Boundary
 

@@ -116,10 +116,6 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 	const decomposedLineEntries = [];
 
 	for (const entry of trace.executionEntries || []) {
-		if (outputLines.length > options.maxOutputLines) {
-			addWarning(context, entry.lineNumber, `Stopped after ${options.maxOutputLines} output lines.`);
-			break;
-		}
 		const lineNumber = entry.lineNumber;
 		const line = entry.sourceLine;
 		const codeLine = entry.codeLine || maskProtectedRanges(line);
@@ -200,7 +196,6 @@ async function buildResolvedDecompositionTrace(document, runtimeOptions, traceIn
 			initialMacroValues: traceInputs,
 			initialMacroOverrides: runtimeOptions.initialMacroOverrides,
 			includeDecompositionData: true,
-			maxExecutionSteps: context.options.maxExecutionSteps,
 			comparisonTolerance: context.options.comparisonTolerance
 		});
 		const unknowns = [...trace.assumptions.entries()].filter(([macro]) => !Object.prototype.hasOwnProperty.call(traceInputs, macro));

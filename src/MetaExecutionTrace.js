@@ -144,8 +144,9 @@ function getExecutionTraceOptions(document) {
 }
 
 function buildExecutionTrace(document, options = {}) {
+	const configuredMaxExecutionSteps = getExecutionTraceOptions(document).maxExecutionSteps;
 	const traceOptions = {
-		maxExecutionSteps: clampInteger(options.maxExecutionSteps, DEFAULT_MAX_EXECUTION_STEPS, 1, 1000000),
+		maxExecutionSteps: clampInteger(options.maxExecutionSteps, configuredMaxExecutionSteps, 1, 1000000),
 		comparisonTolerance: clampNumber(options.comparisonTolerance, DEFAULT_COMPARISON_TOLERANCE, 0),
 		includePlaybackData: options.includePlaybackData === true,
 		includeDecompositionData: options.includeDecompositionData === true,

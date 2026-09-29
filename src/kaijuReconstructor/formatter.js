@@ -4,7 +4,8 @@ const vscode = require("vscode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges,
-	isInsideRange
+	isInsideRange,
+	maskProtectedRanges
 } = require("../MetaTextRanges");
 
 function registerFormatter(context) {
@@ -46,7 +47,7 @@ function getFormattingOptions(document, overrides = {}) {
 		enabled: config.get("enabled", true),
 		decimalPlaces: clampNumber(config.get("decimalPlaces", 3), 0, 9),
 		addMissingDecimal: config.get("addMissingDecimal", true),
-		decimalAddressLetters: config.get("decimalAddressLetters", "XYZUVWABCIJKRF"),
+		decimalAddressLetters: config.get("decimalAddressLetters", "XYZUVWABCHIJKRF"),
 		autoSemicolon: config.get("autoSemicolon", false),
 		normalizeToolCodes: config.get("normalizeToolCodes", true),
 		leadingWhitespace: config.get("leadingWhitespace", "preserveTabs"),
@@ -351,7 +352,8 @@ function formatMacroMathNumbers(text, decimalPlaces, addMissingDecimal) {
 function formatMacroMathNumbersInLine(line, decimalPlaces, addMissingDecimal) {
 	const protectedRanges = [
 		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
+		...getAngleBracketRanges(line),
+		...getToolLengthOffsetWordRanges(line)
 	];
 	const segments = splitLineByProtectedRanges(line, protectedRanges);
 
@@ -413,9 +415,10 @@ function formatDecimalPlaces(text, decimalPlaces, addMissingDecimal, addressLett
 }
 
 function formatLineDecimals(line, decimalPlaces, addMissingDecimal, addressLetters) {
-	const protectedRanges = [
+	let protectedRanges = [
 		...getCommentRanges(line),
-		...getAngleBracketRanges(line)
+		...getAngleBracketRanges(line),
+		...getToolLengthOffsetWordRanges(line)
 	];
 
 	const addressClass = escapeForCharClass(addressLetters);
@@ -434,12 +437,17 @@ function formatLineDecimals(line, decimalPlaces, addMissingDecimal, addressLette
 	);
 
 	line = line.replace(directAddressRegex, (fullMatch, address, numberText, offset) => {
-		if (isInsideRange(offset, protectedRanges)) {
+		if (line[offset - 1] === "#" || isInsideRange(offset, protectedRanges)) {
 			return fullMatch;
 		}
 
 		return address + formatNumberLiteral(numberText, decimalPlaces, addMissingDecimal);
 	});
+	protectedRanges = [
+		...getCommentRanges(line),
+		...getAngleBracketRanges(line),
+		...getToolLengthOffsetWordRanges(line)
+	];
 
 	// Case 2:
 	// Address bracket expressions:
@@ -454,7 +462,7 @@ function formatLineDecimals(line, decimalPlaces, addMissingDecimal, addressLette
 	);
 
 	line = line.replace(bracketAddressRegex, (fullMatch, address, expression, offset) => {
-		if (isInsideRange(offset, protectedRanges)) {
+		if (line[offset - 1] === "#" || isInsideRange(offset, protectedRanges)) {
 			return fullMatch;
 		}
 
@@ -468,6 +476,36 @@ function formatLineDecimals(line, decimalPlaces, addMissingDecimal, addressLette
 	});
 
 	return line;
+}
+
+function getToolLengthOffsetWordRanges(line) {
+	const code = maskProtectedRanges(line);
+	const toolLengthCodes = [...code.matchAll(/(?<![#A-Za-z0-9_])[Gg]0*4(?:3(?:\.[12])?|4)(?![\d.A-Za-z_])/g)];
+	if (!toolLengthCodes.length) return [];
+
+	const ranges = [];
+	for (const match of code.matchAll(/(?<![#A-Za-z0-9_])[Hh](?=[-+#.\d\[])/g)) {
+		if (!toolLengthCodes.some(codeMatch => codeMatch.index < match.index)) continue;
+		const valueStart = match.index + 1;
+		let end;
+		if (code[valueStart] === "[") {
+			let depth = 0;
+			for (let index = valueStart; index < code.length; index++) {
+				if (code[index] === "[") depth++;
+				if (code[index] === "]" && --depth === 0) {
+					end = index + 1;
+					break;
+				}
+			}
+			end ??= code.length;
+		} else {
+			const value = code.slice(valueStart).match(/^(?:[-+]?(?:\d+(?:\.\d*)?|\.\d+)|[-+]?#(?:\d+|[A-Za-z_][A-Za-z0-9_]*))/);
+			if (!value) continue;
+			end = valueStart + value[0].length;
+		}
+		ranges.push({ start: match.index, end: end - 1 });
+	}
+	return ranges;
 }
 
 function formatNumbersInsideExpression(expression, decimalPlaces, addMissingDecimal) {

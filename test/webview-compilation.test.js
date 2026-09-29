@@ -106,6 +106,16 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /motionIndexByExecutionIndex/);
 });
 
+test("H syntax covers full incremental C values and retains its scope", () => {
+	const hWord = syntax.repository.hcodes.patterns[0];
+	const matcher = new RegExp(hWord.match);
+	assert.equal(hWord.name, "support.code.h.gcode");
+	for (const word of ["H360.000", "H-45.5", "H+.25", "H#123"]) {
+		assert.equal(word.match(matcher)?.[0], word);
+	}
+	assert.equal("SQRT[100]".match(matcher), null);
+});
+
 test("Vision playback only shows C when the program commands C", () => {
 	const getVisionProgramAxes = loadPrivateRenderer("src/kaijuVision/webview.js", "getVisionProgramAxes");
 	assert.deepEqual(getVisionProgramAxes(makeDocument("G0 X0 H1\nG1 Z-2\n(C90)")), ["x", "z"]);

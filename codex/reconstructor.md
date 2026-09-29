@@ -19,6 +19,7 @@ VS Code's **Format Document** action also uses Reconstructor for G-code files. I
 | --- | --- |
 | Code words and spacing | Written G-code is uppercased and compact address words are separated; G and M codes receive consistent numeric presentation. |
 | Decimal values | Configured address letters use the selected number of decimal places. Missing decimal points can be added when that setting is enabled. |
+| H values | Incremental C moves such as `G01 H90` gain the selected decimals; an H after same-block `G43`/`G44` stays an offset number such as `H01`. |
 | Macro expressions | Numeric values and operator spacing inside supported expressions are formatted. Named Alias macros such as `#finish_allowance` retain their spelling. |
 | Tool words | Numeric tool codes can be normalized without inventing an offset, for example `T9` to `T09` and `T606` to `T0606`. |
 | Comments | Existing comment text is preserved during code-word formatting. Nested comment parentheses are converted to square brackets inside the outer comment. |
@@ -30,6 +31,8 @@ For example, with three decimal places and tool-code normalization enabled:
 g1x1.z-2.5f.2
 T9
 T606
+G01 H90
+G43 H01
 ```
 
 becomes:
@@ -38,6 +41,8 @@ becomes:
 G01 X1.000 Z-2.500 F0.200
 T09
 T0606
+G01 H90.000
+G43 H01
 ```
 
 The [Reconstructor example](../examples/01-reconstructor.nc) contains untidy source blocks for a longer before-and-after inspection.
@@ -51,7 +56,7 @@ The command picker changes **decimal places** and **Auto semicolon inserter** fo
 | `kaijuNC.format.enabled` | Enables the G-code Format Document provider. |
 | `kaijuNC.format.decimalPlaces` | Default number of digits after the decimal point, from 0 to 9. |
 | `kaijuNC.format.addMissingDecimal` | Adds decimal points to configured numeric address values when absent. |
-| `kaijuNC.format.decimalAddressLetters` | Chooses which address letters receive decimal formatting; the default is `XYZUVWABCIJKRF`. |
+| `kaijuNC.format.decimalAddressLetters` | Chooses which address letters receive decimal formatting; the default is `XYZUVWABCHIJKRF`. H is skipped after same-block `G43`/`G44`. |
 | `kaijuNC.format.autoSemicolon` | Sets the command picker's initial semicolon choice and applies to Format Document. |
 | `kaijuNC.format.normalizeToolCodes` | Enables numeric `T`-word normalization. |
 | `kaijuNC.format.leadingWhitespace` | Chooses whether leading whitespace is preserved, preserves tabs and full soft tabs while removing stray spaces, or is normalized by loop depth. |

@@ -17,6 +17,9 @@
 			"include": "#comments"
 		},
 		{
+			"include": "#toollengthoffsetblock"
+		},
+		{
 			"include": "#xbracketvalues"
 		},
 		{
@@ -160,6 +163,17 @@
 		
 	],
 	"repository": {
+		"toollengthoffsetblock": {
+			"name": "meta.tool-length-offset.gcode",
+			"begin": "(?<![A-Za-z])[Gg]0*4(?:3(?:\\.[12])?|4)(?![\\d.])",
+			"beginCaptures": {
+				"0": { "name": "keyword.control.gcode" }
+			},
+			"end": "$",
+			"patterns": [
+				{ "include": "$base" }
+			]
+		},
 		"metacomments": {
 			"patterns": [
 				{
@@ -434,7 +448,7 @@
 			"patterns": [
 				{
 					"name": "support.code.h.gcode",
-					"match": "(?<![A-Za-z])[Hh](?:\\d+|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
+					"match": "(?<![A-Za-z])[Hh](?:[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|[-+]?#(?:\\d+|[A-Za-z_][A-Za-z0-9_]*)|(?=\\[))"
 				}
 			]
 		},

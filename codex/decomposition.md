@@ -150,9 +150,12 @@ number of loop passes.
 Decomposition can follow loops, `IF` branches, and `GOTO` paths that KAIJU can
 resolve. If a path cannot be resolved or exceeds an inspection limit, the
 **Warnings** section identifies why the visible output may be incomplete.
-The Decomposition settings include the comparison tolerance, maximum execution
-steps, and maximum output lines. These limits keep a repeating or unexpectedly
-large path from producing an unbounded trace.
+The **KAIJU Trace: Max Execution Steps** setting applies to Decomposition,
+Vision, Chronoblade, Macro Hunter, and the passive Trace status. Its default is
+20,000 executed steps. Decomposition has no separate output-line cutoff; its
+document includes all occurrences completed within that step limit. A repeated
+state can stop the trace earlier. Decomposition's comparison tolerance remains
+a separate setting and can affect which path is followed.
 
 The generated document is an inspection trace first. Its use as a separate
 program requires comparison with the original source and the machine's

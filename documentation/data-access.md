@@ -75,6 +75,9 @@ word from canonical state such as `feedMode` or `motionCode`.
 Decomposition may prompt for missing inputs, but it feeds those values back to
 `buildExecutionTrace` and formats the returned occurrences. Features must not
 implement their own `IF`, `ELSE`, `ENDIF`, `GOTO`, `WHILE`, loop, alarm, or repeated-state walk.
+Both passive and explicit builds use `kaijuNC.trace.maxExecutionSteps` by
+default. An explicit `maxExecutionSteps` option is reserved for targeted runs
+and tests; feature consumers should leave it unset.
 When a trace occurrence supplies `effectiveCodeLine`, motion consumers must
 interpret that selected executable text while retaining `sourceLine` for source
 presentation.

@@ -2,7 +2,17 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.6.3]
+
 ## [0.6.2]
+
+- Unified Trace, Decomposition, Vision, Chronoblade, and Macro Hunter under `kaijuNC.trace.maxExecutionSteps`; removed Decomposition's separate step and output-line limits so completed occurrences retain their formatted trace lines.
+
+- Reconstructor now formats motion H values with the selected decimal precision while preserving H tool-length offsets after same-block G43/G44.
+
+- Coloured H words a lighter C-axis purple by default, with bold green for H following a same-block G43/G44 tool-length command.
+
+- Fixed Chronoblade counting `SQRT[...]` macro calculations as tool changes and adding false tool-swap time.
 
 - Coloured C-axis coordinates purple in Chronoblade position cells, matching Vision and editor syntax highlighting.
 

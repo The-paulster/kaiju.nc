@@ -50,7 +50,7 @@ written token; the controller profile determines its actual meaning.
 | `J` | `#5F8F4E` | `K` | `#4B82C2` |
 | `R` | `#D19A66` | `F` | `#FFD84D` |
 | `S` | `#FF0037` | `T` | bold `#88FF00` |
-| `H` | bold `#A6E66A` | `L` | `#B5CEA8` |
+| `H` | `#DEA6EE` (bold `#A6E66A` after `G43/G44`) | `L` | `#B5CEA8` |
 | `P` | `#D7BA7D` | `Q` | `#CE9178` |
 
 Signed and decimal values are recognised for the axis, arc, feed, radius,
@@ -61,6 +61,11 @@ expression, such as `X#100`, `Z[-#101]`, `F[#102 * 2]`, and
 expression while math words and nested brackets receive their own
 highlighting. A `Q[...]` expression is supported by the same bracket
 highlighting model as the other address expressions.
+
+`H` uses a lighter shade of C purple for an incremental C-axis move. When an
+explicit `G43` or `G44` appears before H in the same block, H instead uses
+bold green for the tool-length offset. An H on a later block keeps the purple
+default; syntax highlighting does not track modal state across blocks.
 
 ## Comment scopes
 

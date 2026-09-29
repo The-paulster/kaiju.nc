@@ -32,9 +32,11 @@ N200 (ADDRESS COLOURS AND NUMBER FORMS)
 (/ Plus signs, minus signs, leading dots, and trailing dots are shown here.)
 X+10.000 Y-.500 Z5. U-1.000 V.250 W-2.000
 A15.000 B30.000 C90.000 I-5.000 J0.000 K2.000 R10.000 F200.000
-(/ T tool, H offset, S spindle, and L/P/Q cycle or call parameters.)
-(/ Their meanings depend on the accompanying command and controller.)
-T0101 H01 S1800 L2 P100 Q200
+(/ T tool, S spindle, and L/P/Q cycle or call parameters.)
+(/ G43 H selects a tool-length offset; G01 H is incremental C on a C-axis lathe.)
+T0101 S1800 L2 P100 Q200
+G01 H90.000
+G43 H01
 M03 M08
 M09 M05
 

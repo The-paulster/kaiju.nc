@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { makeDocument } = require("./helpers");
+const { configurationValues, makeDocument } = require("./helpers");
 const { buildExecutionTrace, buildConditionalStructures } = require("../src/MetaExecutionTrace");
 const { decomposeDocument } = require("../src/kaijuDecomposition");
 const { analyzeChronobladeRange } = require("../src/MetaMotionEngine");
@@ -13,6 +13,41 @@ G1 X#100
 END1
 IF [#100 LT 0] THEN #3000=1
 M30`;
+
+test("explicit traces and Decomposition use the general step limit and keep completed lines", async () => {
+	const keys = [
+		"kaijuNC.trace.maxExecutionSteps",
+		"kaijuNC.decomposition.maxExecutionSteps",
+		"kaijuNC.decomposition.maxOutputLines"
+	];
+	const previous = keys.map(key => [key, configurationValues.has(key), configurationValues.get(key)]);
+	const document = makeDocument(Array.from({ length: 10 }, (_, index) => `G01 X${index}`).join("\n"));
+	try {
+		configurationValues.set(keys[0], 4);
+		configurationValues.set(keys[1], 2);
+		configurationValues.set(keys[2], 1);
+		const capped = buildExecutionTrace(document, { includeExecutionEntries: true });
+		assert.equal(capped.status, "capped");
+		assert.equal(capped.executionEntries.length, 4);
+		const partial = await decomposeDocument(document, { promptForUnknownMacros: false });
+		assert.equal(partial.decompositionLines.length, 4);
+		assert.match(partial.warnings.join("\n"), /Stopped after 4 execution steps/);
+		assert.doesNotMatch(partial.warnings.join("\n"), /output lines/);
+
+		configurationValues.set(keys[0], 20);
+		const complete = buildExecutionTrace(document, { includeExecutionEntries: true });
+		assert.equal(complete.status, "ready");
+		assert.equal(complete.executionEntries.length, 10);
+		const fullOutput = await decomposeDocument(document, { promptForUnknownMacros: false });
+		assert.equal(fullOutput.decompositionLines.length, 10);
+		assert.doesNotMatch(fullOutput.warnings.join("\n"), /output lines/);
+	} finally {
+		for (const [key, hadValue, value] of previous) {
+			if (hadValue) configurationValues.set(key, value);
+			else configurationValues.delete(key);
+		}
+	}
+});
 
 test("Trace is the authoritative loop and conditional execution stream", () => {
 	const trace = buildExecutionTrace(makeDocument(LOOP_PROGRAM), { includeDecompositionData: true });
