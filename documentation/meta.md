@@ -67,8 +67,16 @@ tracked physical C angle is reduced to 0-360 degrees for the next block. Thus
 an H720 move draws two turns and ends at C0; a following absolute C0 does not
 draw an invented two-turn return. This is an inspection convention, not a
 controller-specific shortest-path or rotary unwind rule.
-Rotary timing remains unknown pending controller-specific rotary feed/rate
-semantics. Human position formatting includes C when available.
+For G1 moves outside polar interpolation, the default controller-feed model
+treats each degree of C travel as one linear program unit. Mixed X/Y/Z/C feed
+length is the vector of linear-axis travel and signed C travel; X keeps the
+selected radius/diameter conversion. This feed length drives G94/G98
+feed-per-minute and G95/G99 feed-per-revolution time estimates, including
+fixed-RPM and CSS cases. Chronoblade reports this controller-feed length for
+those moves, while Vision retains physical swept distance and geometry. It is
+not a surface-distance estimate. Rotary G0 and G2/G3 timing remains unknown
+without controller-specific rates and interpolation rules. Human position
+formatting includes C when available.
 
 Machine Mode is saved in workspace state by source-document URI when selected
 from the KAIJU Machine Mode menu. That per-program profile, including its

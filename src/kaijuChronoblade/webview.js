@@ -679,8 +679,8 @@ function renderChronobladeHtml(options, result) {
 			${renderMetric("G0", formatChronobladeMetricTime(summary.rapidTimeSeconds), "Total estimated G0 rapid-traverse time.")}
 			${renderMetric("Dwell", formatChronobladeMetricTime(summary.dwellTimeSeconds))}
 			${renderMetric("Tool", formatChronobladeMetricTime(summary.toolTimeSeconds))}
-			${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat))}
-			${renderMetric("Cut distance", formatNumber(summary.cuttingDistance, options.humanFormat), "Total distance of non-G0 cutting moves.")}
+			${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat), "Total reported path distance. G1 rotary C moves use controller feed length: 1 C degree = 1 linear unit.")}
+			${renderMetric("Cut distance", formatNumber(summary.cuttingDistance, options.humanFormat), "Total non-G0 path distance. G1 rotary C moves use controller feed length: 1 C degree = 1 linear unit.")}
 			${renderMetric("Other", formatChronobladeMetricTime(summary.otherTimeSeconds), "Time from custom M-code entries in the selected timing profile.")}
 		</section>
 		<div class="settings-controls">
@@ -967,7 +967,7 @@ function renderRows(rows, humanFormat) {
 					<th class="code-column">Code</th>
 					<th style="width:18ch">Start</th>
 					<th style="width:18ch">End</th>
-					<th style="width:9ch">Distance</th>
+					<th style="width:9ch" title="G1 rotary C moves use controller feed length: 1 C degree = 1 linear unit. This is not physical cutter travel.">Distance</th>
 					<th style="width:10ch">Feed</th>
 					<th style="width:12ch">Spindle</th>
 					<th>RPM Used</th>

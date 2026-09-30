@@ -4,6 +4,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.3]
 
+- Estimated G1 C-axis time outside polar interpolation with the conventional one-linear-unit-per-degree controller feed model. Chronoblade reports that feed length for rotary cutting moves; Vision retains physical swept distance.
+
 - Vision, Sense, and Chronoblade now retain the 0-360 C angle after a full signed C/H sweep, so a later absolute C0 does not create a multi-turn return path. The commanded sweep itself remains fully sampled.
 
 ## [0.6.2]

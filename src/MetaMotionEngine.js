@@ -684,16 +684,24 @@ function estimateMotion(words, motionCode, state, options) {
 
 	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options, state.polarInterpolation);
 	const distance = sumPathDistance(path, options);
+	const rotaryFeedDistance = path.rotaryMotion && motionCode === 1
+		? getRotaryFeedDistance(start, end, options)
+		: NaN;
 	const geometry = makeMotionGeometry(motionCode, start, end, path, options);
-	const timing = path.rotaryMotion ? { timeSeconds: NaN, minRpm: NaN, maxRpm: NaN } : motionCode === 0
-		? estimateRapidTime(distance, options)
-		: estimatePathTime(path, state, options);
+	let timing;
+	if (Number.isFinite(rotaryFeedDistance)) {
+		timing = estimateLinearPathTime({ points: [start, end] }, state, options, rotaryFeedDistance);
+	} else if (path.rotaryMotion) {
+		timing = { timeSeconds: NaN, minRpm: NaN, maxRpm: NaN };
+	} else {
+		timing = motionCode === 0 ? estimateRapidTime(distance, options) : estimatePathTime(path, state, options);
+	}
 	const warnings = collectUnresolvedWordWarnings(words, state.polarInterpolation
 		? ["X", "C", "Z", "U", "H", "W", "F"]
-		: ["X", "Y", "Z", "U", "V", "W", "F"]);
+		: ["X", "Y", "Z", "C", "U", "V", "W", "H", "F"]);
 
-	if (path.rotaryMotion) warnings.push("Rotary C timing requires controller-specific rotary feed and rapid rates.");
-	if (distance <= 0) {
+	if (path.rotaryMotion && !Number.isFinite(rotaryFeedDistance)) warnings.push("Rotary C rapid or arc timing requires controller-specific rates.");
+	if ((Number.isFinite(rotaryFeedDistance) ? rotaryFeedDistance : distance) <= 0) {
 		warnings.push("Move distance is zero.");
 	}
 
@@ -727,6 +735,7 @@ function estimateMotion(words, motionCode, state, options) {
 		end: normalizeRotaryPosition(end, options, state.polarInterpolation),
 		coordinateSystem: state.coordinateSystem,
 		distance,
+		feedDistance: rotaryFeedDistance,
 		timeSeconds: timing.timeSeconds,
 		minRpm: timing.minRpm,
 		maxRpm: timing.maxRpm,
@@ -1297,11 +1306,12 @@ function formatArcValue(value) {
 	return Number(value.toFixed(6)).toString();
 }
 
-function estimateLinearPathTime(path, state, options) {
+function estimateLinearPathTime(path, state, options, feedDistance) {
 	const points = path && Array.isArray(path.points) ? path.points : [];
 	const start = points[0];
 	const end = points[points.length - 1];
-	const distance = start && end ? getPhysicalDistance(start, end, options) : NaN;
+	const distance = Number.isFinite(feedDistance) ? feedDistance
+		: start && end ? getPhysicalDistance(start, end, options) : NaN;
 	const rpmRange = estimatePathRpmRange(path, state, options);
 	let timeSeconds = NaN;
 
@@ -1779,6 +1789,18 @@ function analyzeChronobladeRange(document, range, options) {
 	};
 }
 
+function getRotaryFeedDistance(start, end, options) {
+	// Conventional mixed-axis feed treats one C degree as one programmed linear unit.
+	// Keep X's existing radius/diameter conversion; this is controller feed length,
+	// not the physical sweep drawn by Vision.
+	return Math.hypot(
+		toPhysicalAxisDistance("x", (end.x || 0) - (start.x || 0), options),
+		(end.y || 0) - (start.y || 0),
+		(end.z || 0) - (start.z || 0),
+		(end.c || 0) - (start.c || 0)
+	);
+}
+
 function attachChronobladeLineData(row, lineNumber, executionEntry) {
 	row.sourceLineNumber = lineNumber + 1;
 	if (executionEntry) {
@@ -2171,7 +2193,7 @@ function makeMotionReportRow(lineNumber, motionCode, estimate, options, toolRang
 		toolColor: getToolColor(toolRange),
 		start: formatPosition(estimate.start, humanFormat),
 		end: formatPosition(estimate.end, humanFormat),
-		distance: estimate.distance,
+		distance: Number.isFinite(estimate.feedDistance) ? estimate.feedDistance : estimate.distance,
 		timeSeconds: estimate.timeSeconds,
 		feed: showsFeed ? estimate.feed : NaN,
 		feedMode: showsFeed ? estimate.feedMode : "",

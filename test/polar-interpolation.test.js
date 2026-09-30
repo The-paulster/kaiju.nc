@@ -79,9 +79,31 @@ test("physical C quarter turns close a full circle in radius and diameter modes"
 			closeTo(row.points.at(-1).x, radius * Math.cos((i + 1) * Math.PI / 2));
 			closeTo(row.points.at(-1).y, radius * Math.sin((i + 1) * Math.PI / 2));
 			closeTo(row.distance, radius * Math.PI / 2, 0.01);
-			assert.ok(Number.isNaN(row.timeSeconds));
+			closeTo(row.timeSeconds, 54);
 		}
 	}
+});
+
+test("Chronoblade uses conventional C feed length while Vision keeps physical travel", () => {
+	const document = makeDocument("G0 X40 C0 Z0\nG1 X60 Z10 C90 F300\nG91 H-180 W-10\nG90 G0 C0");
+	const chronobladeRows = motionRows(motion.analyzeChronobladeRange(document, undefined, OPTIONS));
+	const visionRows = motionRows(motion.analyzeVisionRange(document, undefined, OPTIONS));
+	const firstFeedDistance = Math.hypot(10, 10, 90);
+	const secondFeedDistance = Math.hypot(10, 180);
+	closeTo(chronobladeRows[0].distance, firstFeedDistance);
+	closeTo(chronobladeRows[0].timeSeconds, firstFeedDistance / 300 * 60);
+	closeTo(chronobladeRows[1].distance, secondFeedDistance);
+	closeTo(chronobladeRows[1].timeSeconds, secondFeedDistance / 300 * 60);
+	assert.ok(Math.abs(visionRows[0].distance - firstFeedDistance) > 1);
+	closeTo(visionRows[0].timeSeconds, chronobladeRows[0].timeSeconds);
+	assert.ok(Number.isNaN(chronobladeRows[2].timeSeconds));
+});
+
+test("C feed timing uses fixed RPM in feed-per-revolution mode", () => {
+	const document = makeDocument("G0 X40 C0\nG97 S600 G99\nG1 C90 F0.5");
+	const row = motionRows(motion.analyzeChronobladeRange(document, undefined, OPTIONS)).at(-1);
+	closeTo(row.distance, 90);
+	closeTo(row.timeSeconds, 18);
 });
 
 test("physical C preserves signed full turns, incremental C/H and simultaneous X/Z", () => {

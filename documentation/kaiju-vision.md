@@ -59,8 +59,11 @@ cancellation. After `M46`, Vision uses C0 for subsequent turning moves, labels,
 and details; playback updates its C readout at the `M46` block itself without
 drawing a move. `G13.1` cancels polar interpolation separately.
 The first C move assumes C0 if no previous angle is known. This inspection convention does not infer
-controller-specific shortest-path indexing, rotary unwind, spindle engagement
-M codes, or rotary timing. G12.1 continues to interpret C as a virtual Cartesian coordinate.
+controller-specific shortest-path indexing, rotary unwind, or spindle engagement
+M codes. G1 rotary timing uses the conventional one-linear-unit-per-C-degree
+controller-feed model; Vision's distance and path drawing still use physical
+swept travel. Rotary G0 and G2/G3 timing remains unknown. G12.1 continues to
+interpret C as a virtual Cartesian coordinate.
 
 Hovering a merged node shows its combined entries. Clicking that node pins an
 interactive, scrollable entry list; clicking elsewhere in the Vision viewport

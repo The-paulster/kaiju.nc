@@ -30,6 +30,10 @@ unusable Trace falls back to as-written timing and displays a hoverable warning.
 Timing assumptions are explained on hover: the G0 rate field and G0 summary
 describe rapid timing, while tool-swap and extra-station fields state their
 respective seconds-based timing contributions.
+Outside polar interpolation, G1 moves with C travel use the shared default
+controller-feed length of one linear program unit per C degree, combined with
+linear-axis travel. Their report distance and cutting time use that feed length;
+it is not the physical cutter path. Rotary G0 and G2/G3 time remains unknown.
 
 Reusable timing profiles are configured through
 `kaijuNC.chronoblade.timingProfiles` in Settings. Each profile may supply G0,
