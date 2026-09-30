@@ -7,7 +7,8 @@ O9005 (KAIJU C AXIS - ROTARY SWEEPS AND POLAR FACE PATHS)
 (/ Lathe Radius instead makes X40 a radius of 40 mm.)
 (/ Use Trace and Play to watch C in the purple coordinate readout.)
 (/ Endpoint labels and hover details retain C on later X/Z-only moves.)
-(/ Positive C rotates from +X toward +Y. Turns are used as written.)
+(/ Positive C rotates from +X toward +Y. Full commanded turns are drawn.)
+(/ After each move, the retained C angle wraps to 0-360 degrees.)
 (/ No controller-specific shortest-path indexing is assumed.)
 (/ Physical rotary timing remains unknown in Chronoblade.)
 (/ No spindle engagement or C-axis clamp M codes are inferred here.)
@@ -25,7 +26,7 @@ G01 C270.000
 G01 C360.000
 
 N200 (AN EXPLICIT FULL TURN)
-(/ C360 to C720 is another complete turn, not a zero-length move.)
+(/ C720 draws two turns from the retained C0, then retains C0 again.)
 (/ The endpoints overlap in X-Y; Play reveals the sweep between them.)
 G01 C720.000
 
@@ -33,21 +34,21 @@ N300 (SIMULTANEOUS X, Z, AND C - EXPANDING SPIRAL)
 (/ Over one turn the radius grows from 20 to 30 mm and Z falls 12 mm.)
 (/ Dual View with Shared axis X shows the face and axial projections.)
 G01 X60.000 Z-12.000 C1080.000
-(/ This move omits C: the last angle, 1080 degrees, remains in the labels.)
+(/ This move omits C: the wrapped C0 angle remains in the labels.)
 G01 X50.000 Z-15.000
 
 N400 (REVERSE TURN AND INCREMENTAL ROTATION)
-(/ C1080 to C720 is a full negative turn, with no shortest-path wrapping.)
-G01 C720.000
-(/ H is incremental C outside polar mode: add 90 degrees to reach C810.)
+(/ C-360 draws a full negative turn, then retains C0.)
+G01 C-360.000
+(/ H is incremental C outside polar mode: add 90 degrees to reach C90.)
 G01 H90.000
-(/ G91 makes a C word incremental too: subtract 90 to return to C720.)
+(/ G91 makes a C word incremental too: subtract 90 to return to C0.)
 G91 G01 C-90.000
 G90
 
 N500 (POLAR INTERPOLATION - C NOW MEANS A FACE COORDINATE)
 (/ Reset to C0 before enabling polar interpolation.)
-(/ From C720 this reset is two reverse turns, visible as a rapid sweep.)
+(/ The retained angle is already C0, so this rapid only changes X.)
 G00 Z5.000
 G00 X40.000 C0.000
 G12.1

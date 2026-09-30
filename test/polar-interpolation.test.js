@@ -95,6 +95,23 @@ test("physical C preserves signed full turns, incremental C/H and simultaneous X
 	closeTo(rows[2].points.at(-1).y, 40);
 });
 
+test("rotary turns are drawn in full but the next block starts from the wrapped C angle", () => {
+	const rows = motionRows(motion.analyzeVisionRange(makeDocument(
+		"G0 X14 C0 Z0\nG1 H720 W-2 F100\nG0 C0 X2\nG1 C720 F100\nG0 C0 X14"
+	), undefined, OPTIONS));
+	assert.equal(rows.length, 4);
+	assert.ok(rows[0].points.length > 360);
+	assert.ok(rows[0].distance > 80);
+	closeTo(rows[0].end.c, 0);
+	closeTo(rows[1].start.c, 0);
+	closeTo(rows[1].end.c, 0);
+	assert.equal(rows[1].points.length, 2);
+	assert.ok(rows[1].points.every(point => Math.abs(point.y) < 1e-9));
+	assert.ok(rows[2].points.length > 360);
+	closeTo(rows[2].end.c, 0);
+	assert.equal(rows[3].points.length, 2);
+});
+
 test("polar interpolation does not rotate its virtual C coordinates", () => {
 	const rows = motionRows(motion.analyzeVisionRange(makeDocument("G0 X40 C90\nG12.1\nG1 C10 F100\nG13.1\nG1 C180"), undefined, OPTIONS));
 	closeTo(rows[0].points.at(-1).x, 20);

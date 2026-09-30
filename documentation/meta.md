@@ -61,8 +61,12 @@ samples rotary sweeps for Vision, including simultaneous X/Y/Z motion. For
 programs without an explicit C-axis mode command, authored C motion retains
 the existing rotary inspection behavior. Physical
 placement rotates the linear XY position about Z; diameter X is halved first.
-C0 points along +X and positive C rotates toward +Y. Absolute angles are used
-as written, preserving signed and multiple turns, without shortest-path wrap.
+C0 points along +X and positive C rotates toward +Y. Each commanded C or H
+sweep uses its full signed angle, including multiple turns. After the move, the
+tracked physical C angle is reduced to 0-360 degrees for the next block. Thus
+an H720 move draws two turns and ends at C0; a following absolute C0 does not
+draw an invented two-turn return. This is an inspection convention, not a
+controller-specific shortest-path or rotary unwind rule.
 Rotary timing remains unknown pending controller-specific rotary feed/rate
 semantics. Human position formatting includes C when available.
 

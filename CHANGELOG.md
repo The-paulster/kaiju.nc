@@ -4,6 +4,8 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.6.3]
 
+- Vision, Sense, and Chronoblade now retain the 0-360 C angle after a full signed C/H sweep, so a later absolute C0 does not create a multi-turn return path. The commanded sweep itself remains fully sampled.
+
 ## [0.6.2]
 
 - Unified Trace, Decomposition, Vision, Chronoblade, and Macro Hunter under `kaijuNC.trace.maxExecutionSteps`; removed Decomposition's separate step and output-line limits so completed occurrences retain their formatted trace lines.

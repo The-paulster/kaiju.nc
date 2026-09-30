@@ -45,8 +45,11 @@ lathe default remains the configured Z-X view.
 For physical rotary C paths, use lathe mode and ordinary C moves outside
 G12.1. Select X-Y for the face view: X40 C0/C90/C180/C270/C360 traces a circle
 of radius 20 in Diameter mode, or 40 in Radius mode. Positive C runs from +X
-toward +Y; explicit full turns and simultaneous X/Z moves are sampled. C stays
-an angle in node details and playback coordinates.
+toward +Y; explicit full turns and simultaneous X/Z moves are sampled. The full
+commanded sweep is drawn, then the retained C position is reduced to 0-360
+degrees. A rapid C0 after full H360 turns therefore starts from C0 instead of
+showing an artificial multi-turn return. C stays an angle in node details and
+playback coordinates.
 Once resolved, C is included in visible endpoint labels, merged-node summaries,
 and hover details, retaining its last value on subsequent linear moves.
 C coordinates in hovers and the playback readout use the editor's default
@@ -56,8 +59,8 @@ cancellation. After `M46`, Vision uses C0 for subsequent turning moves, labels,
 and details; playback updates its C readout at the `M46` block itself without
 drawing a move. `G13.1` cancels polar interpolation separately.
 The first C move assumes C0 if no previous angle is known. This inspection convention does not infer
-controller-specific shortest-path indexing, spindle engagement M codes, or
-rotary timing. G12.1 continues to interpret C as a virtual Cartesian coordinate.
+controller-specific shortest-path indexing, rotary unwind, spindle engagement
+M codes, or rotary timing. G12.1 continues to interpret C as a virtual Cartesian coordinate.
 
 Hovering a merged node shows its combined entries. Clicking that node pins an
 interactive, scrollable entry list; clicking elsewhere in the Vision viewport

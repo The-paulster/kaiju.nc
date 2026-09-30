@@ -679,7 +679,7 @@ function estimateMotion(words, motionCode, state, options) {
 
 	if (!hasKnownPosition(start) || !hasKnownPosition(end)) {
 		applyPositionUpdate(words, state, options);
-		return makeUnavailableEstimate(motionCode, start, end, "Start or end position is incomplete.");
+		return makeUnavailableEstimate(motionCode, start, normalizeRotaryPosition(end, options, state.polarInterpolation), "Start or end position is incomplete.");
 	}
 
 	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options, state.polarInterpolation);
@@ -724,7 +724,7 @@ function estimateMotion(words, motionCode, state, options) {
 		motionWord: getMotionWord(motionCode, options),
 		machineCoordinate: hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options),
 		start,
-		end,
+		end: normalizeRotaryPosition(end, options, state.polarInterpolation),
 		coordinateSystem: state.coordinateSystem,
 		distance,
 		timeSeconds: timing.timeSeconds,
@@ -767,7 +767,17 @@ function applyPositionUpdate(words, state, options) {
 		return;
 	}
 
-	state.position = makeEndPosition(state.position, words, state.distanceMode, options, state.polarInterpolation);
+	state.position = normalizeRotaryPosition(
+		makeEndPosition(state.position, words, state.distanceMode, options, state.polarInterpolation),
+		options,
+		state.polarInterpolation
+	);
+}
+
+function normalizeRotaryPosition(position, options, polarInterpolation) {
+	if (polarInterpolation || options.machineMode === "mill" || !Number.isFinite(position.c)) return position;
+	const c = ((position.c % 360) + 360) % 360;
+	return { ...position, c: c === 0 ? 0 : c };
 }
 
 function collectUnresolvedWordWarnings(words, letters) {
