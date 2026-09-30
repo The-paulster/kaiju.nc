@@ -84,6 +84,13 @@ totals. **Hide zero labels** removes zero-time sections from the display, and
 **Trim zeros** shortens displayed decimal values while retaining G-code
 decimal points.
 
+**Group labels** folds consecutive repeats such as `N103 ×3` and repeated
+sequences such as `N102 → N103 → N104 ×2`. The grouped row shows their combined
+Time and the Total through the final section. Click it to inspect each original
+occurrence and its rows. Grouping changes only the display and is saved for the
+current program. Label comments appear beside their N numbers; long names
+shorten with an ellipsis, and hovering shows the full sequence.
+
 ## Timing assumptions
 
 The three timing fields at the top of the report fill in machine-dependent

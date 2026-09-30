@@ -160,10 +160,19 @@ test("Vision resets C to zero on M46 before subsequent turning moves", () => {
 	assert.equal(result.positionEvents.length, 1);
 	assert.equal(result.positionEvents[0].executionIndex, executionTrace.executionEntries.find(entry => entry.lineNumber === 4).executionIndex);
 	assert.equal(result.positionEvents[0].position.c, 0);
+	assert.ok(Math.abs(result.positionEvents[0].startPoint.x + 100) < 0.000001);
+	assert.ok(result.positionEvents[0].startPoint.y > 0);
 	assert.equal(result.positionEvents[0].point.x, 200);
 	assert.equal(result.positionEvents[0].point.y, 0);
 	assert.equal(turning.points.at(-1).x, 195);
 	assert.equal(turning.points.at(-1).y, 0);
+	assert.equal(result.rows.some(row => row.type === "motion" && row.lineNumber === 5), false);
+	const sourceResult = motion.analyzeVisionRange(document, undefined, {
+		machineMode: "latheDiameter", xAxisMode: "diameter", gCodeDialectId: "dmgMori", rapidRate: 10000
+	});
+	assert.equal(sourceResult.positionEvents.length, 1);
+	assert.ok(sourceResult.positionEvents[0].startPoint.x < 0);
+	assert.equal(sourceResult.positionEvents[0].point.x, 200);
 });
 
 test("dialect-owned status groups do not duplicate word meanings", () => {

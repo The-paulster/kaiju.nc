@@ -76,14 +76,14 @@ async function showChronobladePanel(editor, mode, options) {
 				await showTimingProfilesEditor(getChronobladeSourceEditor()?.document);
 				return;
 			}
-			if (!["setChronobladeAnalysis", "setChronobladeLive", "setChronobladeTiming", "setChronobladeTimingProfile"].includes(message.type)) return;
+			if (!["setChronobladeAnalysis", "setChronobladeLive", "setChronobladeGroupLabels", "setChronobladeTiming", "setChronobladeTimingProfile"].includes(message.type)) return;
 			const sourceEditor = getChronobladeSourceEditor();
 			if (!sourceEditor) return;
 			await saveDocumentChronobladeSettings(sourceEditor.document, message.options || {}, message.type === "setChronobladeTimingProfile");
 			const nextOptions = makeChronobladeOptions(sourceEditor.document, message.options || {});
 			chronobladeState = { documentUriText: sourceEditor.document.uri.toString(), mode: chronobladeState.mode, options: nextOptions };
 			if (nextOptions.live) scheduleExecutionTrace(sourceEditor.document);
-			if (message.type !== "setChronobladeLive") await renderChronobladePanel(sourceEditor, chronobladeState.mode, nextOptions);
+			if (message.type !== "setChronobladeLive" && message.type !== "setChronobladeGroupLabels") await renderChronobladePanel(sourceEditor, chronobladeState.mode, nextOptions);
 		});
 
 	} else {
@@ -232,7 +232,8 @@ async function saveDocumentChronobladeSettings(document, rawSettings, resetTimin
 	const next = Object.assign(current, {
 		analysisMode: rawSettings.analysisMode === "trace" ? "trace" : "asWritten",
 		showTraceLine: rawSettings.showTraceLine === true,
-		live: rawSettings.live === true
+		live: rawSettings.live === true,
+		groupLabels: rawSettings.groupLabels === true
 	});
 
 	if (Object.prototype.hasOwnProperty.call(rawSettings, "timingProfile")) {
@@ -577,13 +578,19 @@ function renderChronobladeHtml(options, result) {
 			padding: 0;
 		}
 
-		tr.label-row td {
+		tr.label-row td,
+		tr.group-row td {
 			background: var(--vscode-editor-inactiveSelectionBackground);
 			color: var(--vscode-descriptionForeground);
 			font-weight: 600;
 		}
 
-		tr.label-row {
+		tr.group-row td {
+			background: var(--vscode-list-hoverBackground);
+		}
+
+		tr.label-row,
+		tr.group-row {
 			cursor: pointer;
 		}
 
@@ -610,6 +617,26 @@ function renderChronobladeHtml(options, result) {
 		.section-toggle:hover {
 			background: transparent;
 			text-decoration: underline;
+		}
+
+		.group-toggle {
+			display: flex;
+			align-items: center;
+			min-width: 0;
+		}
+
+		.group-label-names {
+			display: block;
+			min-width: 0;
+			max-width: min(55vw, 80ch);
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+		}
+
+		.group-repeat-count {
+			flex: none;
+			margin-left: 0.5em;
 		}
 
 		.section-chevron {
@@ -722,6 +749,7 @@ function renderChronobladeHtml(options, result) {
 			<label class="checkbox"><input id="live" type="checkbox"${options.live ? " checked" : ""}> Live</label>
 			<label class="checkbox" title="Show values without insignificant trailing fractional zeros while retaining a decimal point."><input id="significantFigures" type="checkbox"${options.significantFiguresOnly ? " checked" : ""}> Trim zeros</label>
 			<label class="checkbox" title="Hide N-label sections whose total estimated time is zero."><input id="hideZeroTimeLabels" type="checkbox"${options.hideZeroTimeLabels ? " checked" : ""}> Hide zero labels</label>
+			<label class="checkbox" title="Combine consecutive repeated N-label sections or label sequences. Expand a group to inspect every execution occurrence."><input id="groupLabels" type="checkbox"${options.groupLabels ? " checked" : ""}> Group labels</label>
 			</div>
 		</div>
 	</section>
@@ -734,6 +762,7 @@ function renderChronobladeHtml(options, result) {
 		const chronobladeData = JSON.parse(document.getElementById("chronoblade-data").textContent);
 		const significantFiguresInput = document.getElementById("significantFigures");
 		const hideZeroTimeLabelsInput = document.getElementById("hideZeroTimeLabels");
+		const groupLabelsInput = document.getElementById("groupLabels");
 		const analysisModeSelect = document.getElementById("analysisMode");
 		const lineDataSelect = document.getElementById("lineData");
 		const liveInput = document.getElementById("live");
@@ -747,6 +776,7 @@ function renderChronobladeHtml(options, result) {
 		const ROW_HEIGHT = 35;
 		const ROW_OVERSCAN = 14;
 		const collapsedSections = new Set();
+		const expandedGroups = new Set();
 		let visibleRows = [];
 		const formatSignificantFigures = value => value.replace(/(-?\\d+)\\.(\\d+)/g, (_match, whole, fraction) => whole + "." + fraction.replace(/0+$/, ""));
 		const updateSignificantFigures = () => {
@@ -763,7 +793,11 @@ function renderChronobladeHtml(options, result) {
 
 		significantFiguresInput.addEventListener("change", updateSignificantFigures);
 		hideZeroTimeLabelsInput.addEventListener("change", updateZeroTimeLabels);
-		const collectAnalysisOptions = () => ({ analysisMode: analysisModeSelect.value, showTraceLine: lineDataSelect.value === "trace", live: liveInput.checked, timingProfile: timingProfileSelect.value });
+		groupLabelsInput.addEventListener("change", () => {
+			rebuildVisibleRows();
+			vscode.postMessage({ type: "setChronobladeGroupLabels", options: collectAnalysisOptions() });
+		});
+		const collectAnalysisOptions = () => ({ analysisMode: analysisModeSelect.value, showTraceLine: lineDataSelect.value === "trace", live: liveInput.checked, groupLabels: groupLabelsInput.checked, timingProfile: timingProfileSelect.value });
 		const collectTimingOptions = () => Object.assign(collectAnalysisOptions(), {
 			rapidRate: rapidRateInput.value,
 			toolChangeSeconds: toolChangeSecondsInput.value,
@@ -794,6 +828,14 @@ function renderChronobladeHtml(options, result) {
 		updateZeroTimeLabels();
 
 		tableBody?.addEventListener("click", event => {
+			const groupRow = event.target.closest(".group-row");
+			if (groupRow) {
+				const groupId = groupRow.dataset.groupId;
+				if (expandedGroups.has(groupId)) expandedGroups.delete(groupId);
+				else expandedGroups.add(groupId);
+				rebuildVisibleRows();
+				return;
+			}
 			const labelRow = event.target.closest(".label-row");
 			if (!labelRow) {
 				return;
@@ -810,9 +852,10 @@ function renderChronobladeHtml(options, result) {
 		window.addEventListener("resize", renderVirtualRows);
 
 		function rebuildVisibleRows() {
-			const nextRows = [];
+			const sections = [];
+			const prefixRows = [];
 			let activeSectionId = -1;
-			let hideActiveSection = false;
+			let activeSection;
 			let accumulatedTimeSeconds = 0;
 			let accumulatedLabelTimeSeconds = 0;
 
@@ -820,18 +863,83 @@ function renderChronobladeHtml(options, result) {
 				if (row.type === "label") {
 					activeSectionId++;
 					if (Number.isFinite(row.labelTotalTimeSeconds)) accumulatedLabelTimeSeconds += row.labelTotalTimeSeconds;
-					hideActiveSection = hideZeroTimeLabelsInput.checked && Math.abs(Number(row.labelTotalTimeSeconds) || 0) < 0.000000001;
-					if (!hideActiveSection) nextRows.push({ kind: "label", row, sectionId: activeSectionId, accumulatedLabelTimeSeconds });
+					activeSection = {
+						label: { kind: "label", row, sectionId: activeSectionId, accumulatedLabelTimeSeconds },
+						rows: [],
+						hidden: hideZeroTimeLabelsInput.checked && Math.abs(Number(row.labelTotalTimeSeconds) || 0) < 0.000000001
+					};
+					sections.push(activeSection);
 					continue;
 				}
 
 				if (Number.isFinite(row.timeSeconds)) accumulatedTimeSeconds += row.timeSeconds;
-				if (!hideActiveSection && !collapsedSections.has(activeSectionId)) nextRows.push({ kind: "row", row, accumulatedTimeSeconds });
+				const entry = { kind: "row", row, accumulatedTimeSeconds };
+				if (activeSection) activeSection.rows.push(entry);
+				else prefixRows.push(entry);
 			}
 
+			const nextRows = prefixRows;
+			const appendSection = section => {
+				nextRows.push(section.label);
+				if (!collapsedSections.has(section.label.sectionId)) {
+					for (const row of section.rows) nextRows.push(row);
+				}
+			};
+			const visibleSections = sections.filter(section => !section.hidden);
+			const groups = groupLabelsInput.checked ? groupRepeatedLabelSections(visibleSections) : visibleSections;
+			for (const item of groups) {
+				if (item.kind !== "group") {
+					appendSection(item);
+					continue;
+				}
+				nextRows.push(item);
+				if (expandedGroups.has(item.id)) for (const section of item.sections) appendSection(section);
+			}
 			visibleRows = nextRows;
 			if (tableWrap) tableWrap.scrollTop = Math.min(tableWrap.scrollTop, Math.max(0, visibleRows.length * ROW_HEIGHT - tableWrap.clientHeight));
 			renderVirtualRows();
+		}
+
+		function groupRepeatedLabelSections(sections) {
+			const keys = sections.map(section => {
+				const row = section.label.row;
+				return String(row.sourceLineNumber || row.lineNumber) + ":" + row.instruction;
+			});
+			const groups = [];
+			for (let index = 0; index < sections.length;) {
+				let bestLength = 0, bestRepeats = 0, bestCoverage = 0;
+				const maxLength = Math.min(32, Math.floor((sections.length - index) / 2));
+				for (let length = 1; length <= maxLength; length++) {
+					let matching = true;
+					for (let offset = 0; offset < length; offset++) {
+						if (keys[index + offset] !== keys[index + length + offset]) { matching = false; break; }
+					}
+					if (!matching) continue;
+					let repeats = 2;
+					while (index + (repeats + 1) * length <= sections.length) {
+						for (let offset = 0; offset < length; offset++) {
+							if (keys[index + offset] !== keys[index + repeats * length + offset]) { matching = false; break; }
+						}
+						if (!matching) break;
+						repeats++;
+					}
+					const coverage = length * repeats;
+					if (coverage > bestCoverage || (coverage === bestCoverage && length < bestLength)) {
+						bestLength = length; bestRepeats = repeats; bestCoverage = coverage;
+					}
+				}
+				if (!bestCoverage) {
+					groups.push(sections[index++]);
+					continue;
+				}
+				const repeated = sections.slice(index, index + bestCoverage);
+				groups.push({ kind: "group", id: String(repeated[0].label.sectionId) + ":" + String(repeated.at(-1).label.sectionId),
+					sections: repeated, patternLength: bestLength, repeatCount: bestRepeats,
+					timeSeconds: repeated.reduce((total, section) => total + (Number(section.label.row.labelTotalTimeSeconds) || 0), 0),
+					accumulatedLabelTimeSeconds: repeated.at(-1).label.accumulatedLabelTimeSeconds });
+				index += bestCoverage;
+			}
+			return groups;
 		}
 
 		function renderVirtualRows() {
@@ -844,7 +952,19 @@ function renderChronobladeHtml(options, result) {
 		}
 
 		function renderVirtualRow(entry) {
-			return entry.kind === "label" ? renderVirtualLabelRow(entry) : renderVirtualReportRow(entry);
+			return entry.kind === "group" ? renderVirtualGroupRow(entry)
+				: entry.kind === "label" ? renderVirtualLabelRow(entry) : renderVirtualReportRow(entry);
+		}
+
+		function renderVirtualGroupRow(entry) {
+			const labels = entry.sections.slice(0, entry.patternLength).map(section => {
+				const row = section.label.row;
+				return row.instruction + (row.comment ? ' ' + row.comment : '');
+			});
+			const expanded = expandedGroups.has(entry.id);
+			return '<tr class="group-row" data-group-id="' + entry.id + '"><td class="tool-marker-cell"></td><td class="tool-marker-gap"></td><td class="line-cell">—</td>' +
+				'<td colspan="7"><button class="section-toggle group-toggle" type="button" aria-expanded="' + String(expanded) + '" title="' + escapeAttribute((expanded ? 'Collapse' : 'Expand') + ' repeated labels: ' + labels.join(' → ')) + '"><span class="section-chevron" aria-hidden="true">' + (expanded ? '&#9660;' : '&#9654;') + '</span><code class="group-label-names">' + escapeHtml(labels.join(' → ')) + '</code><code class="group-repeat-count">×' + entry.repeatCount + '</code></button></td>' +
+				'<td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(formatVirtualTime(entry.timeSeconds))) + '</span></td><td><span class="cell-value">' + escapeHtml(formatVirtualSignificant(formatVirtualAccumulatedTime(entry.accumulatedLabelTimeSeconds))) + '</span></td></tr>';
 		}
 
 		function renderVirtualReportRow(entry) {

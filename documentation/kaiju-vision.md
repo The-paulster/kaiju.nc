@@ -58,6 +58,11 @@ Both built-in lathe profiles interpret `M45` as C-axis engagement and `M46` as
 cancellation. After `M46`, Vision uses C0 for subsequent turning moves, labels,
 and details; playback updates its C readout at the `M46` block itself without
 drawing a move. `G13.1` cancels polar interpolation separately.
+When C cancellation changes the projected position, Vision joins the positions
+before and after the reset with a muted, closely dotted connector in both
+Source and Trace views. Its tooltip identifies the projection reset. The
+connector is not a motion row and contributes no travel or time; rapid moves
+retain their longer dashes.
 The first C move assumes C0 if no previous angle is known. This inspection convention does not infer
 controller-specific shortest-path indexing, rotary unwind, or spindle engagement
 M codes. G1 rotary timing uses the conventional one-linear-unit-per-C-degree

@@ -17,6 +17,7 @@ function getChronobladeOptions(document, rawOptions = {}) {
 		analysisMode: rawOptions.analysisMode === "asWritten" ? "asWritten" : "trace",
 		showTraceLine: rawOptions.showTraceLine === true,
 		live: rawOptions.live === true,
+		groupLabels: rawOptions.groupLabels === true,
 		machineMode: profile.id,
 		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,

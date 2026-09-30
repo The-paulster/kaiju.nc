@@ -1842,12 +1842,18 @@ function analyzeVisionRange(document, range, options) {
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words, options);
+		const cAxisReset = hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options);
+		const resetStart = cAxisReset ? clonePosition(state.position) : undefined;
+		const resetCoordinateSystem = state.positionCoordinateSystem || state.coordinateSystem;
 
 		applyModalState(words, motionCode, state, options);
 		rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
-		if (executionEntry && hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options)) {
+		if (cAxisReset) {
 			positionEvents.push({
-				executionIndex: executionEntry.executionIndex,
+				executionIndex: executionEntry && executionEntry.executionIndex,
+				tool: getToolRangeAtLine(toolRanges, lineNumber)?.tool || "",
+				coordinateSystem: resetCoordinateSystem,
+				startPoint: toVisionPoint(resetStart, options, resetCoordinateSystem),
 				position: clonePosition(state.position),
 				point: toVisionPoint(state.position, options, state.positionCoordinateSystem || state.coordinateSystem)
 			});

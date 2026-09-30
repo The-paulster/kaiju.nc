@@ -68,11 +68,24 @@ rows belonging to that label section; this is presentation-only and does not
 alter the cycle-time analysis. Each label displays the accumulated estimated
 time through its own section in Total, alongside that section's own estimated
 time in Time.
+The per-program **Group labels** toggle folds consecutive executions of the
+same source label, or a repeated sequence of up to 32 source labels, into one
+summary row. For example, `N103 N103 N103` becomes `N103 ×3`, and
+`N102 N103 N104 N102 N103 N104` becomes `N102 → N103 → N104 ×2`.
+Each group shows the source label comments beside the N numbers. Long sequences
+are shortened visually with an ellipsis; hover shows the complete names, while
+the repetition count remains visible.
+Clicking the group reveals its original label sections, with their individual
+rows, line identifiers, times, and collapse controls. Group Time sums the
+actual section estimates; Total is the accumulated label time through the end
+of the group. Grouping follows the currently visible labels after the
+zero-time filter and never changes calculated totals or execution order.
 
 The report also offers display toggles for trailing-zero suppression (while
 retaining G-code decimal points) and hiding zero-time label sections. Both
 are configurable through the Chronoblade settings; trailing-zero suppression
-defaults off, while hiding zero-time sections defaults on.
+defaults off, while hiding zero-time sections defaults on. Group labels defaults
+off and is saved per program.
 
 Chronoblade virtualises its report table: it retains the calculated rows as
 compact report data but creates DOM rows only for the visible scroll area.

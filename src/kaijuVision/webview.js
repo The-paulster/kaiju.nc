@@ -1730,6 +1730,9 @@ function renderVisionHtml(document, mode, options, result) {
 				events: [],
 				positionEvents: (data.positionEvents || []).map(event => ({
 					executionIndex: event.executionIndex,
+					tool: event.tool,
+					coordinateSystem: event.coordinateSystem,
+					projectedStart: project(event.startPoint || {}, plane),
 					projectedPoint: project(event.point || {}, plane),
 					position: event.position
 				}))
@@ -1804,7 +1807,8 @@ function renderVisionHtml(document, mode, options, result) {
 				rows: projected.rows.filter(row => isRowVisible(row, visibility)),
 				cycles: projected.cycles.filter(row => isRowVisible(row, visibility)),
 				toolChanges: projected.toolChanges.filter(row => isRowVisible(row, visibility)),
-				events: projected.events.filter(row => isRowVisible(row, visibility))
+				events: projected.events.filter(row => isRowVisible(row, visibility)),
+				positionEvents: (projected.positionEvents || []).filter(row => isRowVisible(row, visibility))
 			};
 			visible.bounds = makeBounds(visible.rows, visible.cycles, visible.toolChanges, visible.events);
 			try {
@@ -2414,14 +2418,15 @@ function renderVisionHtml(document, mode, options, result) {
 			if (viewKey === "primary") updatePlaybackPositionReadout(getCurrentPlaybackPosition(projected));
 			const labelsAndMarkers = layoutPointLabels(visibleLabelTargets, { labelSize: labelEntry.labelSize, labelOffset: labelEntry.labelOffset, labelHitboxPadding: labelEntry.labelHitboxPadding }).map(target => renderPointLabel(target, labelFontSize, endpointLabelOutline)).join("");
 			const zeroAxes = showZeroLines ? renderZeroAxes(bounds, plane) : "";
+			const resetConnectors = renderPositionResetConnectors(visible.positionEvents, bounds, playbackActive ? playback.cursor : undefined);
 			const compass = renderCompass(bounds, plane, compassSize, compassOffsetX, compassOffsetY, compassTextSize);
 			const playbackDot = renderPlaybackDotSvg(currentPlaybackDot, unitsPerPixel);
 			const svgId = viewKey === "primary" ? "vision-svg" : "vision-svg-secondary";
 			const canvasId = viewKey === "primary" ? "vision-canvas" : "vision-canvas-secondary";
 			const overlaySvg = '<svg id="' + svgId + '" class="vision-overlay" xmlns="http://www.w3.org/2000/svg" viewBox="' + [bounds.minX, bounds.minY, bounds.width, bounds.height].map(round).join(" ") + '" preserveAspectRatio="none" role="img" aria-label="KAIJU Vision ' + plane.label + ' path">' +
 				'<style>' +
-					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;}.endpoint-label{stroke:#000;stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-weight:600;stroke:#000;stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
-				'</style>' + zeroAxes + compass + playbackDot + labelsAndMarkers + '</svg>';
+					'.zero-line{stroke:#6f6f6f;stroke-width:' + 0.8 * lineScale + ';stroke-dasharray:6 5;vector-effect:non-scaling-stroke;}.position-reset{stroke:#9a9a9a;stroke-width:1;stroke-dasharray:2 4;stroke-opacity:.75;vector-effect:non-scaling-stroke;}.compass{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;font-weight:600;}.endpoint-label,.start-label{fill:var(--vscode-foreground,#d4d4d4);font-family:Consolas,monospace;}.endpoint-label{stroke:#000;stroke-linejoin:round;paint-order:stroke fill;}.tool-change-label{font-family:Consolas,monospace;font-weight:600;stroke:#000;stroke-linejoin:round;paint-order:stroke fill;}.point-label{text-anchor:middle;}.cycle-point{fill:#4fc3ff;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.tool-change-dot{fill:#88ff00;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint{fill:var(--vscode-foreground,#d4d4d4);stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.75 * lineScale + ';vector-effect:non-scaling-stroke;}.endpoint-program-end{fill:#7f1d1d;}.endpoint-optional-stop{fill:#dcdc6b;}.endpoint-speed-change{fill:#ff2b2b;}.endpoint-compensation{fill:#1f7a3a;}.endpoint-compensation-cancel{fill:#8e44ad;}.start-point{fill:#6A9955;stroke:var(--vscode-editor-background,#1e1e1e);stroke-width:' + 0.85 * lineScale + ';vector-effect:non-scaling-stroke;}.arrow-rapid{fill:#ff8800;}.arrow-cut{fill:#ffd500;}' +
+				'</style>' + zeroAxes + resetConnectors + compass + playbackDot + labelsAndMarkers + '</svg>';
 
 			let canvas = document.getElementById(canvasId);
 			if (!canvas) {
@@ -4131,6 +4136,18 @@ function renderVisionHtml(document, mode, options, result) {
 
 		function axisDirectionLabel(axis, sign) {
 			return (sign >= 0 ? "+" : "-") + axis;
+		}
+
+		function renderPositionResetConnectors(events, bounds, playbackCursor) {
+			return events.map(event => {
+				const start = event.projectedStart, end = event.projectedPoint;
+				if (!start || !end || getPointDistance(start, end) < 0.000001
+					|| (Number.isFinite(playbackCursor) && event.executionIndex > playbackCursor)
+					|| !rowBoundsIntersect(makePointSetBounds([start, end]), bounds)) return "";
+				return '<line class="position-reset" x1="' + round(start.x) + '" y1="' + round(start.y)
+					+ '" x2="' + round(end.x) + '" y2="' + round(end.y)
+					+ '"><title>C-axis cancellation: projected position reset, no tool motion</title></line>';
+			}).join("");
 		}
 
 		function renderZeroAxes(bounds, plane) {
