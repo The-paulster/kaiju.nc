@@ -104,6 +104,7 @@ The other View controls are:
 | Control | What it changes |
 | --- | --- |
 | **Labels** | Shows or hides line and coordinate text beside points. |
+| **WCS numbers** | Shows 1-6 above nodes, or M for the machine frame. Off by default, saved per program, and independent of Labels. |
 | **Endpoints** | Shows or hides endpoint, tool-change, and other point markers. |
 | **Zero lines** | Shows axes for frames checked under **Offsets > Show axes**. It is the master switch for those axes. |
 | **Legend** | Keeps the event-marker colour key visible. When off, marker hover shows its relevant key. |
@@ -111,13 +112,17 @@ The other View controls are:
 | **Tools** | Checks individual tools to include in the drawing and motion table. **No tool** covers rows before any tool is active. |
 | **WCS** | Checks individual work-coordinate frames to include in the drawing and motion table. **No WCS** covers rows with no identified frame. |
 
+Node tooltips show the full frame label, such as `WCS1 (G54)`, using the active
+profile binding. Overlapping nodes combine their numbers, such as `1/2`, and
+retain each node's full frame label in the tooltip.
+
 The **Tools** and **WCS** lists are visibility filters. For example, with
 `T01` unchecked, only the `T02` operation remains visible. A WCS can be
 isolated in the same way. Both filters apply together; a row must pass both
 to appear. N-label section rows may remain in the table as headings.
 Restoring all checkboxes restores the full view. Filtering changes what is
 drawn and listed, not the program's execution or saved offsets. During
-playback, ordinary labels and endpoint markers are hidden so the current
+playback, ordinary labels, WCS numbers, and endpoint markers are hidden so the current
 position and completed path remain clear.
 
 ## Colour legend
@@ -223,7 +228,12 @@ warning that it is no longer current. Playback holds its own snapshot until
 
 ## Work-coordinate placement
 
-The **Offsets** panel contains G53-G59 frames. Entered X/Y/Z values place
+Work frames are displayed as **WCS1 (G54)** through **WCS6 (G59)**. The command
+in parentheses follows the active profile binding, for example **WCS2 (G155)**.
+An unbound selector shows **WCS2 (unbound)**. These labels also appear in the
+assumed-start selector, WCS visibility filters, and motion table.
+
+The **Offsets** panel contains the machine frame G53 and those six work frames. Entered X/Y/Z values place
 paths from different work frames relative to one another. **Ref.** selects
 the frame used as display zero; its fields remain at zero. Selecting a new
 reference rebases the other frames. **Show axes** chooses which frame origins

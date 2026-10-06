@@ -13,7 +13,7 @@ parsing, report UI, or configuration policy.
 - **Registers:** Reconstructor, Sense, Alias, Orphan Killer, Alert,
   Chronoblade, Vision, Decomposition, Machine Mode (including the G-code
   profile editor), Trace, Rangefinder,
-  Warpaint, Quick Toggles, and the shared passive Trace service.
+  Warpaint, Quick Toggles, File Settings, and the shared passive Trace service.
 - **Does not depend on:** feature implementation details beyond their exported
   registration functions.
 

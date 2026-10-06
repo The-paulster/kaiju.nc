@@ -218,42 +218,102 @@ function buildInitialMacroDefaults(document, macroAliases = buildMacroAliasMap(d
 	return defaults;
 }
 
+// Balanced tokens are shared by motion, tool, and trace consumers.
+function readBracketToken(text, start) {
+	if (text[start] !== "[") return undefined;
+	let depth = 0;
+	for (let index = start; index < text.length; index++) {
+		if (text[index] === "[") depth++;
+		if (text[index] === "]" && --depth === 0) {
+			return { text: text.slice(start, index + 1), start, end: index + 1 };
+		}
+	}
+	return undefined;
+}
+
+function readMacroToken(text, start = 0) {
+	if (text[start] !== "#") return undefined;
+	if (text[start + 1] === "[") {
+		const bracket = readBracketToken(text, start + 1);
+		return bracket ? { text: text.slice(start, bracket.end), start, end: bracket.end } : undefined;
+	}
+	const match = text.slice(start).match(/^#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/);
+	return match ? { text: match[0], start, end: start + match[0].length } : undefined;
+}
+
+function readNumericValueToken(text, start = 0) {
+	if (text[start] === "[") return readBracketToken(text, start);
+	const valueStart = /[-+]/.test(text[start] || "") ? start + 1 : start;
+	const macro = readMacroToken(text, valueStart);
+	if (macro) return { text: text.slice(start, macro.end), start, end: macro.end };
+	const match = text.slice(start).match(/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)/);
+	return match ? { text: match[0], start, end: start + match[0].length } : undefined;
+}
+
 function findMacroAssignments(codeLine) {
 	const text = String(codeLine || "");
-	const matches = [...text.matchAll(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=/g)];
-
-	return matches.map((match, index) => {
-		const nextMatch = matches[index + 1];
-		const valueStart = match.index + match[0].length;
-		const semicolonStart = text.indexOf(";", valueStart);
-		const valueEnd = Math.min(
-			nextMatch ? nextMatch.index : text.length,
-			semicolonStart === -1 ? text.length : semicolonStart
-		);
-
-		return {
-			macro: normalizeMacro(match[0].match(MACRO_REGEX)[0]),
-			value: text.slice(valueStart, valueEnd).trim()
-		};
+	const matches = [];
+	for (let index = 0; index < text.length; index++) {
+		const token = readMacroToken(text, index);
+		if (!token) {
+			if (text[index] === "#" && text[index + 1] === "[") break;
+			continue;
+		}
+		const suffix = text.slice(token.end).match(/^\s*=/);
+		if (suffix) matches.push({ token, valueStart: token.end + suffix[0].length });
+		index = token.end - 1;
+	}
+	return matches.map(({ token, valueStart }, index) => {
+		const semicolon = text.indexOf(";", valueStart);
+		const valueEnd = Math.min(matches[index + 1]?.token.start ?? text.length,
+			semicolon === -1 ? text.length : semicolon);
+		return { macro: normalizeMacro(token.text), value: text.slice(valueStart, valueEnd).trim() };
 	});
 }
 
-function evaluateNumericExpression(expression, macroValues, macroAliases = new Map()) {
+function resolveMacroReference(macro, macroValues, macroAliases = new Map(), onMacroRead, depth = 0) {
+	const text = String(macro).trim();
+	const token = readMacroToken(text);
+	if (!token || token.end !== text.length || depth > 64) return undefined;
+	if (!text.startsWith("#[")) return resolveMacroAlias(text, macroAliases);
+	const index = evaluateNumericExpression(text.slice(2, -1), macroValues, macroAliases, onMacroRead, depth + 1);
+	// Keep invalid addresses unresolved instead of guessing a rounding rule.
+	return Number.isSafeInteger(index) && index >= 0 ? `#${index}` : undefined;
+}
+
+function getExpressionMacroReferences(expression, macroValues, macroAliases = new Map()) {
+	const macros = new Set();
+	evaluateNumericExpression(expression, macroValues, macroAliases, macro => macros.add(macro));
+	return [...macros];
+}
+
+function replaceMacroReads(expression, macroValues, macroAliases, onMacroRead, depth) {
+	let result = "";
+	for (let index = 0; index < expression.length;) {
+		const token = readMacroToken(expression, index);
+		if (!token) { result += expression[index++]; continue; }
+		const macro = resolveMacroReference(token.text, macroValues, macroAliases, onMacroRead, depth);
+		if (macro && onMacroRead) onMacroRead(token.text.startsWith("#[") ? macro : normalizeMacro(token.text));
+		const value = macro ? getMacroValue(macro, macroValues, macroAliases) : NaN;
+		result += Number.isFinite(value) ? `(${value})` : "NaN";
+		index = token.end;
+	}
+	return result;
+}
+
+function evaluateNumericExpression(expression, macroValues, macroAliases = new Map(), onMacroRead, depth = 0) {
+	if (depth > 64) return NaN;
 	const normalizedExpression = String(expression || "").trim();
 	const expressionBody = normalizedExpression.startsWith("[") && normalizedExpression.endsWith("]")
 		? normalizedExpression.slice(1, -1)
 		: normalizedExpression;
-	const jsExpression = normalizeNumericLiterals(expressionBody
+	const jsExpression = normalizeNumericLiterals(replaceMacroReads(expressionBody, macroValues, macroAliases, onMacroRead, depth)
 		.replace(/\b(SIN|COS|TAN|ASIN|ACOS|ATAN|SQRT|ABS|ROUND|FIX|FUP)\s*\[/gi, (_, name) => {
 			return `${FANUC_FUNCTIONS.get(name.toUpperCase())}(`;
 		})
 		.replace(/\[/g, "(")
 		.replace(/\]/g, ")")
-		.replace(/\bMOD\b/gi, "%")
-		.replace(MACRO_REGEX, macro => {
-			const value = getMacroValue(macro, macroValues, macroAliases);
-			return Number.isFinite(value) ? String(value) : "NaN";
-		}));
+		.replace(/\bMOD\b/gi, "%"));
 
 	if (jsExpression.includes("NaN")) {
 		return NaN;
@@ -334,7 +394,9 @@ function getMacroValue(macro, macroValues, macroAliases) {
 }
 
 function setMacroValue(macroValues, macro, value, macroAliases) {
-	const normalizedMacro = normalizeMacro(macro);
+	const normalizedMacro = String(macro).startsWith("#[")
+		? resolveMacroReference(macro, macroValues, macroAliases) : normalizeMacro(macro);
+	if (!normalizedMacro) return;
 	const resolvedMacro = resolveMacroAlias(normalizedMacro, macroAliases);
 
 	if (Number.isFinite(value)) {
@@ -373,6 +435,10 @@ function escapeRegex(text) {
 
 module.exports = {
 	MACRO_REGEX,
+	readMacroToken,
+	readNumericValueToken,
+	resolveMacroReference,
+	getExpressionMacroReferences,
 	buildAliasEntries,
 	buildMacroAliasMap,
 	buildInitialMacroDefaults,

@@ -2,6 +2,50 @@
 
 All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
+## [0.7.0]
+
+- Added read-only KAIJU File Settings with a brief explanation, searchable resolved settings, saved program choices, configuration layers, Refresh, and Copy JSON. Available from the Command Palette; enable Show In Context Menu (default off) to place it beside Machine Profile and G-code Profile.
+
+- Vision adds an optional per-program WCS numbers control above node dots, including combined numbers on merged nodes, larger text and a thicker contrast outline. Node tooltips show the full frame label with its active profile binding.
+
+- Chronoblade now uses regular machine profiles for all timings. Removed separate timing presets and report overrides; timing values are read-only, with Edit opening the machine Timing tab.
+
+- Vision labels work frames as WCS1-WCS6 with their active profile command, such as WCS1 (G54), across offsets, assumed start, visibility filters and the motion table.
+
+- Added Work coordinate system 1-6 bindings with G54-G59 defaults in both mill and lathe tables. Shared motion and Sense interpretation follow rebinding, unbinding and word conflicts while retaining existing work-offset slots.
+
+- Expanded the Codex profile guide with machine settings, controller bindings, defaults, program overrides, offsets, and machine timing settings.
+
+- G-code Profiles separates canned cycles into their own milling/lathe tabs, with a Canned cycles Codex link beneath the tabs and per-entry reference links.
+
+- Added a shared canned-cycle catalog and 19 Codex entries with common G commands, mill/lathe lists and binding-editor links. FANUC / ISO pre-binds runtime mill cycles; basic G17/G90 drilling expands through shared geometry/timing. Other mill entries explicitly report unknown cycle time; lathe references remain unavailable to bind.
+
+- Added default-off alerts for literal G codes missing from the selected profile's active Mill/Lathe bindings, with an Unbound G-code Alerts switch in the right-click KAIJU Quick Toggles menu.
+
+- Machine setting edits preserve an open Vision report's chosen plane when its machine type is unchanged.
+
+- Fixed per-program G-code overrides dropping machine settings when the machine was inherited from the default profile.
+
+- Vision rebases the offset panel's numbers when changing Ref. while keeping analysis and saved offsets relative to G53, including after Apply and reopening.
+
+- The machine status-bar indicator now shows the active machine profile and G-code profile names, including per-program G-code overrides.
+
+- Added an Offsets tab to Machine Profiles with G54-G59 X/Y/Z/C defaults shared by Vision and Chronoblade. Vision saves program overrides for both tools; frame changes and G53 now use shared physical travel for timing.
+
+- Expanded Machine Profiles with circular turret indexing, X/Y/Z and C rapid rates, absolute C travel and rotary feed rules, spindle RPM limits, CSS units, and startup modes. Shared motion analysis now applies these settings; the existing rotary feed rule remains the default.
+
+- Clarified the Machine Profile C-axis coordinate choices as Wrap angle to 0–360° and Continuous angle (can exceed 360°).
+
+- Orphan Killer adds clickable macro/line navigation with synchronized report and source highlights, plus Previous/Next and Enter/Shift+Enter to cycle orphan occurrences.
+
+- Added brief explanations for Machine Profile tool-change and extra-station timings, including a turret-station example.
+
+- Split Machine Profile settings into Machine and Timing tabs, added editable custom M-code durations and a Requires semicolons formatting default, and removed the source-path line. Chronoblade's timing Edit action now opens the machine's Timing tab.
+
+- Added shared indirect macro reads and assignments (`#[#100]`, `#[#100+1]`, and nested references) for motion analysis, tool expressions, Trace, and Decomposition.
+
+- Added KAIJU Machine Profile beside G-code Profile in the editor context menu, with reusable machine settings, copying from existing profiles, a selectable default, and saved per-program selection. Profiles combine a G-code profile with machine type, rapid/tool timings, and C-axis wrapping/reset behavior shared by analysis tools.
+
 ## [0.6.3]
 
 - Chronoblade adds a per-program Group labels toggle that folds consecutive repeated N-label sections and short repeated label sequences into expandable rows with summed time. Group rows show source label comments, shortening long names with a hoverable ellipsis.

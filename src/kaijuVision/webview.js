@@ -2,6 +2,7 @@
 // interpretation in MetaMotionEngine.js and machine defaults in
 // MetaMachineMode.js.
 const vscode = require("vscode");
+const { G_CODE_OPERATIONS, G_CODE_OPERATION_DEFINITIONS, getGCodeWordForOperation } = require("../MetaGCodeDialect");
 const {
 	analyzeVisionRange,
 	formatNumber,
@@ -15,7 +16,7 @@ const {
 	attachTraceOutputLines
 } = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
-const { onDidChangeMachineMode } = require("../MetaMachineMode");
+const { onDidChangeMachineMode, getDocumentWorkOffsets, saveDocumentWorkOffsets } = require("../MetaMachineMode");
 const { MACRO_REGEX, buildAliasEntries, buildMacroAliasMap, normalizeMacro, resolveMacroAlias } = require("../MetaMacroEngine");
 const { maskProtectedRanges } = require("../MetaTextRanges");
 const {
@@ -238,9 +239,7 @@ async function resetOffsetsFromWebview(rawOptions) {
 	}
 
 	const documentKey = getVisionDocumentKey(editor.document);
-	const allOffsets = getStoredVisionWorkOffsets();
-	delete allOffsets[documentKey];
-	await visionContext.workspaceState.update("kaijuVision.workOffsetsByDocument", allOffsets);
+	await saveDocumentWorkOffsets(editor.document, undefined);
 	const allReferenceFrames = getStoredVisionReferenceFrames();
 	delete allReferenceFrames[documentKey];
 	await visionContext.workspaceState.update("kaijuVision.referenceFramesByDocument", allReferenceFrames);
@@ -275,12 +274,18 @@ function makeVisionOptions(document, rawOptions = {}) {
 
 async function resetVisionPlaneForMachineMode(document) {
 	if (!document || document.languageId !== "gcode") return;
-	const plane = getVisionOptions(document).plane;
+	const defaults = getVisionOptions(document);
+	const isCurrentProgram = visionState && visionState.documentUriText === document.uri.toString();
+	const plane = isCurrentProgram && visionState.options.machineMode === defaults.machineMode
+		? visionState.options.plane
+		: defaults.plane;
 	const settings = Object.assign({}, getDocumentVisionSettings(document), { plane });
 	await saveDocumentVisionSettings(document, settings);
 
 	if (!visionState || visionState.documentUriText !== document.uri.toString()) return;
-	const options = makeVisionOptions(document, Object.assign({}, visionState.options, { plane }));
+	const refreshed = Object.assign({}, visionState.options, { plane });
+	delete refreshed.workOffsets;
+	const options = makeVisionOptions(document, refreshed);
 	visionState = Object.assign({}, visionState, { options });
 	if (!visionState.playbackLocked) {
 		const editor = getVisionSourceEditor();
@@ -298,6 +303,7 @@ function normalizeVisionPanelSettings(value = {}) {
 		useToolColors: value.useToolColors === true,
 		initialPosition: normalizeVisionInitialPosition(value.initialPosition),
 		showLabels: value.showLabels !== false,
+		showWcsNumbers: value.showWcsNumbers === true,
 		showEndpoints: value.showEndpoints !== false,
 		showZeroLines: value.showZeroLines === true,
 		showGrid: value.showGrid === true,
@@ -326,10 +332,7 @@ async function saveDocumentVisionSettings(document, settings) {
 }
 
 function getDocumentVisionWorkOffsets(document) {
-	const allOffsets = getStoredVisionWorkOffsets();
-	const documentKey = getVisionDocumentKey(document);
-
-	return normalizeVisionWorkOffsets(documentKey ? allOffsets[documentKey] : undefined);
+	return getDocumentWorkOffsets(document);
 }
 
 async function saveDocumentVisionWorkOffsets(document, offsets) {
@@ -337,19 +340,7 @@ async function saveDocumentVisionWorkOffsets(document, offsets) {
 		return;
 	}
 
-	const documentKey = getVisionDocumentKey(document);
-	const allOffsets = getStoredVisionWorkOffsets();
-
-	if (documentKey) {
-		allOffsets[documentKey] = normalizeVisionWorkOffsets(offsets);
-		await visionContext.workspaceState.update("kaijuVision.workOffsetsByDocument", allOffsets);
-	}
-}
-
-function getStoredVisionWorkOffsets() {
-	return visionContext && visionContext.workspaceState
-		? Object.assign({}, visionContext.workspaceState.get("kaijuVision.workOffsetsByDocument", {}))
-		: {};
+	await saveDocumentWorkOffsets(document, normalizeVisionWorkOffsets(offsets));
 }
 
 function getDocumentVisionReferenceFrame(document) {
@@ -666,6 +657,12 @@ function isSimpleSideBySideLayout(layout) {
 
 function renderVisionHtml(document, mode, options, result) {
 	const nonce = makeWebviewNonce();
+	const coordinateFrameLabels = getVisionCoordinateFrameLabels(options);
+	const coordinateFrameNumbers = { G53: "M" };
+	for (let number = 1; number <= 6; number++) {
+		const operation = G_CODE_OPERATIONS[`WORK_COORDINATE_${number}`];
+		coordinateFrameNumbers[G_CODE_OPERATION_DEFINITIONS[operation].coordinateSystem] = String(number);
+	}
 	const rangeText = result.range.startLine === 0 && result.range.endLine === document.lineCount - 1
 		? "Whole program"
 		: `Lines ${result.range.startLine + 1}-${result.range.endLine + 1}`;
@@ -680,6 +677,8 @@ function renderVisionHtml(document, mode, options, result) {
 		? Object.assign({}, visionContext.workspaceState.get("kaijuVision.macroInputsByDocument", {})[getVisionDocumentKey(document)] || {})
 		: {};
 	const payload = {
+		coordinateFrameNumbers,
+		coordinateFrameLabels,
 		rows: result.rows,
 		positionEvents: result.positionEvents || [],
 		options,
@@ -1307,8 +1306,8 @@ function renderVisionHtml(document, mode, options, result) {
 		<aside id="playbackMacroPanel" class="playback-macro-panel" aria-label="Playback macro values"><div class="playback-macro-header"><strong>Macro values</strong><select id="playbackMacroSort" aria-label="Macro sort order"><option value="number">Number</option><option value="recent">Recently updated</option></select><button id="playbackMacroClose" class="playback-macro-close" type="button" title="Close macro values" aria-label="Close macro values">&#215;</button></div><table><thead><tr><th>Macro</th><th>Alias</th><th>Value</th></tr></thead><tbody id="playbackMacroValues"></tbody></table></aside>
 	</section>
 
-	${renderVisionViewPanel(options, result.rows)}
-	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.initialPosition, options.offsetPanelOpen)}
+	${renderVisionViewPanel(options, result.rows, coordinateFrameLabels)}
+	${renderVisionOffsetPanel(options.workOffsets, options.referenceFrame, options.initialPosition, options.offsetPanelOpen, coordinateFrameLabels)}
 	${renderVisionMacroPanel(macroVariables, savedMacroInputs, options.overrideProgramInitialValues)}
 	<section class="summary">
 		<span>${escapeHtml(summary.moveCount)} move(s)</span>
@@ -1360,6 +1359,7 @@ function renderVisionHtml(document, mode, options, result) {
 		const playbackMacroClose = document.getElementById("playbackMacroClose");
 		const playbackMacroValues = document.getElementById("playbackMacroValues");
 		const labelsInput = document.getElementById("labels");
+		const wcsNumbersInput = document.getElementById("wcsNumbers");
 		const endpointsInput = document.getElementById("endpoints");
 		const zeroLinesInput = document.getElementById("zeroLines");
 		const gridInput = document.getElementById("grid");
@@ -1540,6 +1540,7 @@ function renderVisionHtml(document, mode, options, result) {
 				referenceFrame: collectReferenceFrame(),
 				initialPosition: collectInitialPosition(),
 				showLabels: labelsInput.checked,
+				showWcsNumbers: wcsNumbersInput.checked,
 				showEndpoints: endpointsInput.checked,
 				showZeroLines: zeroLinesInput.checked,
 				showGrid: gridInput.checked,
@@ -1562,6 +1563,10 @@ function renderVisionHtml(document, mode, options, result) {
 			return values;
 		}
 
+		// Panel values are relative to Ref.; analysis and persistence retain G53 values.
+		const offsetReferenceOrigin = Object.assign({ x: 0, y: 0, z: 0, c: 0 },
+			(data.options.workOffsets || {})[data.options.referenceFrame || "G53"]);
+
 		function collectWorkOffsets() {
 			const offsets = {};
 
@@ -1569,9 +1574,10 @@ function renderVisionHtml(document, mode, options, result) {
 				const code = row.getAttribute("data-offset-code");
 				offsets[code] = {
 					showZeroLines: row.querySelector("[data-offset-zero]").checked,
-					x: Number(row.querySelector("[data-offset-axis='x']").value) || 0,
-					y: Number(row.querySelector("[data-offset-axis='y']").value) || 0,
-					z: Number(row.querySelector("[data-offset-axis='z']").value) || 0,
+					x: (Number(row.querySelector("[data-offset-axis='x']").value) || 0) + offsetReferenceOrigin.x,
+					y: (Number(row.querySelector("[data-offset-axis='y']").value) || 0) + offsetReferenceOrigin.y,
+					z: (Number(row.querySelector("[data-offset-axis='z']").value) || 0) + offsetReferenceOrigin.z,
+					c: (Number(row.querySelector("[data-offset-axis='c']").value) || 0) + offsetReferenceOrigin.c,
 					note: row.querySelector("[data-offset-note]").value || ""
 				};
 			});
@@ -1603,9 +1609,10 @@ function renderVisionHtml(document, mode, options, result) {
 			const pivot = {};
 			for (const axis of ["x", "y", "z", "c"]) {
 				pivot[axis] = Number(selectedRow.querySelector("[data-offset-axis='" + axis + "']").value) || 0;
+				offsetReferenceOrigin[axis] += pivot[axis];
 			}
 			document.querySelectorAll("[data-offset-code]").forEach(row => {
-				for (const axis of ["x", "y", "z"]) {
+				for (const axis of ["x", "y", "z", "c"]) {
 					const input = row.querySelector("[data-offset-axis='" + axis + "']");
 					input.value = String((Number(input.value) || 0) - pivot[axis]);
 					input.disabled = row === selectedRow;
@@ -2377,6 +2384,7 @@ function renderVisionHtml(document, mode, options, result) {
 			if (viewKey === "primary") { currentFitBounds = fitBounds; currentBounds = bounds; }
 			const playbackActive = playback && playback.active;
 			const showLabels = labelsInput.checked && !playbackActive;
+			const showWcsNumbers = wcsNumbersInput.checked && !playbackActive;
 			const showEndpoints = endpointsInput.checked && !playbackActive;
 			const showZeroLines = zeroLinesInput.checked;
 			const showGrid = gridInput.checked;
@@ -2406,10 +2414,10 @@ function renderVisionHtml(document, mode, options, result) {
 
 			const zoomBucket = getZoomBucket(zoom);
 			const labelEntry = playbackActive ? { mergeDistance: 0, labelSize: 0, targets: [], spatialCells: new Map(), spatialCellSize: 1 }
-				: getLabelCacheEntry({ planeKey, plane, visibilityKey, showLabels, showEndpoints, zoomBucket, viewportAspect, fitBounds, fitHeight, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
+				: getLabelCacheEntry({ planeKey, plane, visibilityKey, showLabels, showWcsNumbers, showEndpoints, zoomBucket, viewportAspect, fitBounds, fitHeight, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
 			currentLabelEntryByViewer.set(viewerElement, labelEntry);
 			if (viewKey === "primary") currentLabelEntry = labelEntry;
-			if (!playbackActive) scheduleLabelCachePrewarm({ planeKey, plane, visibilityKey, showLabels, showEndpoints, zoomBucket, viewportAspect, fitBounds, fitHeight, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
+			if (!playbackActive) scheduleLabelCachePrewarm({ planeKey, plane, visibilityKey, showLabels, showWcsNumbers, showEndpoints, zoomBucket, viewportAspect, fitBounds, fitHeight, viewerSize: Math.max(1, viewerRect.height), rows, cycles, toolChanges, events });
 			const visibleLabelTargets = playbackActive ? [] : queryLabelCacheEntry(labelEntry, bounds, Math.max(labelEntry.mergeDistance, labelEntry.labelSize * 8));
 			const drawBounds = expandBounds(bounds, Math.max(unitsPerPixel * 48, labelEntry.mergeDistance));
 			const canvasRows = queryPathIndex(visible.rowIndex, drawBounds);
@@ -2478,6 +2486,7 @@ function renderVisionHtml(document, mode, options, result) {
 				context.planeKey,
 				context.visibilityKey,
 				context.showLabels ? "labels" : "markers",
+				context.showWcsNumbers ? "wcs-numbers" : "no-wcs-numbers",
 				context.showEndpoints ? "endpoints" : "no-endpoints",
 				Math.round((Number(context.viewportAspect) || 1) * 1000) / 1000,
 				Number(context.fitHeight) || 0,
@@ -2579,7 +2588,10 @@ function renderVisionHtml(document, mode, options, result) {
 				targets.push(makePointLabelTarget(end, metrics.endpointSize, row.markerClass || "endpoint", "endpoint-label", context.showLabels ? "L" + getDisplayedVisionLineNumber(row) : "", context.showLabels ? row.endCoordinateLine : "", { kind: row.markerKind || "endpoint", position: row.end, hoverItems: [row.endHoverHtml], showMarker: context.showEndpoints }));
 			}
 
-			return targets;
+			return targets.map(target => Object.assign(target, {
+				wcsNumbers: context.showWcsNumbers ? [...new Set((target.hoverItems || []).filter(item => item && item.row)
+					.map(item => (data.coordinateFrameNumbers || {})[getNodeWcsKey(item.row, item.start)]).filter(Boolean))] : []
+			}));
 		}
 
 		function assignHoverIds(entry, targets) {
@@ -2686,7 +2698,7 @@ function renderVisionHtml(document, mode, options, result) {
 			const items = entry && hoverId ? entry.hoverItemsById.get(hoverId) || [] : [];
 			return items.map(item => typeof item === "string" ? item : item.tool
 				? makeToolChangeHoverHtml(item.row)
-				: makePointHoverHtml(item.position, item.start ? Object.assign({}, item.row, { instruction: "START" }) : item.row));
+				: makePointHoverHtml(item.position, item.start ? Object.assign({}, item.row, { instruction: "START" }) : item.row, item.start));
 		}
 
 		function estimateLabelCacheEntryBytes(entry) {
@@ -2824,7 +2836,7 @@ function renderVisionHtml(document, mode, options, result) {
 		function getRowWcsLabel(row) {
 			const key = getRowWcsKey(row);
 
-			return key === "__none" ? "No WCS" : key;
+			return key === "__none" ? "No WCS" : (data.coordinateFrameLabels[key] || key);
 		}
 
 		function formatTableDistance(row) {
@@ -2868,12 +2880,22 @@ function renderVisionHtml(document, mode, options, result) {
 			);
 		}
 
-		function makePointHoverHtml(position, row) {
+		function getNodeWcsKey(row, isStart) {
+			return row && (isStart ? row.startCoordinateSystem : row.endCoordinateSystem) || getRowWcsKey(row);
+		}
+
+		function getNodeWcsLabel(row, isStart) {
+			const key = getNodeWcsKey(row, isStart);
+			return key === "__none" ? "No WCS" : (data.coordinateFrameLabels[key] || key);
+		}
+
+		function makePointHoverHtml(position, row, isStart) {
 			const showTraceLine = analysisModeSelect.value === "trace" && lineDataSelect.value === "trace" && row && row.traceLine && Number.isFinite(row.decompositionLineNumber);
 			const displayedLineNumber = getDisplayedVisionLineNumber(row);
 			const lineLabel = Number.isFinite(displayedLineNumber) ? "L" + displayedLineNumber : "";
 			const instruction = row && row.instruction ? row.instruction : "";
 			const lines = ['<div class="tooltip-line">' + svgEscape((lineLabel + " " + instruction).trim()) + '</div>'];
+			lines.push('<div class="tooltip-line">' + svgEscape(getNodeWcsLabel(row, isStart)) + '</div>');
 			const codeLine = showTraceLine ? row.traceLine : row && row.sourceLine;
 			if (codeLine) lines.push('<div class="tooltip-line">' + svgEscape(codeLine.trim()) + '</div>');
 
@@ -2898,6 +2920,7 @@ function renderVisionHtml(document, mode, options, result) {
 				? '<span style="color:' + escapeAttribute(previousColor) + '">' + svgEscape(previousTool) + '</span> -> <span style="color:' + escapeAttribute(currentColor) + '">' + svgEscape(currentTool) + '</span>'
 				: '<span style="color:' + escapeAttribute(currentColor) + '">' + svgEscape(currentTool) + '</span>';
 			const lines = ['<div class="tooltip-line">' + svgEscape(lineLabel + (lineLabel ? " " : "")) + toolText + '</div>'];
+			lines.push('<div class="tooltip-line">' + svgEscape(getNodeWcsLabel(toolChange)) + '</div>');
 
 			for (const axis of ["x", "y", "z"]) {
 				const value = (toolChange.position || toolChange.point) && (toolChange.position || toolChange.point)[axis];
@@ -3011,6 +3034,7 @@ function renderVisionHtml(document, mode, options, result) {
 
 			const collapsedTarget = Object.assign({}, representative, {
 				pointSize: mergedPointSize,
+				wcsNumbers: [...new Set(group.flatMap(target => target.wcsNumbers || []))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
 				labelLine: showLabels ? makeCollapsedLabelText(group.length, toolCount, sourcePosition, plane, humanFormat, data.options.trimLabelTrailingZeros !== false) : "",
 				coordinateLine: "",
 				markerSlices,
@@ -3022,6 +3046,7 @@ function renderVisionHtml(document, mode, options, result) {
 				.filter(target => target !== representative)
 				.map(target => Object.assign({}, target, {
 					labelLine: "",
+					wcsNumbers: [],
 					coordinateLine: "",
 					// A normal endpoint carries no additional semantic meaning. Once a
 					// merged point has a semantic marker, do not let its separate grey
@@ -3238,12 +3263,15 @@ function renderVisionHtml(document, mode, options, result) {
 			const markerKeys = getMarkerLegendKeys(target);
 			const markerKeysAttribute = markerKeys.length ? ' data-marker-keys="' + escapeAttribute(markerKeys.join(",")) + '"' : "";
 			const marker = target.showMarker === false ? "" : renderPointMarker(target, x, y);
+			const wcsText = target.wcsNumbers && target.wcsNumbers.length
+				? '<text class="point-label endpoint-label wcs-number" font-size="' + round(fontSize * 1.05) + '" stroke-width="' + round(outlineWidth * 1.35) + '" x="' + x + '" y="' + round(target.point.y - target.pointSize - fontSize * 0.35) + '">' + svgEscape(target.wcsNumbers.join("/")) + '</text>'
+				: "";
 
 			if (!target.labelLine && !target.coordinateLine) {
-				return marker ? '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker + '</g>' : "";
+				return marker || wcsText ? '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker + wcsText + '</g>' : "";
 			}
 
-			return '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker +
+			return '<g class="point-label-hit"' + tooltipAttribute + tooltipCountAttribute + markerKeysAttribute + '>' + marker + wcsText +
 				'<text class="point-label ' + target.labelClass + '" font-size="' + round(fontSize) + '" stroke-width="' + round(outlineWidth) + '" x="' + round(target.labelX) + '" y="' + round(target.firstBaselineY) + '">' +
 					'<tspan x="' + round(target.labelX) + '">' + svgEscape(target.labelLine) + '</tspan>' +
 					(target.coordinateLine ? '<tspan x="' + round(target.labelX) + '" dy="1.15em">' + svgEscape(target.coordinateLine) + '</tspan>' : "") +
@@ -4303,6 +4331,7 @@ function renderVisionHtml(document, mode, options, result) {
 			render();
 			saveVisionSettings();
 		});
+		wcsNumbersInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		labelsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		endpointsInput.addEventListener("change", () => { render(); saveVisionSettings(); });
 		zeroLinesInput.addEventListener("change", () => { render(); saveVisionSettings(); });
@@ -4624,28 +4653,42 @@ function makeWebviewNonce() {
 	return nonce;
 }
 
-function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, isOpen = false) {
+function getVisionCoordinateFrameLabels(options = {}) {
+	const labels = { G53: "G53" };
+	for (let number = 1; number <= 6; number++) {
+		const operation = G_CODE_OPERATIONS[`WORK_COORDINATE_${number}`];
+		const frame = G_CODE_OPERATION_DEFINITIONS[operation].coordinateSystem;
+		const word = getGCodeWordForOperation(operation, options);
+		labels[frame] = `WCS${number} (${word || "unbound"})`;
+	}
+	return labels;
+}
+
+function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, isOpen = false, frameLabels = getVisionCoordinateFrameLabels()) {
 	const reference = normalizeVisionReferenceFrame(referenceFrame);
 	const normalizedOffsets = normalizeVisionWorkOffsets(workOffsets);
+	const referenceOffset = normalizedOffsets[reference];
 	const start = normalizeVisionInitialPosition(initialPosition);
 	const rows = VISION_COORDINATE_FRAME_CODES.map(code => {
-		const offset = normalizedOffsets[code];
+		const offset = Object.assign({}, normalizedOffsets[code]);
+		for (const axis of ["x", "y", "z", "c"]) offset[axis] -= referenceOffset[axis];
 		const isReference = code === reference;
 
 		return `<tr data-offset-code="${escapeAttribute(code)}">
-			<td><code>${escapeHtml(code)}</code></td>
+			<td><code>${escapeHtml(frameLabels[code] || code)}</code></td>
 			<td><input data-offset-reference type="radio" name="offsetReference" value="${escapeAttribute(code)}"${code === reference ? " checked" : ""} title="Use this coordinate frame as the display reference"></td>
 			<td><input data-offset-zero type="checkbox"${offset.showZeroLines ? " checked" : ""} title="Show this frame's origin axes when View > Zero lines is enabled"></td>
 			<td><input data-offset-axis="x" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.x))}"${isReference ? " disabled" : ""}></td>
 			<td><input data-offset-axis="y" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.y))}"${isReference ? " disabled" : ""}></td>
 			<td><input data-offset-axis="z" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.z))}"${isReference ? " disabled" : ""}></td>
+			<td><input data-offset-axis="c" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(offset.c))}"${isReference ? " disabled" : ""} title="C offset in degrees"></td>
 			<td><input data-offset-note type="text" value="${escapeAttribute(offset.note || "")}"></td>
 		</tr>`;
 	}).join("");
 	return `<section id="offsetPanel" class="offset-panel${isOpen ? " open" : ""}">
 		<div class="offset-actions" title="Vision draws the first move from this assumed physical tool position. The coordinates are expressed in the selected frame.">
 			<label>Assumed start
-				<select data-start-frame>${VISION_COORDINATE_FRAME_CODES.map(code => `<option value="${escapeAttribute(code)}"${code === start.coordinateSystem ? " selected" : ""}>${escapeHtml(code)}</option>`).join("")}</select>
+				<select data-start-frame>${VISION_COORDINATE_FRAME_CODES.map(code => `<option value="${escapeAttribute(code)}"${code === start.coordinateSystem ? " selected" : ""}>${escapeHtml(frameLabels[code] || code)}</option>`).join("")}</select>
 			</label>
 			<label>X <input data-start-axis="x" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(start.x))}"></label>
 			<label>Y <input data-start-axis="y" type="number" step="0.001" value="${escapeAttribute(formatOffsetInputValue(start.y))}"></label>
@@ -4660,6 +4703,7 @@ function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, i
 					<th>X</th>
 					<th>Y</th>
 					<th>Z</th>
+					<th>C (degrees)</th>
 					<th>Note</th>
 				</tr>
 			</thead>
@@ -4669,14 +4713,15 @@ function renderVisionOffsetPanel(workOffsets, referenceFrame, initialPosition, i
 	</section>`;
 }
 
-function renderVisionViewPanel(options, rows) {
+function renderVisionViewPanel(options, rows, frameLabels = getVisionCoordinateFrameLabels(options)) {
 	const toolEntries = getVisibilityEntries(rows, getVisionToolKey, getVisionToolLabel);
-	const wcsEntries = getVisibilityEntries(rows, getVisionWcsKey, getVisionWcsLabel);
+	const wcsEntries = getVisibilityEntries(rows, getVisionWcsKey, row => getVisionWcsLabel(row, frameLabels));
 
 	return `<section id="viewPanel" class="control-panel">
 		<div class="view-panel-section">
 			<div class="visibility-options">
 				<label class="checkbox"><input id="labels" type="checkbox"${options.showLabels ? " checked" : ""}> Labels</label>
+				<label class="checkbox"><input id="wcsNumbers" type="checkbox"${options.showWcsNumbers ? " checked" : ""}> WCS numbers</label>
 				<label class="checkbox"><input id="endpoints" type="checkbox"${options.showEndpoints ? " checked" : ""}> Endpoints</label>
 				<label class="checkbox"><input id="zeroLines" type="checkbox"${options.showZeroLines ? " checked" : ""}> Zero lines</label>
 				<label class="checkbox"><input id="toolColors" type="checkbox"${options.useToolColors ? " checked" : ""}> Tool colors</label>
@@ -4762,10 +4807,10 @@ function getVisionWcsKey(row) {
 	return "__none";
 }
 
-function getVisionWcsLabel(row) {
+function getVisionWcsLabel(row, frameLabels) {
 	const key = getVisionWcsKey(row);
 
-	return key === "__none" ? "No WCS" : key;
+	return key === "__none" ? "No WCS" : (frameLabels[key] || key);
 }
 function renderRows(rows, humanFormat) {
 	if (!rows.length) {
@@ -4832,5 +4877,11 @@ function escapeScriptJson(value) {
 }
 
 module.exports = {
-	registerKaijuVisionWebview
+	registerKaijuVisionWebview,
+	getVisionSettingsSnapshot: document => ({
+		saved: getDocumentVisionSettings(document),
+		effective: makeVisionOptions(document),
+		referenceFrame: getDocumentVisionReferenceFrame(document),
+		macroInputs: getDocumentVisionTraceInputs(document)
+	})
 };

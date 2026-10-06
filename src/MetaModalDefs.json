@@ -4,19 +4,10 @@
     "70": { "code": "G70", "millLabel": "Finishing cycle", "latheLabel": "Finishing cycle", "modes": ["lathe"] },
     "71": { "code": "G71", "millLabel": "Roughing cycle", "latheLabel": "OD/ID roughing", "modes": ["lathe"] },
     "72": { "code": "G72", "millLabel": "Roughing cycle", "latheLabel": "Facing roughing", "modes": ["lathe"] },
-    "73": { "code": "G73", "millLabel": "High-speed peck", "latheLabel": "Pattern roughing" },
-    "74": { "code": "G74", "millLabel": "Reverse tapping", "latheLabel": "Face grooving" },
+    "73": { "code": "G73", "millLabel": "High-speed peck", "latheLabel": "Pattern roughing", "modes": ["lathe"] },
+    "74": { "code": "G74", "millLabel": "Reverse tapping", "latheLabel": "Face grooving", "modes": ["lathe"] },
     "75": { "code": "G75", "millLabel": "Grooving cycle", "latheLabel": "OD/ID grooving", "modes": ["lathe"] },
-    "76": { "code": "G76", "millLabel": "Fine boring", "latheLabel": "Threading cycle" },
-    "81": { "code": "G81", "millLabel": "Drilling", "latheLabel": "Drilling" },
-    "82": { "code": "G82", "millLabel": "Spot drilling", "latheLabel": "Dwell boring" },
-    "83": { "code": "G83", "millLabel": "Peck drilling", "latheLabel": "Peck drilling" },
-    "84": { "code": "G84", "millLabel": "Tapping", "latheLabel": "Tapping" },
-    "85": { "code": "G85", "millLabel": "Boring, feed out", "latheLabel": "Boring, feed out" },
-    "86": { "code": "G86", "millLabel": "Bore and stop", "latheLabel": "Bore and stop" },
-    "87": { "code": "G87", "millLabel": "Back boring", "latheLabel": "Back boring" },
-    "88": { "code": "G88", "millLabel": "Bore, manual retract", "latheLabel": "Bore, manual retract" },
-    "89": { "code": "G89", "millLabel": "Bore, dwell, feed out", "latheLabel": "Bore, dwell, feed out" }
+    "76": { "code": "G76", "millLabel": "Fine boring", "latheLabel": "Threading cycle", "modes": ["lathe"] }
   } },
   { "key": "distanceMode", "order": 20, "letter": "G", "codes": {} },
   { "key": "arcDistanceMode", "order": 30, "letter": "G", "codes": {
@@ -58,12 +49,6 @@
     "51": { "code": "G51", "millLabel": "Scaling", "latheLabel": "Scaling", "modes": ["mill"] }
   } },
   { "key": "coordinateSystem", "order": 140, "letter": "G", "codes": {
-    "54": { "code": "G54", "millLabel": "Work offset", "latheLabel": "Work offset" },
-    "55": { "code": "G55", "millLabel": "Work offset", "latheLabel": "Work offset" },
-    "56": { "code": "G56", "millLabel": "Work offset", "latheLabel": "Work offset" },
-    "57": { "code": "G57", "millLabel": "Work offset", "latheLabel": "Work offset" },
-    "58": { "code": "G58", "millLabel": "Work offset", "latheLabel": "Work offset" },
-    "59": { "code": "G59", "millLabel": "Work offset", "latheLabel": "Work offset" }
   } },
   { "key": "extendedWorkOffset", "order": 150, "letter": "G", "codes": {
     "54.1": { "formatter": "extendedWorkOffset", "millLabel": "Extended work offset", "latheLabel": "Extended work offset" }

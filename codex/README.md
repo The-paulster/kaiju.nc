@@ -27,7 +27,11 @@ Click a program to open it in the editor. Each example includes comments explain
 - [Syntax and editor colours — identify G-code token types](syntax.md)
 - [Reconstructor — format G-code presentation](reconstructor.md)
 - [Rangefinder — select tool and N-label ranges](rangefinder.md)
-- [Machine Mode and G-code Profiles — set machine and controller meanings](machine-mode.md)
+- [Machine Profiles and G-code Profiles — set machine and controller meanings](machine-mode.md)
+
+## Canned cycles
+
+- [Canned cycles](canned-cycles/README.md) - Common G commands, behavior, bindings, and implementation status.
 
 ## Advanced
 

@@ -8,10 +8,12 @@ const {
 	maskProtectedRanges
 } = require("./MetaTextRanges");
 const {
-	MACRO_REGEX,
 	buildMacroAliasMap,
 	buildInitialMacroDefaults,
 	evaluateNumericExpression,
+	readMacroToken,
+	resolveMacroReference,
+	getExpressionMacroReferences,
 	findMacroAssignments,
 	normalizeMacro,
 	resolveMacroAlias,
@@ -225,7 +227,7 @@ function buildExecutionTrace(document, options = {}) {
 			const macroAlarm = control.handled ? control.terminal === true : isMacroAlarmLine(effectiveCodeLine);
 			const programEnd = isProgramEndLine(effectiveCodeLine);
 
-			recordLineMacroValues(codeLine, lineNumber, context);
+			recordLineMacroValues(codeLine, lineNumber, context, assignments);
 			if (traceOptions.includeExecutionEntries) {
 				recordExecutionEntry(
 					document.lineAt(lineNumber).text,
@@ -268,8 +270,10 @@ function buildExecutionTrace(document, options = {}) {
 
 function recordExecutionEntry(sourceLine, codeLine, effectiveCodeLine, lineNumber, context, macroValuesBeforeLine, control, assignments, termination) {
 	const values = {};
-	for (const match of String(codeLine || "").matchAll(MACRO_REGEX)) {
-		const macro = normalizeMacro(match[0]);
+	for (const macro of new Set([
+		...getExpressionMacroReferences(codeLine, context.macroValues, context.macroAliases),
+		...assignments.map(assignment => assignment.resolvedMacro)
+	])) {
 		const resolved = resolveMacroAlias(macro, context.macroAliases);
 		const value = context.macroValues.get(resolved);
 		if (Number.isFinite(value)) {
@@ -286,7 +290,7 @@ function recordExecutionEntry(sourceLine, codeLine, effectiveCodeLine, lineNumbe
 	};
 	if (context.options.includePlaybackData) {
 		entry.macroChanges = makeMacroChanges(macroValuesBeforeLine || new Map(), context.macroValues);
-		entry.macroDisplayPrecisionChanges = makeMacroDisplayPrecisionChanges(codeLine, context.macroAliases);
+		entry.macroDisplayPrecisionChanges = makeMacroDisplayPrecisionChanges(assignments, context.macroAliases);
 	}
 	if (context.options.includeDecompositionData) {
 		entry.codeLine = effectiveCodeLine;
@@ -313,12 +317,13 @@ function makeMacroChanges(before, after) {
 	return changes;
 }
 
-function makeMacroDisplayPrecisionChanges(codeLine, macroAliases) {
+function makeMacroDisplayPrecisionChanges(assignments, macroAliases) {
 	const precisionByMacro = new Map();
 
-	for (const assignment of findMacroAssignments(codeLine)) {
+	for (const assignment of assignments) {
 		const precision = getExplicitDecimalPrecision(assignment.value);
-		const normalized = normalizeMacro(assignment.macro);
+		const normalized = assignment.macro.startsWith("#[") ? assignment.resolvedMacro : normalizeMacro(assignment.macro);
+		if (!normalized) continue;
 		const resolved = resolveMacroAlias(normalized, macroAliases);
 		precisionByMacro.set(normalized, precision);
 		precisionByMacro.set(resolved, precision);
@@ -358,6 +363,13 @@ function renderTraceCodeSegment(segment, context) {
 	let cursor = 0;
 
 	while (cursor < segment.length) {
+		const macro = readMacroToken(segment, cursor);
+		if (macro) {
+			const value = evaluateNumericExpression(macro.text, context.macroValues, context.macroAliases);
+			result += Number.isFinite(value) ? formatTraceNumber(value) : macro.text;
+			cursor = macro.end;
+			continue;
+		}
 		if (segment[cursor] === "[") {
 			const token = readBracketToken(segment, cursor);
 			if (token) {
@@ -371,10 +383,7 @@ function renderTraceCodeSegment(segment, context) {
 		result += segment[cursor++];
 	}
 
-	return result.replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/g, macro => {
-		const value = context.macroValues.get(resolveMacroAlias(macro, context.macroAliases));
-		return Number.isFinite(value) ? formatTraceNumber(value) : macro;
-	});
+	return result;
 }
 
 function formatTraceNumber(value) {
@@ -520,13 +529,20 @@ function executeControlLine(codeLine, lineNumber, context) {
 function applyAssignments(codeLine, lineNumber, context) {
 	const assignments = [];
 	for (const assignment of findMacroAssignments(codeLine)) {
-		const resolved = resolveMacroAlias(normalizeMacro(assignment.macro), context.macroAliases);
+		if (assignment.macro.startsWith("#[")) {
+			assumeUnknownMacros(assignment.macro.slice(2, -1), lineNumber, context);
+		}
+		const resolved = resolveMacroReference(assignment.macro, context.macroValues, context.macroAliases);
+		if (!resolved) {
+			addProblem(context, lineNumber, `Could not resolve assignment target ${assignment.macro}.`);
+			continue;
+		}
 		if (lineNumber < context.firstExecutableLine && context.initialOverrides.has(resolved)) {
 			continue;
 		}
 		const value = evaluateExpression(assignment.value, lineNumber, context);
-		setMacroValue(context.macroValues, assignment.macro, value, context.macroAliases);
-		assignments.push({ macro: assignment.macro, value: assignment.value, resolvedValue: value });
+		setMacroValue(context.macroValues, assignment.macro.startsWith("#[") ? resolved : assignment.macro, value, context.macroAliases);
+		assignments.push({ macro: assignment.macro, value: assignment.value, resolvedValue: value, resolvedMacro: resolved });
 	}
 	return assignments;
 }
@@ -574,24 +590,18 @@ function evaluateExpression(expression, lineNumber, context) {
 }
 
 function assumeUnknownMacros(expression, lineNumber, context) {
-	for (const match of String(expression || "").matchAll(MACRO_REGEX)) {
-		const macro = normalizeMacro(match[0]);
+	evaluateNumericExpression(expression, context.macroValues, context.macroAliases, macro => {
 		const resolved = resolveMacroAlias(macro, context.macroAliases);
-		if (Number.isFinite(context.macroValues.get(macro)) || Number.isFinite(context.macroValues.get(resolved))) {
-			continue;
-		}
+		if (Number.isFinite(context.macroValues.get(macro)) || Number.isFinite(context.macroValues.get(resolved))) return;
 		setMacroValue(context.macroValues, macro, 0, context.macroAliases);
-		if (!context.assumptions.has(resolved)) {
-			context.assumptions.set(resolved, new Set());
-		}
+		if (!context.assumptions.has(resolved)) context.assumptions.set(resolved, new Set());
 		context.assumptions.get(resolved).add(lineNumber);
-	}
+	});
 }
 
 function captureExpressionMacroValues(expression, context) {
 	const values = {};
-	for (const match of String(expression || "").matchAll(MACRO_REGEX)) {
-		const macro = normalizeMacro(match[0]);
+	for (const macro of getExpressionMacroReferences(expression, context.macroValues, context.macroAliases)) {
 		const resolved = resolveMacroAlias(macro, context.macroAliases);
 		const value = context.macroValues.get(resolved);
 		if (Number.isFinite(value)) {
@@ -602,8 +612,11 @@ function captureExpressionMacroValues(expression, context) {
 	return values;
 }
 
-function recordLineMacroValues(codeLine, lineNumber, context) {
-	const macros = new Set([...String(codeLine || "").matchAll(MACRO_REGEX)].map(match => normalizeMacro(match[0])));
+function recordLineMacroValues(codeLine, lineNumber, context, assignments = []) {
+	const macros = new Set([
+		...getExpressionMacroReferences(codeLine, context.macroValues, context.macroAliases),
+		...assignments.map(assignment => assignment.resolvedMacro)
+	]);
 	for (const macro of macros) {
 		const resolved = resolveMacroAlias(macro, context.macroAliases);
 		const value = context.macroValues.get(resolved);

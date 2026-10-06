@@ -23,9 +23,12 @@ function getSenseOptions(document) {
 		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
 		xAxisMode: machineMode.xAxisMode,
+		cAxisCoordinates: machineMode.machineSettings && machineMode.machineSettings.cAxisCoordinates,
+		cAxisResetOnDisable: machineMode.machineSettings && machineMode.machineSettings.cAxisResetOnDisable,
 		cssSurfaceSpeedUnit: senseConfig.get("cssSurfaceSpeedUnit", chronobladeConfig.get("cssSurfaceSpeedUnit", "mPerMin")),
 		samples: clampNumber(senseConfig.get("samples", chronobladeConfig.get("samples", 96)), 12, 500),
-		rapidRate: clampNumber(senseConfig.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY),
+		rapidRate: machineMode.machineSettings ? machineMode.machineSettings.rapidRate : clampNumber(senseConfig.get("rapidRate", machineMode.machineProfile.rapidRate), 0, Number.POSITIVE_INFINITY),
+		...machineMode.motionOptions,
 		humanFormat: {
 			minimumDecimalPlaces: clampNumber(displayConfig.get("minimumDecimalPlaces", 3), 0, 9),
 			maximumDecimalPlaces: clampNumber(displayConfig.get("maximumDecimalPlaces", 3), 0, 9)

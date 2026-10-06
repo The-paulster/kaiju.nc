@@ -17,9 +17,12 @@ flowchart TB
 | --- | --- | --- |
 | [Extension host](extension-host.md) | Activation and registration | Every registered module |
 | [Meta](meta.md) | Shared non-UI interpretation, models, and helpers | Used by feature modules |
+| [Canned cycles](canned-cycles.md) | Shared cycle catalog, variant behavior, and generated cycle moves | Dialect bindings, Motion Engine, Machine Mode, Codex |
 | [Data access contracts](data-access.md) | Which shared API to call and which returned fields to present | Every feature consumer |
-| [Machine Mode](kaiju-machine-mode.md) | Profile commands, custom keybinding editor, and right-side configuration status | Machine state, dialects, Alias state |
+| [Machine Mode](kaiju-machine-mode.md) | Machine-profile editor, profile commands, work-offset defaults and program overrides, custom keybinding editor, and right-side configuration status | Machine state, dialects, Alias state |
+| [File Settings](kaiju-file-settings.md) | Read-only per-file settings inspection | Machine state, feature-owned settings snapshots, VS Code configuration |
 | [Trace](kaiju-trace.md) | Passive execution-trace health status | Execution trace, Sense |
+| [Codex](kaiju-codex.md) | Packaged user-reference navigation | Shared cycle catalog |
 | [Language support](language-support.md) | G-code language declaration and token scopes | VS Code editor presentation |
 | [Alert](kaiju-alert.md) | Static editor diagnostics | Text ranges, Alias state |
 | [Alias](kaiju-alias.md) | Alias editing and mode state | Macro engine, text ranges |
@@ -28,7 +31,7 @@ flowchart TB
 | [Orphan Killer](kaiju-orphan-killer.md) | Macro definition/reference report | Macro engine, text ranges |
 | [Quick Toggles](kaiju-quick-toggles.md) | Context-menu switches for existing settings | Warpaint and Alert settings |
 | [Rangefinder](kaiju-rangefinder.md) | Tool/N-label selection | Tool model, text ranges |
-| [Reconstructor](kaiju-reconstructor.md) | Document formatting | Its command and options files |
+| [Reconstructor](kaiju-reconstructor.md) | Document formatting | Its command and options files, machine semicolon defaults |
 | [Sense](kaiju-sense.md) | Live editor hovers, decorations, cursor status | Motion, macro, tool, and text helpers |
 | [Vision](kaiju-vision.md) | Motion inspection report and renderer | Motion engine, execution trace, Decomposition line mapping, machine mode |
 | [Warpaint](kaiju-warpaint.md) | Per-document N-section decoration and editor | Tool model, Rangefinder N-label helper |
@@ -47,3 +50,6 @@ flowchart TB
 
 When unsure, follow the narrowest existing owner first. Do not infer a shared
 capability from a one-off need.
+
+For regression expectations and real VS Code example checks, see
+[Testing](testing.md).

@@ -26,6 +26,9 @@ consumers can map all completed occurrences to the generated trace.
 
 - Uses `MetaMacroEngine` for shared macro aliases, numeric literals, and
   expression evaluation.
+- Uses its shared address-value tokens for indirect words such as `X#[#100]`
+  and formats indirect assignments from Trace's resolved assignment metadata.
+  Comparison notes include both address inputs and dereferenced variables.
 - Uses `MetaTextRanges` when scanning source text.
 - Consumes `MetaExecutionTrace` occurrence records, resolved conditions,
   assignments, termination state, safety problems, and selected effective

@@ -341,6 +341,49 @@ test('Vision lazy tooltips retain all merged entries and START details', () => {
   assert.equal(calls, 3);
 });
 
+test('Vision WCS numbers remain independent of labels and preserve merged frame identities', () => {
+  const api = helpers(['getRowWcsKey', 'getNodeWcsKey', 'makePointLabelTarget', 'makeLabelTargetsForCache', 'makeCollapsedLabelTargets', 'renderPointLabel'], {
+    data: { coordinateFrameNumbers: { G54: '1', G55: '2', G53: 'M' }, options: {} },
+    getDisplayedVisionLineNumber: row => row.lineNumber,
+    chooseRepresentativeTarget: group => group[0], makeMergedMarkerSlices: () => [],
+    getMarkerLegendKeys: () => [], renderPointMarker: () => '<circle />',
+    round: value => value, escapeAttribute: value => value, svgEscape: value => value
+  });
+  const row = { lineNumber: 1, instruction: 'G1', coordinateSystem: 'G55', startCoordinateSystem: 'G54', endCoordinateSystem: 'G55',
+    start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 }, projectedPoints: [{ x: 0, y: 0 }, { x: 0, y: 0 }] };
+  row.startHoverHtml = { row, position: row.start, start: true };
+  row.endHoverHtml = { row, position: row.end };
+  const context = { rows: [row], cycles: [], toolChanges: [], events: [], showLabels: false, showWcsNumbers: true, showEndpoints: true };
+  const targets = api.makeLabelTargetsForCache(context, { startPointSize: 2, endpointSize: 2 });
+  assert.deepEqual(Array.from(targets, target => Array.from(target.wcsNumbers)), [['1'], ['2']]);
+  assert.ok(targets.every(target => target.labelLine === ''));
+  const merged = api.makeCollapsedLabelTargets(targets, {}, {}, false);
+  assert.deepEqual(Array.from(merged[0].wcsNumbers), ['1', '2']);
+  assert.equal(merged[0].hoverItems.length, 2);
+  assert.equal(merged[1].wcsNumbers.length, 0);
+  const markup = api.renderPointLabel(merged[0], 10, 1);
+  assert.match(markup, /wcs-number/);
+  assert.match(markup, /y="-5.5">1\/2<\/text>/);
+  assert.equal(api.makeLabelTargetsForCache({ ...context, showWcsNumbers: false }, { startPointSize: 2, endpointSize: 2 })[0].wcsNumbers.length, 0);
+  row.endCoordinateSystem = 'G53';
+  assert.deepEqual(Array.from(api.makeLabelTargetsForCache(context, { startPointSize: 2, endpointSize: 2 })[1].wcsNumbers), ['M']);
+});
+
+test('Vision node tooltips show the bound WCS for each endpoint and the prior frame at START', () => {
+  const api = helpers(['getRowWcsKey', 'getNodeWcsKey', 'getNodeWcsLabel', 'makePointHoverHtml', 'getCachedTooltipItems'], {
+    data: { coordinateFrameLabels: { G54: 'WCS1 (G154)', G55: 'WCS2 (G155)', G53: 'G53' }, options: { humanFormat: {} } },
+    analysisModeSelect: { value: 'asWritten' }, lineDataSelect: { value: 'source' },
+    getDisplayedVisionLineNumber: row => row.lineNumber,
+    svgEscape: value => String(value), formatAxisNumber: value => String(value)
+  });
+  const row = { lineNumber: 3, instruction: 'G1', coordinateSystem: 'G55', startCoordinateSystem: 'G54', endCoordinateSystem: 'G55' };
+  const entry = { hoverItemsById: new Map([['merged', [{ row, position: {}, start: true }, { row, position: {} }]]]) };
+  const items = api.getCachedTooltipItems(entry, 'merged');
+  assert.match(items[0], /START.*WCS1 \(G154\)/);
+  assert.match(items[1], /G1.*WCS2 \(G155\)/);
+  assert.match(api.makePointHoverHtml({}, { coordinateSystem: 'G53' }), /G53/);
+});
+
 test('Vision embedded renderer retains canvases, shares scale and handles playback plus labels', () => {
   const Module = require('node:module');
   const { makeDocument } = require('./helpers');
@@ -349,7 +392,7 @@ test('Vision embedded renderer retains canvases, shares scale and handles playba
   loaded.filename = filename;
   loaded.paths = Module._nodeModulePaths(path.dirname(filename));
   loaded._compile(source + '\nmodule.exports.render = renderVisionHtml;', filename);
-  const doc = makeDocument('G0 X0 Y0 Z0\nG1 X20 Y200 Z2\nM3');
+  const doc = makeDocument('G54 G0 X0 Y0 Z0\nG1 X20 Y200 Z2\nM3');
   const options = require('../src/kaijuVision/options').getVisionOptions(doc);
   const result = require('../src/MetaMotionEngine').analyzeVisionRange(doc, undefined, options);
   result.rows.forEach((row, i) => row.executionIndex = i);
@@ -414,6 +457,17 @@ test('Vision embedded renderer retains canvases, shares scale and handles playba
   assert.equal(get('vision-canvas'), canvas);
   assert.equal(get('vision-canvas-secondary'), secondary);
   vm.runInContext('playback.active = false', context);
+  get('labels').checked = false;
+  get('wcsNumbers').checked = true;
+  get('wcsNumbers').listeners.change(); flush();
+  assert.match(get('viewer').querySelector('.vision-overlay-host').markup, /class="point-label endpoint-label wcs-number"[^>]*>1<\/text>/,
+    'the emitted renderer shows WCS numbers with ordinary labels off');
+  assert.equal(context.collectVisionOptions().showWcsNumbers, true);
+  get('wcsNumbers').checked = false;
+  get('wcsNumbers').listeners.change(); flush();
+  assert.doesNotMatch(get('viewer').querySelector('.vision-overlay-host').markup, /class="point-label endpoint-label wcs-number"/,
+    'turning WCS numbers off rebuilds the label cache');
+  get('labels').checked = true;
   context.setZoom(2.5); flush();
   const getRenderedOverlayTextPixels = () => {
     const markup = get('viewer').querySelector('.vision-overlay-host').markup;

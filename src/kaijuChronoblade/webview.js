@@ -15,13 +15,12 @@ const {
 	attachTraceOutputLines
 } = require("../MetaExecutionTrace");
 const { decomposeDocument } = require("../kaijuDecomposition");
-const { onDidChangeMachineMode } = require("../MetaMachineMode");
+const { onDidChangeMachineMode, onDidChangeWorkOffsets } = require("../MetaMachineMode");
 const { getChronobladeOptions } = require("./options");
 
 let chronobladePanel;
 let chronobladeState;
 let chronobladeContext;
-let timingProfilesPanel;
 
 function registerChronobladeWebview(context) {
 	chronobladeContext = context;
@@ -33,6 +32,9 @@ function registerChronobladeWebview(context) {
 			void refreshLiveChronoblade(document);
 		}),
 		onDidChangeMachineMode(document => {
+			void refreshMachineModeChronoblade(document);
+		}),
+		onDidChangeWorkOffsets(document => {
 			void refreshMachineModeChronoblade(document);
 		})
 	);
@@ -72,14 +74,16 @@ async function showChronobladePanel(editor, mode, options) {
 
 		chronobladePanel.webview.onDidReceiveMessage(async message => {
 			if (!message) return;
-			if (message.type === "openChronobladeTimingProfiles") {
-				await showTimingProfilesEditor(getChronobladeSourceEditor()?.document);
+			if (message.type === "editMachineTiming") {
+				const document = (vscode.workspace.textDocuments || []).find(document => document.uri.toString() === chronobladeState.documentUriText)
+					|| getChronobladeSourceEditor()?.document;
+				if (document && document.uri.toString() === chronobladeState.documentUriText) await vscode.commands.executeCommand("kaijuNC.machineProfiles.manage", { document, tab: "timing" });
 				return;
 			}
-			if (!["setChronobladeAnalysis", "setChronobladeLive", "setChronobladeGroupLabels", "setChronobladeTiming", "setChronobladeTimingProfile"].includes(message.type)) return;
+			if (!["setChronobladeAnalysis", "setChronobladeLive", "setChronobladeGroupLabels"].includes(message.type)) return;
 			const sourceEditor = getChronobladeSourceEditor();
 			if (!sourceEditor) return;
-			await saveDocumentChronobladeSettings(sourceEditor.document, message.options || {}, message.type === "setChronobladeTimingProfile");
+			await saveDocumentChronobladeSettings(sourceEditor.document, message.options || {});
 			const nextOptions = makeChronobladeOptions(sourceEditor.document, message.options || {});
 			chronobladeState = { documentUriText: sourceEditor.document.uri.toString(), mode: chronobladeState.mode, options: nextOptions };
 			if (nextOptions.live) scheduleExecutionTrace(sourceEditor.document);
@@ -91,57 +95,6 @@ async function showChronobladePanel(editor, mode, options) {
 	}
 
 	await renderChronobladePanel(editor, mode, options);
-}
-
-async function showTimingProfilesEditor(document) {
-	if (!document) return;
-	if (!timingProfilesPanel) {
-		timingProfilesPanel = vscode.window.createWebviewPanel("kaijuChronobladeTimingProfiles", "Chronoblade Timing Profiles", vscode.ViewColumn.Beside, { enableScripts: true });
-		timingProfilesPanel.onDidDispose(() => { timingProfilesPanel = undefined; });
-		timingProfilesPanel.webview.onDidReceiveMessage(async message => {
-			if (!message || message.type !== "saveTimingProfiles") return;
-			const editor = getChronobladeSourceEditor();
-			if (!editor) return;
-			const profiles = normalizeTimingProfilesForSetting(message.profiles);
-			await vscode.workspace.getConfiguration("kaijuNC.chronoblade", editor.document.uri).update("timingProfiles", profiles, true);
-			await renderTimingProfilesEditor(editor.document);
-		});
-	} else {
-		timingProfilesPanel.reveal(vscode.ViewColumn.Beside);
-	}
-	await renderTimingProfilesEditor(document);
-}
-
-async function renderTimingProfilesEditor(document) {
-	if (!timingProfilesPanel) return;
-	const config = vscode.workspace.getConfiguration("kaijuNC.chronoblade", document.uri);
-	const profiles = Array.isArray(config.get("timingProfiles", [])) ? config.get("timingProfiles", []).map(profile => Object.assign({}, profile, {
-		customTimes: Object.entries(profile && profile.customTimes || {}).map(([code, seconds]) => ({ code, seconds }))
-	})) : [];
-	timingProfilesPanel.webview.html = renderTimingProfilesHtml(profiles);
-}
-
-function normalizeTimingProfilesForSetting(rawProfiles) {
-	if (!Array.isArray(rawProfiles)) return [];
-	const names = new Set();
-	return rawProfiles.flatMap(raw => {
-		const name = String(raw && raw.name || "").trim();
-		if (!name || names.has(name.toLowerCase())) return [];
-		names.add(name.toLowerCase());
-		const profile = { name };
-		for (const key of ["rapidRate", "toolChangeSeconds", "extraStationSeconds"]) {
-			const value = Number(raw[key]);
-			if (Number.isFinite(value) && value >= 0) profile[key] = value;
-		}
-		const customTimes = {};
-		for (const entry of Array.isArray(raw.customTimes) ? raw.customTimes : []) {
-			const code = String(entry && entry.code || "").trim().toUpperCase();
-			const seconds = Number(entry && entry.seconds);
-			if (/^M0*\d+$/.test(code) && Number.isFinite(seconds) && seconds >= 0) customTimes[code] = seconds;
-		}
-		if (Object.keys(customTimes).length) profile.customTimes = customTimes;
-		return [profile];
-	});
 }
 
 async function renderChronobladePanel(editor, mode, options) {
@@ -183,7 +136,7 @@ async function refreshMachineModeChronoblade(document) {
 	if (!chronobladePanel || !chronobladeState || !document || document.uri.toString() !== chronobladeState.documentUriText) return;
 	const editor = getChronobladeSourceEditor();
 	if (!editor || editor.document.uri.toString() !== document.uri.toString()) return;
-	const options = makeChronobladeOptions(document, chronobladeState.options);
+	const options = makeChronobladeOptions(document);
 	chronobladeState = { documentUriText: document.uri.toString(), mode: chronobladeState.mode, options };
 	await renderChronobladePanel(editor, chronobladeState.mode, options);
 }
@@ -225,32 +178,16 @@ function getDocumentChronobladeSettings(document) {
 	return Object.assign({}, all[getChronobladeDocumentKey(document)] || {});
 }
 
-async function saveDocumentChronobladeSettings(document, rawSettings, resetTimingOverrides = false) {
+async function saveDocumentChronobladeSettings(document, rawSettings) {
 	if (!chronobladeContext || !chronobladeContext.workspaceState) return;
 	const all = Object.assign({}, chronobladeContext.workspaceState.get("kaijuChronoblade.settingsByDocument", {}));
-	const current = Object.assign({}, all[getChronobladeDocumentKey(document)] || {});
-	const next = Object.assign(current, {
+	// Save only report controls; obsolete timing overrides are dropped on the next save.
+	all[getChronobladeDocumentKey(document)] = {
 		analysisMode: rawSettings.analysisMode === "trace" ? "trace" : "asWritten",
 		showTraceLine: rawSettings.showTraceLine === true,
 		live: rawSettings.live === true,
 		groupLabels: rawSettings.groupLabels === true
-	});
-
-	if (Object.prototype.hasOwnProperty.call(rawSettings, "timingProfile")) {
-		next.timingProfile = String(rawSettings.timingProfile || "").trim();
-	}
-
-	if (resetTimingOverrides) {
-		delete next.rapidRate;
-		delete next.toolChangeSeconds;
-		delete next.extraStationSeconds;
-	} else {
-		for (const key of ["rapidRate", "toolChangeSeconds", "extraStationSeconds"]) {
-			if (Object.prototype.hasOwnProperty.call(rawSettings, key)) next[key] = rawSettings[key];
-		}
-	}
-
-	all[getChronobladeDocumentKey(document)] = next;
+	};
 	await chronobladeContext.workspaceState.update("kaijuChronoblade.settingsByDocument", all);
 }
 
@@ -307,32 +244,6 @@ function isSimpleSideBySideLayout(layout) {
 		&& layout.groups.every(group => !Array.isArray(group.groups));
 }
 
-function renderTimingProfilesHtml(profiles) {
-	const nonce = makeWebviewNonce();
-	return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-		body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 14px; }
-		label { display:grid; gap:4px; font-size:12px; color:var(--vscode-descriptionForeground); }
-		input, select { box-sizing:border-box; width:100%; color:var(--vscode-input-foreground); background:var(--vscode-input-background); border:1px solid var(--vscode-input-border, var(--vscode-panel-border)); padding:5px 6px; }
-		.profile-bar { display:grid; grid-template-columns:minmax(0, 1fr) auto auto; align-items:end; gap:8px; }
-		.grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; margin:10px 0; }
-		.event { display:grid; grid-template-columns:1fr 1fr auto; gap:6px; margin:6px 0; }
-		button { color:var(--vscode-button-foreground); background:var(--vscode-button-background); border:0; border-radius:3px; padding:5px 8px; cursor:pointer; }
-		.list-actions { display:flex; gap:8px; margin:8px 0; } .hint { font-size:12px; color:var(--vscode-descriptionForeground); margin:12px 0 6px; }
-	</style><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body>
-		<div class="profile-bar"><label>Profile<select id="profileSelect"></select></label><button id="newProfile">New profile</button><button id="deleteProfile">Delete profile</button></div>
-		<div class="grid"><label>Name<input id="name"></label><label>G0 rate<input id="rapidRate" type="number" min="0"></label><label>Tool swap<input id="toolChangeSeconds" type="number" min="0" step="0.1"></label><label>Extra station<input id="extraStationSeconds" type="number" min="0" step="0.1"></label></div>
-		<p class="hint">Custom commands add time to Chronoblade's Other category.</p><div class="list-actions"><button id="save">Save profile</button><button id="addEvent">New command</button></div><div id="events"></div>
-		<script nonce="${nonce}">const vscode=acquireVsCodeApi();let profiles=${escapeScriptJson(profiles)};let active=0;
-		const $=id=>document.getElementById(id); const value=id=>$(id).value; const number=id=>Number(value(id));
-		function eventRows(){return [...document.querySelectorAll('.event')].map(row=>({code:row.querySelector('.code').value,seconds:row.querySelector('.seconds').value}));}
-		function capture(){if(!profiles[active])return; profiles[active]={name:value('name'),rapidRate:number('rapidRate'),toolChangeSeconds:number('toolChangeSeconds'),extraStationSeconds:number('extraStationSeconds'),customTimes:eventRows()};}
-		function render(){const p=profiles[active]||{name:'',rapidRate:'',toolChangeSeconds:'',extraStationSeconds:'',customTimes:[]};$('profileSelect').innerHTML=profiles.map((x,i)=>'<option value="'+i+'"'+(i===active?' selected':'')+'>'+escape(x.name)+'</option>').join('');$('name').value=p.name;$('rapidRate').value=p.rapidRate;$('toolChangeSeconds').value=p.toolChangeSeconds;$('extraStationSeconds').value=p.extraStationSeconds; $('events').innerHTML=(p.customTimes||[]).map(row).join('');}
-		function row(e={code:'M',seconds:''}){return '<div class="event"><input class="code" value="'+escape(e.code)+'" placeholder="M05"><input class="seconds" type="number" min="0" step="0.1" value="'+escape(e.seconds)+'" placeholder="Seconds"><button class="remove">Remove</button></div>';}
-		function escape(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-		$('profileSelect').onchange=()=>{capture();active=Number(value('profileSelect'));render();};$('addEvent').onclick=()=>$('events').insertAdjacentHTML('beforeend',row());$('newProfile').onclick=()=>{capture();profiles.push({name:'New profile',rapidRate:'',toolChangeSeconds:'',extraStationSeconds:'',customTimes:[]});active=profiles.length-1;render();};$('deleteProfile').onclick=()=>{if(!profiles.length)return;profiles.splice(active,1);active=Math.max(0,active-1);render();};$('events').onclick=e=>{if(e.target.classList.contains('remove'))e.target.closest('.event').remove();};$('save').onclick=()=>{capture();vscode.postMessage({type:'saveTimingProfiles',profiles});};render();
-		</script></body></html>`;
-}
-
 function renderChronobladeHtml(options, result) {
 	const nonce = makeWebviewNonce();
 	const summary = result.summary;
@@ -384,6 +295,19 @@ function renderChronobladeHtml(options, result) {
 			grid-template-columns: 84px 96px;
 			align-items: center;
 			gap: 8px;
+		}
+
+		.machine-name {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.timing-control output {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 
 		.profile-picker {
@@ -708,19 +632,19 @@ function renderChronobladeHtml(options, result) {
 			${renderMetric("Tool", formatChronobladeMetricTime(summary.toolTimeSeconds))}
 			${renderMetric("Distance", formatNumber(summary.totalDistance, options.humanFormat), "Total reported path distance. G1 rotary C moves use controller feed length: 1 C degree = 1 linear unit.")}
 			${renderMetric("Cut distance", formatNumber(summary.cuttingDistance, options.humanFormat), "Total non-G0 path distance. G1 rotary C moves use controller feed length: 1 C degree = 1 linear unit.")}
-			${renderMetric("Other", formatChronobladeMetricTime(summary.otherTimeSeconds), "Time from custom M-code entries in the selected timing profile.")}
+			${renderMetric("Other", formatChronobladeMetricTime(summary.otherTimeSeconds), "Time from custom M-code entries in the active machine profile.")}
 		</section>
 		<div class="settings-controls">
 			<div class="settings-primary">
 			<div class="timing-controls">
 				<label class="timing-control">Extra station
-					<input id="extraStationSeconds" type="number" min="0" step="0.1" value="${escapeHtml(options.extraStationSeconds)}" title="Additional time for each turret station beyond an adjacent tool swap, in seconds.">
+					<output title="Additional time for each turret station beyond an adjacent tool swap, in seconds.">${escapeHtml(options.extraStationSeconds)}</output>
 				</label>
 				<label class="timing-control">G0 rate
-					<input id="rapidRate" type="number" min="0" step="100" value="${escapeHtml(options.rapidRate)}" title="Rapid-traverse rate used to estimate G0 moves, in program units per minute.">
+					<output title="Base rapid rate in program units per minute. Machine axis rates take precedence; this rate supplies unspecified X/Y/Z rates.">${escapeHtml(options.rapidRate)}</output>
 				</label>
 				<label class="timing-control">Tool swap
-					<input id="toolChangeSeconds" type="number" min="0" step="0.1" value="${escapeHtml(options.toolChangeSeconds)}" title="Base time added for each tool change, in seconds.">
+					<output title="Base time added for each tool change, in seconds.">${escapeHtml(options.toolChangeSeconds)}</output>
 				</label>
 			</div>
 			<div class="analysis-controls">
@@ -739,10 +663,8 @@ function renderChronobladeHtml(options, result) {
 				${result.traceWarning ? `<span class="trace-warning" title="${escapeAttribute(result.traceWarning)}">⚠ TRACE WARNING</span>` : ""}
 				<span id="liveWarning" class="trace-warning" hidden></span>
 			</div>
-			<div class="profile-control"><span title="${options.hasTimingOverrides ? "One or more timing fields override this profile. Select a profile to reset them." : "Selected Chronoblade timing profile."}">Profile${options.hasTimingOverrides ? "*" : ""}</span>
-				<div class="profile-picker"><select id="timingProfile" title="Chronoblade timing profile.">
-					${options.timingProfiles.map(profile => `<option value="${escapeAttribute(profile.name)}"${profile.name === options.timingProfile ? " selected" : ""}>${escapeHtml(profile.name)}</option>`).join("")}
-				</select><button id="editTimingProfiles" type="button" title="Edit Chronoblade timing profiles.">Edit</button></div>
+			<div class="profile-control"><span>Machine</span>
+				<div class="profile-picker"><span class="machine-name" title="${escapeAttribute(options.machineProfileLabel)}">${escapeHtml(options.machineProfileLabel)}</span><button id="editMachineTiming" type="button" title="Edit machine profile timings.">Edit</button></div>
 			</div>
 			</div>
 			<div class="report-toggles">
@@ -766,11 +688,7 @@ function renderChronobladeHtml(options, result) {
 		const analysisModeSelect = document.getElementById("analysisMode");
 		const lineDataSelect = document.getElementById("lineData");
 		const liveInput = document.getElementById("live");
-		const timingProfileSelect = document.getElementById("timingProfile");
-		const editTimingProfilesButton = document.getElementById("editTimingProfiles");
-		const rapidRateInput = document.getElementById("rapidRate");
-		const toolChangeSecondsInput = document.getElementById("toolChangeSeconds");
-		const extraStationSecondsInput = document.getElementById("extraStationSeconds");
+		const editMachineTimingButton = document.getElementById("editMachineTiming");
 		const tableWrap = document.getElementById("chronobladeTableWrap");
 		const tableBody = document.getElementById("chronobladeTableBody");
 		const ROW_HEIGHT = 35;
@@ -797,23 +715,14 @@ function renderChronobladeHtml(options, result) {
 			rebuildVisibleRows();
 			vscode.postMessage({ type: "setChronobladeGroupLabels", options: collectAnalysisOptions() });
 		});
-		const collectAnalysisOptions = () => ({ analysisMode: analysisModeSelect.value, showTraceLine: lineDataSelect.value === "trace", live: liveInput.checked, groupLabels: groupLabelsInput.checked, timingProfile: timingProfileSelect.value });
-		const collectTimingOptions = () => Object.assign(collectAnalysisOptions(), {
-			rapidRate: rapidRateInput.value,
-			toolChangeSeconds: toolChangeSecondsInput.value,
-			extraStationSeconds: extraStationSecondsInput.value
-		});
+		const collectAnalysisOptions = () => ({ analysisMode: analysisModeSelect.value, showTraceLine: lineDataSelect.value === "trace", live: liveInput.checked, groupLabels: groupLabelsInput.checked });
 		analysisModeSelect.addEventListener("change", () => {
 			if (analysisModeSelect.value === "asWritten") lineDataSelect.value = "source";
 			vscode.postMessage({ type: "setChronobladeAnalysis", options: collectAnalysisOptions() });
 		});
 		lineDataSelect.addEventListener("change", () => vscode.postMessage({ type: "setChronobladeAnalysis", options: collectAnalysisOptions() }));
 		liveInput.addEventListener("change", () => vscode.postMessage({ type: "setChronobladeLive", options: collectAnalysisOptions() }));
-		timingProfileSelect.addEventListener("change", () => vscode.postMessage({ type: "setChronobladeTimingProfile", options: collectAnalysisOptions() }));
-		editTimingProfilesButton.addEventListener("click", () => vscode.postMessage({ type: "openChronobladeTimingProfiles" }));
-		for (const input of [rapidRateInput, toolChangeSecondsInput, extraStationSecondsInput]) {
-			input.addEventListener("change", () => vscode.postMessage({ type: "setChronobladeTiming", options: collectTimingOptions() }));
-		}
+		editMachineTimingButton.addEventListener("click", () => vscode.postMessage({ type: "editMachineTiming" }));
 		window.addEventListener("message", event => {
 			const message = event.data;
 			if (!message || message.type !== "liveTraceWarning") return;
@@ -1236,5 +1145,6 @@ function escapeScriptJson(value) {
 }
 
 module.exports = {
-	registerChronobladeWebview
+	registerChronobladeWebview,
+	getChronobladeSettingsSnapshot: document => ({ saved: getDocumentChronobladeSettings(document), effective: makeChronobladeOptions(document) })
 };

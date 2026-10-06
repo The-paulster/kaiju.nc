@@ -6,6 +6,58 @@ const motion = require("../src/MetaMotionEngine");
 const { buildExecutionTrace } = require("../src/MetaExecutionTrace");
 const modalDefinitions = require("../src/MetaModalDefs.json");
 
+test("both mode tables pre-bind work coordinate systems 1-6 to G54-G59", () => {
+	for (const profile of dialect.getBuiltInGCodeDialectProfiles()) {
+		for (const mode of ["mill", "lathe"]) {
+			for (let n = 1; n <= 6; n++) {
+				const operation = dialect.G_CODE_OPERATIONS[`WORK_COORDINATE_${n}`];
+				assert.equal(profile.bindings[mode][operation].code, 53 + n);
+				assert.equal(dialect.G_CODE_OPERATION_DEFINITIONS[operation].label, `Work coordinate system ${n}`);
+			}
+		}
+	}
+});
+
+test("rebinding a work coordinate system preserves Vision geometry, timing and Sense meaning", () => {
+	const operation = dialect.G_CODE_OPERATIONS.WORK_COORDINATE_2;
+	const source = "G54 G0 X10 Y5 Z20\nG55\nG0 X0\nG1 X10 F100";
+	const options = { machineMode: "mill", xAxisMode: "radius", defaultFeedMode: "perMinute", rapidRate: 600,
+		workOffsets: { G54: { x: 100 }, G55: { x: 200, y: 50, z: 30 } } };
+	const original = makeDocument(source);
+	const expectedVision = motion.analyzeVisionRange(original, undefined, options);
+	const expectedTime = motion.analyzeChronobladeRange(original, undefined, options);
+	try {
+		dialect.setCustomGCodeDialectProfiles([{ id: "work-frames", label: "Work frames", bindings: {
+			mill: { [operation]: { code: 155 } }, lathe: {}
+		} }]);
+		const customOptions = { ...options, gCodeDialectId: "work-frames" };
+		const doc = makeDocument(source.replace("G55", "G155"));
+		const actual = motion.analyzeVisionRange(doc, undefined, customOptions);
+		assert.deepEqual(actual.rows.map(row => [row.start, row.end, row.points]), expectedVision.rows.map(row => [row.start, row.end, row.points]));
+		assert.equal(motion.analyzeChronobladeRange(doc, undefined, customOptions).summary.totalTimeSeconds, expectedTime.summary.totalTimeSeconds);
+		const entry = motion.getModalStateAtLine(doc, 1, customOptions).modalGroups.find(group => group.key === "coordinateSystem");
+		assert.equal(entry.code, "G155");
+		assert.equal(entry.label, "Work coordinate system 2");
+		assert.equal(actual.rows[0].coordinateSystem, "G55");
+		assert.equal(dialect.resolveGCodeOperations([{ letter: "G", value: 55 }], customOptions).length, 0);
+	} finally { dialect.setCustomGCodeDialectProfiles([]); }
+});
+
+test("unbinding and collisions never fall back to literal G55 frame selection", () => {
+	const operation = dialect.G_CODE_OPERATIONS.WORK_COORDINATE_2;
+	try {
+		for (const overrides of [{ [operation]: null }, { [dialect.G_CODE_OPERATIONS.MOTION_LINEAR]: { code: 55 } }]) {
+			dialect.setCustomGCodeDialectProfiles([{ id: "work-frames", label: "Work frames", bindings: { mill: overrides, lathe: {} } }]);
+			const options = { machineMode: "mill", gCodeDialectId: "work-frames", xAxisMode: "radius", defaultFeedMode: "perMinute", rapidRate: 600,
+				workOffsets: { G54: { x: 100 }, G55: { x: 200 } } };
+			const result = motion.analyzeVisionRange(makeDocument("G54 G0 X0 Y0 Z0\nG55\nG0 X10"), undefined, options);
+			assert.equal(result.rows.at(-1).coordinateSystem, "G54");
+			assert.equal(result.rows.at(-1).points.at(-1).x, 110);
+			assert.equal(dialect.getGCodeDialectProfile("work-frames").bindings.mill[operation], null);
+		}
+	} finally { dialect.setCustomGCodeDialectProfiles([]); }
+});
+
 test("keybinding collisions unbind the previous operation", () => {
 	const operations = dialect.G_CODE_OPERATIONS;
 	const g98 = dialect.createGCodeBinding(98);

@@ -2,9 +2,11 @@
   "name": "kaiju-nc",
   "displayName": "KAIJU.NC",
   "description": "VSCode extension for working with .nc files. Provides syntax highlighting, warnings, automatic formatting, and basic diagnostic tools.",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:examples": "node --test test/examples.test.js",
+    "test:integration": "node test/integration/run.js"
   },
   "icon": "media/kaiju-nc_128x128icon.png",
   "publisher": "PaulCGilesLawson",
@@ -95,9 +97,6 @@
         "path": "./syntaxes/gcode.tmLanguage.json"
       }
     ],
-    
-
-
     "configurationDefaults": {
       "editor.tokenColorCustomizations": {
         "textMateRules": [
@@ -398,6 +397,17 @@
     },
     "configuration": [
       {
+        "title": "KAIJU.NC: File Settings",
+        "properties": {
+          "kaijuNC.fileSettings.showInContextMenu": {
+            "type": "boolean",
+            "default": false,
+            "scope": "window",
+            "description": "Show KAIJU File Settings below Machine Profile and G-code Profile in the editor context menu. The read-only viewer is always available from the Command Palette."
+          }
+        }
+      },
+      {
         "title": "KAIJU.NC: Syntax",
         "properties": {
           "kaijuNC.syntax.toolDecorations.enabled": {
@@ -459,6 +469,12 @@
             "description": "Show an error when a named KAIJU Alias macro is used without a matching alias definition before the first G/M block."
           ,
             "scope": "resource"},
+          "kaijuNC.alerts.unboundGCodes.enabled": {
+            "type": "boolean",
+            "default": false,
+            "scope": "resource",
+            "description": "Warn when a literal G code is missing from the selected G-code profile's active Mill or Lathe bindings."
+          },
           "kaijuNC.alerts.illegalArcs.enabled": {
             "type": "boolean",
             "default": true,
@@ -507,9 +523,9 @@
           "kaijuNC.format.autoSemicolon": {
             "type": "boolean",
             "default": false,
-            "description": "Add semicolons after code and before comments during formatting."
-          ,
-            "scope": "resource"},
+            "description": "Fallback for adding semicolons after code and before comments during formatting. An applied machine profile supplies this default through Requires semicolons.",
+            "scope": "resource"
+          },
           "kaijuNC.format.normalizeToolCodes": {
             "type": "boolean",
             "default": true,
@@ -1068,6 +1084,242 @@
         }
       },
       {
+        "title": "KAIJU.NC: Machine Profiles",
+        "properties": {
+          "kaijuNC.machineProfiles.customProfiles": {
+            "type": "array",
+            "default": [],
+            "scope": "resource",
+            "description": "Reusable machine profiles. Use KAIJU Machine Profile to create or copy profiles and edit their behavior and G-code profile.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "label",
+                "machineMode",
+                "gCodeDialectId",
+                "rapidRate",
+                "toolChangeSeconds",
+                "extraStationSeconds",
+                "cAxisCoordinates",
+                "cAxisResetOnDisable"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                "machineMode": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "mill",
+                    "latheRadius",
+                    "latheDiameter"
+                  ]
+                },
+                "gCodeDialectId": {
+                  "type": "string"
+                },
+                "rapidRate": { "type": "number", "minimum": 0 },
+                "toolChangeSeconds": { "type": "number", "minimum": 0 },
+                "extraStationSeconds": { "type": "number", "minimum": 0 },
+                "cAxisCoordinates": {
+                  "type": "string",
+                  "enum": [
+                    "wrapped",
+                    "continuous"
+                  ]
+                },
+                "cAxisResetOnDisable": {
+                  "type": "boolean"
+                },
+                "requiresSemicolons": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "turretStationCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 0
+                },
+                "turretIndexing": {
+                  "type": "string",
+                  "enum": [
+                    "shortest",
+                    "increasing",
+                    "decreasing"
+                  ],
+                  "default": "shortest"
+                },
+                "rapidRates": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "y": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "z": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "c": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "workOffsets": {
+                  "type": "object",
+                  "default": {},
+                  "description": "Default G54-G59 frame origins relative to G53. X/Y/Z use machine units; C uses degrees. Saved program offsets override these defaults.",
+                  "patternProperties": {
+                    "^G5[3-9]$": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "default": 0
+                        },
+                        "y": {
+                          "type": "number",
+                          "default": 0
+                        },
+                        "z": {
+                          "type": "number",
+                          "default": 0
+                        },
+                        "c": {
+                          "type": "number",
+                          "default": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cAxisTravel": {
+                  "type": "string",
+                  "enum": [
+                    "direct",
+                    "shortest",
+                    "positive",
+                    "negative"
+                  ],
+                  "default": "direct"
+                },
+                "rotaryFeedRule": {
+                  "type": "string",
+                  "enum": [
+                    "degrees",
+                    "scaledDegrees",
+                    "physical",
+                    "linearOnly"
+                  ],
+                  "default": "degrees"
+                },
+                "rotaryFeedScale": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 1
+                },
+                "maxSpindleRpm": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0
+                },
+                "cssSurfaceSpeedUnit": {
+                  "type": "string",
+                  "enum": [
+                    "mPerMin",
+                    "sfm"
+                  ],
+                  "default": "mPerMin"
+                },
+                "startupFeedMode": {
+                  "type": "string",
+                  "enum": [
+                    "machine",
+                    "perMinute",
+                    "perRev"
+                  ],
+                  "default": "machine"
+                },
+                "startupPlane": {
+                  "type": "string",
+                  "enum": [
+                    "xy",
+                    "xz",
+                    "yz"
+                  ],
+                  "default": "xy"
+                },
+                "startupDistanceMode": {
+                  "type": "string",
+                  "enum": [
+                    "absolute",
+                    "incremental"
+                  ],
+                  "default": "absolute"
+                },
+                "startupSpindleMode": {
+                  "type": "string",
+                  "enum": [
+                    "fixed",
+                    "css"
+                  ],
+                  "default": "fixed"
+                },
+                "customTimes": {
+                  "type": "object",
+                  "default": {},
+                  "patternProperties": {
+                    "^[Mm][0-9]+$": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "kaijuNC.machineProfiles.defaultProfile": {
+            "type": "string",
+            "default": "generic",
+            "scope": "resource",
+            "description": "Machine profile for programs without a saved selection. generic is Generic Machine; custom IDs are selectable through KAIJU Machine Profile. Existing saved program selections take precedence."
+          }
+        }
+      },
+      {
         "title": "KAIJU.NC: G-code Profiles",
         "properties": {
           "kaijuNC.gCodeDialect.customProfiles": {
@@ -1155,47 +1407,6 @@
             "description": "Target width fraction for the KAIJU Chronoblade side editor group when VS Code has a simple two-column layout."
           ,
             "scope": "resource"},
-          "kaijuNC.chronoblade.rapidRate": {
-            "type": "number",
-            "default": 10000,
-            "minimum": 0,
-            "description": "Default G0 rapid rate used by the KAIJU Chronoblade cycle-time report, in program units per minute."
-          ,
-            "scope": "resource"},
-          "kaijuNC.chronoblade.toolChangeSeconds": {
-            "type": "number",
-            "default": 4,
-            "minimum": 0,
-            "description": "Default base tool swap time used by the KAIJU Chronoblade cycle-time report, in seconds."
-          ,
-            "scope": "resource"},
-          "kaijuNC.chronoblade.extraStationSeconds": {
-            "type": "number",
-            "default": 0.5,
-            "minimum": 0,
-            "description": "Default extra turret station time added for each station beyond an adjacent tool swap in the KAIJU Chronoblade cycle-time report."
-          ,
-            "scope": "resource"},
-          "kaijuNC.chronoblade.timingProfiles": {
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "object",
-              "required": ["name"],
-              "properties": {
-                "name": { "type": "string" },
-                "rapidRate": { "type": "number", "minimum": 0 },
-                "toolChangeSeconds": { "type": "number", "minimum": 0 },
-                "extraStationSeconds": { "type": "number", "minimum": 0 },
-                "customTimes": {
-                  "type": "object",
-                  "additionalProperties": { "type": "number", "minimum": 0 }
-                }
-              }
-            },
-            "description": "Reusable Chronoblade timing profiles. Each customTimes entry maps a literal M-code, such as M05 or M86, to seconds added to Other."
-          ,
-            "scope": "resource"},
           "kaijuNC.chronoblade.significantFiguresOnly": {
             "type": "boolean",
             "default": false,
@@ -1249,6 +1460,14 @@
         "title": "Out-of-Order N Alerts: On"
       },
       {
+        "command": "kaijuNC.quickToggle.unboundGCodesOn",
+        "title": "Unbound G-code Alerts: On"
+      },
+      {
+        "command": "kaijuNC.quickToggle.unboundGCodesOff",
+        "title": "Unbound G-code Alerts: Off"
+      },
+      {
         "command": "kaijuNC.quickToggle.sequenceNumberOrderOff",
         "title": "Out-of-Order N Alerts: Off"
       },
@@ -1273,8 +1492,16 @@
         "title": "KAIJU G-code Profile: DMG MORI"
       },
       {
+        "command": "kaijuNC.machineProfiles.manage",
+        "title": "KAIJU Machine Profile"
+      },
+      {
         "command": "kaijuNC.gCodeDialect.manage",
         "title": "KAIJU G-code Profile"
+      },
+      {
+        "command": "kaijuNC.fileSettings",
+        "title": "KAIJU File Settings"
       },
       {
         "command": "kaijuNC.macroHistory",
@@ -1346,7 +1573,6 @@
         "label": "KAIJU Quick Toggles"
       }
     ],
-
     "menus": {
       "editor/context": [
         {
@@ -1400,9 +1626,19 @@
           "group": "z_kaijuMachineMode"
         },
         {
+          "command": "kaijuNC.machineProfiles.manage",
+          "when": "editorLangId == gcode",
+          "group": "z_kaijuGCodeDialect@1"
+        },
+        {
           "command": "kaijuNC.gCodeDialect.manage",
           "when": "editorLangId == gcode",
-          "group": "z_kaijuGCodeDialect"
+          "group": "z_kaijuGCodeDialect@2"
+        },
+        {
+          "command": "kaijuNC.fileSettings",
+          "when": "editorLangId == gcode && config.kaijuNC.fileSettings.showInContextMenu",
+          "group": "z_kaijuGCodeDialect@3"
         },
         {
           "submenu": "kaijuNC.quickTogglesMenu",
@@ -1418,6 +1654,16 @@
         }
       ],
       "kaijuNC.quickTogglesMenu": [
+        {
+          "command": "kaijuNC.quickToggle.unboundGCodesOn",
+          "when": "editorLangId == gcode && kaijuNC.quickToggle.unboundGCodesEnabled",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kaijuNC.quickToggle.unboundGCodesOff",
+          "when": "editorLangId == gcode && !kaijuNC.quickToggle.unboundGCodesEnabled",
+          "group": "navigation@2"
+        },
         {
           "command": "kaijuNC.quickToggle.sequenceNumberOrderOn",
           "when": "editorLangId == gcode && kaijuNC.quickToggle.sequenceNumberOrderEnabled",
@@ -1457,5 +1703,9 @@
         }
       ]
     }
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "^3.1.0",
+    "playwright-core": "^1.63.0"
   }
 }

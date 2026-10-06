@@ -16,6 +16,10 @@ track modal context across lines.
 
 - Decomposition reuses the formatter for its trace output.
 - The Extension Host registers the provider and command.
+- Reads the active machine's `requiresSemicolons` through `MetaMachineMode`
+  when building formatting defaults. Legacy `kaijuNC.format.autoSemicolon`
+  remains the fallback without an applied machine profile; explicit formatting
+  command choices take precedence. Semicolon insertion remains in the formatter.
 
 ## Boundary
 

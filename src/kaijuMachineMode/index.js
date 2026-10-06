@@ -5,12 +5,14 @@ const { getAliasModeState } = require("../kaijuAlias");
 const { getAliasOptions } = require("../kaijuAlias/options");
 const { getGCodeDialectProfiles } = require("../MetaGCodeDialect");
 const { registerGCodeProfileEditor, reloadConfiguredGCodeDialectProfiles } = require("./profileEditor");
+const { registerMachineProfileEditor } = require("./machineProfileEditor");
 const {
 	MACHINE_MODE_PROFILES,
 	initializeMachineMode,
 	getMachineModeForDocument,
 	setMachineMode,
 	setGCodeDialect,
+	notifyMachineProfilesChanged,
 	onDidChangeMachineMode
 } = require("../MetaMachineMode");
 
@@ -48,6 +50,7 @@ function registerKaijuMachineMode(context) {
 		}));
 	}
 	registerGCodeProfileEditor(context);
+	registerMachineProfileEditor(context);
 	registerMachineModeStatusBar(context);
 }
 
@@ -77,9 +80,11 @@ function registerMachineModeStatusBar(context) {
 				const profileLoadError = reloadConfiguredGCodeDialectProfiles(getActiveDocument());
 				if (profileLoadError) vscode.window.showWarningMessage(`KAIJU could not load custom G-code profiles: ${profileLoadError}`);
 			}
+			if (event.affectsConfiguration("kaijuNC.machineProfiles")) notifyMachineProfilesChanged();
 			if (
 				event.affectsConfiguration("kaijuNC.chronoblade.machineMode")
 				|| event.affectsConfiguration("kaijuNC.gCodeDialect.defaultProfile")
+				|| event.affectsConfiguration("kaijuNC.machineProfiles")
 				|| event.affectsConfiguration("kaijuNC.alias")
 				|| event.affectsConfiguration("kaijuNC.display.statusBarModeColors")
 			) update();
@@ -101,8 +106,9 @@ function updateMachineModeStatusBar(statusBar) {
 	const profile = machineMode.profile;
 	const useModeColors = displayConfig.get("statusBarModeColors", false);
 	const inferredSuffix = machineMode.machineModeSource === "inferred" ? " (Auto)" : "";
-	statusBar.machineItem.text = `KAIJU: ${profile.statusLabel}${inferredSuffix}`;
-	statusBar.machineItem.tooltip = `Machine Mode: ${profile.label}${inferredSuffix}\nG-code profile: ${machineMode.gCodeDialect.label}`;
+	statusBar.machineItem.text = `KAIJU: ${machineMode.machineProfile.label} · ${machineMode.gCodeDialect.label}`;
+	statusBar.machineItem.tooltip = `Machine: ${machineMode.machineProfile.label}\nMachine Mode: ${profile.label}${inferredSuffix}\nG-code profile: ${machineMode.gCodeDialect.label}`;
+	statusBar.machineItem.command = "kaijuNC.machineProfiles.manage";
 	statusBar.machineItem.color = useModeColors ? MACHINE_MODE_STATUS_COLORS[profile.id] || MACHINE_MODE_STATUS_COLORS.latheDiameter : undefined;
 	statusBar.machineItem.show();
 

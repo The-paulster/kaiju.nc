@@ -25,3 +25,6 @@ model and decoration rendering even while its authoring workflow is paused.
 Keep its stored section model in workspace state, preserve section
 priority/order, and use Rangefinder for generic N-label selection semantics
 rather than cloning them.
+
+
+`getWarpaintSettingsSnapshot(document)` returns effective options and normalized saved sections for File Settings; it does not create decorations or open the authoring panel.

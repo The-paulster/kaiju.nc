@@ -9,6 +9,8 @@ const {
 const {
 	buildMacroAliasMap,
 	evaluateNumericExpression,
+	readMacroToken,
+	readNumericValueToken,
 	findMacroAssignments,
 	setMacroValue
 } = require("./MetaMacroEngine");
@@ -39,7 +41,8 @@ const MOTION_OPERATIONS_BY_CODE = new Map([
 	[2, G_CODE_OPERATIONS.MOTION_ARC_CW],
 	[3, G_CODE_OPERATIONS.MOTION_ARC_CCW]
 ]);
-const CANNED_CYCLE_CODES = new Set([73, 74, 76, 81, 82, 83, 84, 85, 86, 87, 88, 89]);
+const { getCannedCycle } = require("./MetaCannedCycles");
+const { makeCycleSitePosition, applyCannedCyclePositionUpdate, getCannedCycleTopZ } = require("./MetaCannedCycles/mill/common");
 
 function estimateMotionAtLine(document, targetLineNumber, hoveredMotion, options) {
 	const state = makeInitialState(options);
@@ -123,18 +126,18 @@ function makeInitialState(options = {}) {
 		position,
 		positionCoordinateSystem,
 		motionCode: undefined,
-		arcPlane: "xy",
+		arcPlane: ["xy", "xz", "yz"].includes(options.startupPlane) ? options.startupPlane : "xy",
 		polarInterpolation: false,
 		cAxisMode: undefined,
 		polarPreviousArcPlane: undefined,
 		polarPreviousY: undefined,
-		distanceMode: "absolute",
+		distanceMode: options.startupDistanceMode === "incremental" ? "incremental" : "absolute",
 		coordinateSystem: "G54",
 		cannedCycle: undefined,
 		cannedCycleRetractMode: "initial",
 		feed: undefined,
 		feedMode: options.defaultFeedMode === "perMinute" ? "perMinute" : "perRev",
-		spindleMode: "fixed",
+		spindleMode: options.startupSpindleMode === "css" ? "css" : "fixed",
 		rpm: undefined,
 		cssSurfaceSpeed: undefined,
 		rpmLimit: undefined
@@ -148,7 +151,9 @@ function makeInitialStatusModalState(options = {}) {
 		options.defaultFeedMode === "perMinute" ? G_CODE_OPERATIONS.FEED_PER_MINUTE : G_CODE_OPERATIONS.FEED_PER_REVOLUTION,
 		options
 	);
-	setDefaultDialectStatusEntry(statusState, G_CODE_OPERATIONS.SPINDLE_FIXED_RPM, options);
+	setDefaultDialectStatusEntry(statusState, options.startupSpindleMode === "css" ? G_CODE_OPERATIONS.SPINDLE_CSS : G_CODE_OPERATIONS.SPINDLE_FIXED_RPM, options);
+	if (options.startupPlane) setDefaultDialectStatusEntry(statusState, { xy: G_CODE_OPERATIONS.PLANE_XY, xz: G_CODE_OPERATIONS.PLANE_XZ, yz: G_CODE_OPERATIONS.PLANE_YZ }[options.startupPlane], options);
+	if (options.startupDistanceMode) setDefaultDialectStatusEntry(statusState, options.startupDistanceMode === "incremental" ? G_CODE_OPERATIONS.DISTANCE_INCREMENTAL : G_CODE_OPERATIONS.DISTANCE_ABSOLUTE, options);
 
 	return statusState;
 }
@@ -171,15 +176,15 @@ function trackMacroAssignments(codeLine, macroValues, macroAliases) {
 	}
 }
 
-function parseWords(codeLine, macroValues, macroAliases) {
+function parseWords(codeLine, macroValues = new Map(), macroAliases = new Map()) {
 	const words = [];
 	let index = 0;
 
 	while (index < codeLine.length) {
 		if (codeLine[index] === "#") {
-			const macro = codeLine.slice(index).match(/^#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/);
+			const macro = readMacroToken(codeLine, index);
 			if (macro) {
-				index += macro[0].length;
+				index = macro.end;
 				continue;
 			}
 		}
@@ -205,7 +210,7 @@ function parseWords(codeLine, macroValues, macroAliases) {
 		}
 
 		const valueStart = skipWhitespace(codeLine, index + 1);
-		const valueToken = readValueToken(codeLine, valueStart);
+		const valueToken = readNumericValueToken(codeLine, valueStart);
 
 		if (!valueToken) {
 			index++;
@@ -232,28 +237,6 @@ function skipWhitespace(text, index) {
 	}
 
 	return index;
-}
-
-function readValueToken(text, start) {
-	if (start >= text.length) {
-		return undefined;
-	}
-
-	if (text[start] === "[") {
-		return readBracketToken(text, start);
-	}
-
-	const rest = text.slice(start);
-	const match = rest.match(/^[-+]?(?:#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)|\d+(?:\.\d*)?|\.\d+)/);
-
-	if (!match) {
-		return undefined;
-	}
-
-	return {
-		text: match[0],
-		end: start + match[0].length
-	};
 }
 
 function readBracketToken(text, start) {
@@ -323,10 +306,13 @@ function applyModalState(words, motionCode, state, options = {}) {
 	const sWord = lastWord(words, "S");
 	const fWord = lastWord(words, "F");
 	let hasRpmLimit = false;
-	let cycleCode;
-	let cancelCycle = false;
+	let cycleMatch;
+	let cancelCycle = Number.isFinite(motionCode);
 
 	for (const match of resolveGCodeOperations(words, options)) {
+		const definition = G_CODE_OPERATION_DEFINITIONS[match.operation];
+		if (definition.coordinateSystem) state.coordinateSystem = definition.coordinateSystem;
+		if (getCannedCycle(match.operation)) cycleMatch = match;
 		switch (match.operation) {
 			case G_CODE_OPERATIONS.DISTANCE_ABSOLUTE: state.distanceMode = "absolute"; break;
 			case G_CODE_OPERATIONS.DISTANCE_INCREMENTAL: state.distanceMode = "incremental"; break;
@@ -344,8 +330,8 @@ function applyModalState(words, motionCode, state, options = {}) {
 				break;
 			case G_CODE_OPERATIONS.C_AXIS_DISABLE:
 				state.cAxisMode = false;
-				state.position.c = 0;
-				if (state.polarInterpolation) state.polarPreviousC = 0;
+				if (options.cAxisResetOnDisable !== false) state.position.c = 0;
+				if (state.polarInterpolation && options.cAxisResetOnDisable !== false) state.polarPreviousC = 0;
 				break;
 			case G_CODE_OPERATIONS.CYCLE_CANCEL: cancelCycle = true; break;
 			case G_CODE_OPERATIONS.SPINDLE_CSS: state.spindleMode = "css"; break;
@@ -354,20 +340,6 @@ function applyModalState(words, motionCode, state, options = {}) {
 				hasRpmLimit = Number.isFinite(match.argument);
 				if (hasRpmLimit) state.rpmLimit = match.argument;
 				break;
-		}
-	}
-
-	for (const word of words) {
-		if (word.letter !== "G" || !Number.isFinite(word.value)) {
-			continue;
-		}
-
-		const code = Math.trunc(word.value);
-
-		if (code >= 54 && code <= 59) {
-			state.coordinateSystem = "G" + code;
-		} else if (CANNED_CYCLE_CODES.has(code)) {
-			cycleCode = code;
 		}
 	}
 
@@ -389,10 +361,12 @@ function applyModalState(words, motionCode, state, options = {}) {
 
 	if (cancelCycle) {
 		state.cannedCycle = undefined;
-	} else if (cycleCode) {
-		state.cannedCycle = makeCannedCycleState(cycleCode, words, state);
+	} else if (cycleMatch) {
+		const entry = getCannedCycle(cycleMatch.operation);
+		rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
+		state.cannedCycle = entry.createState(entry, cycleMatch, words, state);
 	} else if (state.cannedCycle) {
-		state.cannedCycle = updateCannedCycleState(state.cannedCycle, words, state);
+		state.cannedCycle = getCannedCycle(state.cannedCycle.id).updateState(state.cannedCycle, words, state);
 	}
 }
 
@@ -492,52 +466,13 @@ function analyzeArcWords(words, motionCode, state, options) {
 	};
 }
 
-function makeCannedCycleState(cycleCode, words, state) {
-	const existing = state.cannedCycle || {};
-	const cycle = Object.assign({}, existing, {
-		code: cycleCode,
-		initialZ: state.position.z,
-		retractMode: state.cannedCycleRetractMode
-	});
-
-	return updateCannedCycleState(cycle, words, state);
-}
-
-function updateCannedCycleState(cycle, words, state) {
-	const next = Object.assign({}, cycle, {
-		retractMode: state.cannedCycleRetractMode
-	});
-
-	setCycleAxisValue(next, "z", lastWord(words, "Z"), state.position.z, state.distanceMode);
-	setCycleAxisValue(next, "r", lastWord(words, "R"), state.position.z, state.distanceMode);
-	setCycleValue(next, "q", lastWord(words, "Q"));
-	setCycleValue(next, "p", lastWord(words, "P"));
-
-	return next;
-}
-
-function setCycleAxisValue(cycle, key, word, baseValue, distanceMode) {
-	if (!word || !Number.isFinite(word.value)) {
-		return;
-	}
-
-	cycle[key] = distanceMode === "incremental" && Number.isFinite(baseValue)
-		? baseValue + word.value
-		: word.value;
-}
-
-function setCycleValue(cycle, key, word) {
-	if (word && Number.isFinite(word.value)) {
-		cycle[key] = word.value;
-	}
-}
-
 function applyStatusModalState(words, statusState, options = {}) {
 	for (const group of STATUS_MODAL_GROUPS) {
 		for (const word of words) {
 			if (word.letter !== group.letter || !Number.isFinite(word.value)) {
 				continue;
 			}
+			if (resolveGCodeOperations(words, options).some(match => match.word === word)) continue;
 			setStatusModalEntry(statusState, group.key, getStatusModalCode(word.value), word, words, options);
 		}
 	}
@@ -674,7 +609,13 @@ function lastWord(words, letter) {
 }
 
 function estimateMotion(words, motionCode, state, options) {
-	const start = clonePosition(state.position);
+	rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
+	const displayStart = clonePosition(state.position);
+	const startCoordinateSystem = state.positionCoordinateSystem || state.coordinateSystem;
+	const endCoordinateSystem = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options) ? "G53" : state.coordinateSystem;
+	const calculationState = { ...state, position: clonePosition(state.position) };
+	rebaseVisionPositionForCoordinateSystem(calculationState, endCoordinateSystem, options);
+	const start = calculationState.position;
 	const end = makeEndPosition(start, words, state.distanceMode, options, state.polarInterpolation);
 
 	if (!hasKnownPosition(start) || !hasKnownPosition(end)) {
@@ -685,11 +626,15 @@ function estimateMotion(words, motionCode, state, options) {
 	const path = buildPathPoints(motionCode, start, end, words, state.arcPlane, options, state.polarInterpolation);
 	const distance = sumPathDistance(path, options);
 	const rotaryFeedDistance = path.rotaryMotion && motionCode === 1
-		? getRotaryFeedDistance(start, end, options)
+		? options.rotaryFeedRule === "physical" ? integrateRotaryTravel(start, end, options) : getRotaryFeedDistance(start, end, options)
 		: NaN;
 	const geometry = makeMotionGeometry(motionCode, start, end, path, options);
 	let timing;
-	if (Number.isFinite(rotaryFeedDistance)) {
+	if (motionCode === 0) {
+		timing = estimateRapidTime(distance, options, start, end, path.rotaryMotion);
+	} else if (path.rotaryMotion && motionCode === 1 && options.rotaryFeedRule === "physical") {
+		timing = estimatePhysicalRotaryTime(start, end, state, options);
+	} else if (Number.isFinite(rotaryFeedDistance)) {
 		timing = estimateLinearPathTime({ points: [start, end] }, state, options, rotaryFeedDistance);
 	} else if (path.rotaryMotion) {
 		timing = { timeSeconds: NaN, minRpm: NaN, maxRpm: NaN };
@@ -700,12 +645,12 @@ function estimateMotion(words, motionCode, state, options) {
 		? ["X", "C", "Z", "U", "H", "W", "F"]
 		: ["X", "Y", "Z", "C", "U", "V", "W", "H", "F"]);
 
-	if (path.rotaryMotion && !Number.isFinite(rotaryFeedDistance)) warnings.push("Rotary C rapid or arc timing requires controller-specific rates.");
-	if ((Number.isFinite(rotaryFeedDistance) ? rotaryFeedDistance : distance) <= 0) {
+	if (path.rotaryMotion && !Number.isFinite(timing.timeSeconds)) warnings.push(motionCode === 1 && options.rotaryFeedRule === "linearOnly" ? "Linear-only rotary feed needs linear travel to estimate time." : "Rotary C timing requires a known rate and supported interpolation rule.");
+	if ((Number.isFinite(rotaryFeedDistance) ? rotaryFeedDistance : distance) <= 0 && !(motionCode === 0 && path.rotaryMotion)) {
 		warnings.push("Move distance is zero.");
 	}
 
-	if (motionCode === 0 && (!Number.isFinite(options.rapidRate) || options.rapidRate <= 0)) {
+	if (motionCode === 0 && !Number.isFinite(timing.timeSeconds)) {
 		warnings.push("Rapid rate is unknown or zero.");
 	}
 
@@ -721,7 +666,7 @@ function estimateMotion(words, motionCode, state, options) {
 		warnings.push("CSS surface speed is unknown or zero.");
 	}
 
-	if (motionCode !== 0 && state.spindleMode === "css" && !Number.isFinite(state.rpmLimit)) {
+	if (motionCode !== 0 && state.spindleMode === "css" && !Number.isFinite(getEffectiveRpmLimit(state, options))) {
 		warnings.push("No RPM limit found; CSS estimate is unclamped.");
 	}
 
@@ -731,7 +676,10 @@ function estimateMotion(words, motionCode, state, options) {
 		motionCode,
 		motionWord: getMotionWord(motionCode, options),
 		machineCoordinate: hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options),
-		start,
+		start: displayStart,
+		startCoordinateSystem,
+		endCoordinateSystem,
+		pathCoordinateSystem: endCoordinateSystem,
 		end: normalizeRotaryPosition(end, options, state.polarInterpolation),
 		coordinateSystem: state.coordinateSystem,
 		distance,
@@ -775,16 +723,25 @@ function applyPositionUpdate(words, state, options) {
 	if (isCoordinateSettingLine(words, options) || isPolarInterpolationControlLine(words, options)) {
 		return;
 	}
+	if (hasActiveCannedCycleOperation(words, state, getCannedCycleCode(words, options), options)) {
+		if (!expandActiveCycle(words, state, options)) applyCannedCyclePositionUpdate(words, state);
+		state.positionCoordinateSystem = state.coordinateSystem;
+		return;
+	}
 
+	const coordinateSystem = hasGCodeOperation(words, G_CODE_OPERATIONS.MACHINE_COORDINATE, options) ? "G53" : state.coordinateSystem;
+	rebaseVisionPositionForCoordinateSystem(state, coordinateSystem, options);
+	if (!hasMotionAxisWords(words, options, state)) return;
 	state.position = normalizeRotaryPosition(
 		makeEndPosition(state.position, words, state.distanceMode, options, state.polarInterpolation),
 		options,
 		state.polarInterpolation
 	);
+	if (hasMotionAxisWords(words, options, state)) state.positionCoordinateSystem = coordinateSystem;
 }
 
 function normalizeRotaryPosition(position, options, polarInterpolation) {
-	if (polarInterpolation || options.machineMode === "mill" || !Number.isFinite(position.c)) return position;
+	if (polarInterpolation || options.machineMode === "mill" || options.cAxisCoordinates === "continuous" || !Number.isFinite(position.c)) return position;
 	const c = ((position.c % 360) + 360) % 360;
 	return { ...position, c: c === 0 ? 0 : c };
 }
@@ -830,7 +787,14 @@ function makeEndPosition(start, words, distanceMode = "absolute", options = {}, 
 	if (options.machineMode !== "mill" && !polarInterpolation) {
 		const c = lastWord(words, "C");
 		const h = lastWord(words, "H");
-		if (c && Number.isFinite(c.value)) end.c = (distanceMode === "incremental" ? (start.c || 0) : 0) + c.value;
+		if (c && Number.isFinite(c.value)) {
+			end.c = (distanceMode === "incremental" ? (start.c || 0) : 0) + c.value;
+			if (distanceMode !== "incremental" && Number.isFinite(start.c) && options.cAxisTravel && options.cAxisTravel !== "direct") {
+				const positive = ((c.value - start.c) % 360 + 360) % 360;
+				const delta = options.cAxisTravel === "positive" ? positive : options.cAxisTravel === "negative" ? positive === 0 ? 0 : positive - 360 : positive > 180 ? positive - 360 : positive;
+				end.c = start.c + delta;
+			}
+		}
 		if (h && Number.isFinite(h.value)) end.c = (end.c || 0) + h.value;
 	}
 	return end;
@@ -1350,7 +1314,7 @@ function estimateLinearCssFeedPerRevTime(start, end, distance, state, options) {
 		return NaN;
 	}
 
-	const inverseRpmIntegral = integrateLinearInverseCssRpm(start.x, end.x, cssRpmConstant, state.rpmLimit);
+	const inverseRpmIntegral = integrateLinearInverseCssRpm(start.x, end.x, cssRpmConstant, getEffectiveRpmLimit(state, options));
 
 	if (!Number.isFinite(inverseRpmIntegral) || inverseRpmIntegral <= 0) {
 		return NaN;
@@ -1434,8 +1398,9 @@ function integrateAbsoluteLinear(startValue, delta, t0, t1) {
 
 function estimatePathRpmRange(path, state, options) {
 	if (state.spindleMode === "fixed") {
-		return Number.isFinite(state.rpm)
-			? { minRpm: state.rpm, maxRpm: state.rpm }
+		const rpm = getEffectiveRpm({}, state, options);
+		return Number.isFinite(rpm)
+			? { minRpm: rpm, maxRpm: rpm }
 			: { minRpm: NaN, maxRpm: NaN };
 	}
 
@@ -1526,7 +1491,19 @@ function addFiniteCandidate(candidates, value) {
 	}
 }
 
-function estimateRapidTime(distance, options) {
+function estimateRapidTime(distance, options, start, end, rotaryMotion = false) {
+	const rates = options.rapidRates || {};
+	if (rotaryMotion || ["x", "y", "z"].some(axis => Number.isFinite(rates[axis]))) {
+		const times = [];
+		for (const axis of ["x", "y", "z", ...(rotaryMotion ? ["c"] : [])]) {
+			const travel = Math.abs(toPhysicalAxisDistance(axis, (end[axis] || 0) - (start[axis] || 0), options));
+			if (travel === 0) continue;
+			const rate = Number.isFinite(rates[axis]) ? rates[axis] : axis === "c" ? NaN : options.rapidRate;
+			if (!Number.isFinite(rate) || rate <= 0) return { timeSeconds: NaN, minRpm: NaN, maxRpm: NaN };
+			times.push(travel / rate * 60);
+		}
+		return { timeSeconds: times.length ? Math.max(...times) : NaN, minRpm: NaN, maxRpm: NaN };
+	}
 	if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(options.rapidRate) || options.rapidRate <= 0) {
 		return {
 			timeSeconds: NaN,
@@ -1543,8 +1520,9 @@ function estimateRapidTime(distance, options) {
 }
 
 function getEffectiveRpm(position, state, options) {
+	const rpmLimit = getEffectiveRpmLimit(state, options);
 	if (state.spindleMode === "fixed") {
-		return state.rpm;
+		return Number.isFinite(rpmLimit) ? Math.min(state.rpm, rpmLimit) : state.rpm;
 	}
 
 	if (!Number.isFinite(state.cssSurfaceSpeed) || state.cssSurfaceSpeed <= 0) {
@@ -1554,8 +1532,8 @@ function getEffectiveRpm(position, state, options) {
 	const diameter = Math.abs(position.x);
 
 	if (!Number.isFinite(diameter) || diameter <= 0) {
-		if (Number.isFinite(state.rpmLimit) && state.rpmLimit > 0) {
-			return state.rpmLimit;
+		if (Number.isFinite(rpmLimit)) {
+			return rpmLimit;
 		}
 
 		return NaN;
@@ -1565,11 +1543,16 @@ function getEffectiveRpm(position, state, options) {
 		? (state.cssSurfaceSpeed * 12) / (Math.PI * diameter)
 		: (state.cssSurfaceSpeed * 1000) / (Math.PI * diameter);
 
-	if (Number.isFinite(state.rpmLimit) && state.rpmLimit > 0) {
-		return Math.min(rawRpm, state.rpmLimit);
+	if (Number.isFinite(rpmLimit)) {
+		return Math.min(rawRpm, rpmLimit);
 	}
 
 	return rawRpm;
+}
+
+function getEffectiveRpmLimit(state, options) {
+	const limits = [state.rpmLimit, options.maxSpindleRpm].filter(value => Number.isFinite(value) && value > 0);
+	return limits.length ? Math.min(...limits) : NaN;
 }
 
 function getFeedRatePerMinute(feed, rpm, feedMode) {
@@ -1758,7 +1741,31 @@ function analyzeChronobladeRange(document, range, options) {
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
 
-		if (isDwellLine(words, options)) {
+		if (hasActiveCannedCycleOperation(words, state, getCannedCycleCode(words, options), options)) {
+			const estimates = expandActiveCycle(words, state, options);
+			const tool = getToolRangeAtLine(toolRanges, lineNumber);
+			if (isLineInRange(lineNumber, targetRange)) {
+				if (estimates) {
+					for (const step of estimates) {
+						const row = makeMotionReportRow(lineNumber, step.motionCode, step.estimate, options, tool);
+						row.cycleId = state.cannedCycle.id;
+						row.cycleInstruction = `G${state.cannedCycle.code}`;
+						rows.push(attachChronobladeLineData(row, lineNumber, executionEntry));
+					}
+				} else {
+					rows.push(attachChronobladeLineData({
+						type: "other", lineNumber: lineNumber + 1, instruction: `G${state.cannedCycle.code}`,
+						start: "", end: "", distance: NaN, timeSeconds: NaN, feed: NaN,
+						feedMode: "", spindle: "", rpmUsed: "", toolColor: getToolColor(tool),
+						warnings: state.cannedCycle.warnings || ["Cycle pass expansion and time are not implemented."]
+					}, lineNumber, executionEntry));
+				}
+			}
+			if (!estimates) applyCannedCyclePositionUpdate(words, state);
+			state.positionCoordinateSystem = state.coordinateSystem;
+			hasSeenProgramMotion = true;
+			positionWasUpdated = true;
+		} else if (isDwellLine(words, options)) {
 			positionWasUpdated = true;
 
 			if (isLineInRange(lineNumber, targetRange)) {
@@ -1797,8 +1804,39 @@ function getRotaryFeedDistance(start, end, options) {
 		toPhysicalAxisDistance("x", (end.x || 0) - (start.x || 0), options),
 		(end.y || 0) - (start.y || 0),
 		(end.z || 0) - (start.z || 0),
-		(end.c || 0) - (start.c || 0)
+		options.rotaryFeedRule === "linearOnly" ? 0 : ((end.c || 0) - (start.c || 0)) * (options.rotaryFeedRule === "scaledDegrees" ? options.rotaryFeedScale : 1)
 	);
+}
+
+// Integrate the analytic derivative of a linear XYZ move rotated by linear C.
+// This integration is independent of Vision's rendering sample count.
+function integrateRotaryTravel(start, end, options, integrand = speed => speed) {
+	const x = toPhysicalAxisDistance("x", start.x || 0, options);
+	const y = start.y || 0;
+	const dx = toPhysicalAxisDistance("x", (end.x || 0) - (start.x || 0), options);
+	const dy = (end.y || 0) - y;
+	const dz = (end.z || 0) - (start.z || 0);
+	const angle = ((end.c || 0) - (start.c || 0)) * Math.PI / 180;
+	const steps = 128;
+	let sum = 0;
+	for (let index = 0; index <= steps; index++) {
+		const fraction = index / steps;
+		const speed = Math.hypot(dx - angle * (y + dy * fraction), dy + angle * (x + dx * fraction), dz);
+		const value = integrand(speed, fraction);
+		if (!Number.isFinite(value)) return NaN;
+		sum += value * (index === 0 || index === steps ? 1 : index % 2 ? 4 : 2);
+	}
+	return sum / (3 * steps);
+}
+
+function estimatePhysicalRotaryTime(start, end, state, options) {
+	const rpmRange = estimatePathRpmRange({ points: [start, end] }, state, options);
+	const timeSeconds = integrateRotaryTravel(start, end, options, (speed, fraction) => {
+		const position = { x: interpolateAxis(start.x, end.x, fraction) };
+		const feed = getFeedRatePerMinute(state.feed, getEffectiveRpm(position, state, options), state.feedMode);
+		return Number.isFinite(feed) && feed > 0 ? speed / feed * 60 : NaN;
+	});
+	return { timeSeconds: timeSeconds > 0 ? timeSeconds : NaN, ...rpmRange };
 }
 
 function attachChronobladeLineData(row, lineNumber, executionEntry) {
@@ -1842,7 +1880,7 @@ function analyzeVisionRange(document, range, options) {
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words, options);
-		const cAxisReset = hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options);
+		const cAxisReset = options.cAxisResetOnDisable !== false && hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options);
 		const resetStart = cAxisReset ? clonePosition(state.position) : undefined;
 		const resetCoordinateSystem = state.positionCoordinateSystem || state.coordinateSystem;
 
@@ -1890,21 +1928,26 @@ function analyzeVisionRange(document, range, options) {
 		}
 
 		const activeMotionCode = Number.isFinite(motionCode) ? motionCode : state.motionCode;
-		const activeCycleCode = getCannedCycleCode(words);
+		const activeCycleCode = getCannedCycleCode(words, options);
 		const hasCycleOperation = hasActiveCannedCycleOperation(words, state, activeCycleCode, options);
 
 		if (hasCycleOperation) {
-			const cycleRow = makeVisionCycleRow(lineNumber, state, words, options, getToolRangeAtLine(toolRanges, lineNumber));
-			attachVisionLineData(cycleRow, line, executionEntry);
-			positionWasUpdated = true;
-
-			const isFirstProgramMotion = !hasSeenProgramMotion;
-			hasSeenProgramMotion = true;
-			if (!isFirstProgramMotion && isLineInRange(lineNumber, targetRange)) {
-				rows.push(cycleRow);
+			const estimates = expandActiveCycle(words, state, options);
+			const tool = getToolRangeAtLine(toolRanges, lineNumber);
+			if (estimates) {
+				for (const step of estimates) {
+					const row = makeVisionMotionRow(lineNumber, step.words, step.motionCode, step.estimate, options, tool);
+					row.cycleId = state.cannedCycle.id;
+					row.cycleInstruction = `G${state.cannedCycle.code}`;
+					if (isLineInRange(lineNumber, targetRange)) rows.push(attachVisionLineData(row, line, executionEntry));
+				}
+			} else {
+				const row = makeVisionCycleRow(lineNumber, state, words, options, tool);
+				if (isLineInRange(lineNumber, targetRange)) rows.push(attachVisionLineData(row, line, executionEntry));
+				applyCannedCyclePositionUpdate(words, state);
 			}
-
-			applyCannedCyclePositionUpdate(words, state);
+			hasSeenProgramMotion = true;
+			positionWasUpdated = true;
 			state.positionCoordinateSystem = state.coordinateSystem;
 		} else if (isDwellLine(words, options)) {
 			positionWasUpdated = true;
@@ -1992,22 +2035,26 @@ function isLineInRange(lineNumber, range) {
 	return lineNumber >= range.startLine && lineNumber <= range.endLine;
 }
 
-function getCannedCycleCode(words) {
-	let cycleCode;
+function expandActiveCycle(words, state, options) {
+	const cycle = state.cannedCycle;
+	const entry = getCannedCycle(cycle.id);
+	if (!entry.expand) return undefined;
+	rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
+	const result = entry.expand(cycle, words, state);
+	cycle.warnings = result.warnings;
+	if (result.warnings.length) return undefined;
+	return result.steps.map(step => {
+		const stepWords = Object.entries(step.end).map(([axis, value]) => ({ letter: axis.toUpperCase(), value, raw: String(value) }));
+		const motionState = { ...state, cannedCycle: undefined };
+		const estimate = estimateMotion(stepWords, step.motionCode, motionState, options);
+		state.position = motionState.position;
+		state.positionCoordinateSystem = motionState.positionCoordinateSystem;
+		return { words: stepWords, motionCode: step.motionCode, estimate };
+	});
+}
 
-	for (const word of words) {
-		if (word.letter !== "G" || !Number.isFinite(word.value)) {
-			continue;
-		}
-
-		const code = Math.trunc(word.value);
-
-		if (CANNED_CYCLE_CODES.has(code)) {
-			cycleCode = code;
-		}
-	}
-
-	return cycleCode;
+function getCannedCycleCode(words, options) {
+	return resolveGCodeOperations(words, options).filter(match => getCannedCycle(match.operation)).at(-1)?.code;
 }
 
 function hasActiveCannedCycleOperation(words, state, cycleCode, options) {
@@ -2019,7 +2066,7 @@ function hasActiveCannedCycleOperation(words, state, cycleCode, options) {
 }
 
 function hasCycleSiteAxisWords(words, options) {
-	return !isCoordinateSettingLine(words, options) && words.some(word => ["X", "Y", "U", "V"].includes(word.letter));
+	return !isCoordinateSettingLine(words, options) && words.some(word => ["X", "Y", "Z", "R", "U", "V", "W"].includes(word.letter));
 }
 
 function hasMotionAxisWords(words, options, state) {
@@ -2181,7 +2228,13 @@ function estimateToolChangeTime(previousTool, tool, options) {
 		return baseTime;
 	}
 
-	const stationGap = Math.abs(tool.station - previousTool.station);
+	let stationGap = Math.abs(tool.station - previousTool.station);
+	const count = options.turretStationCount;
+	if (Number.isSafeInteger(count) && count > 0 && previousTool.station >= 1 && previousTool.station <= count && tool.station >= 1 && tool.station <= count) {
+		const increasing = ((tool.station - previousTool.station) % count + count) % count;
+		const decreasing = increasing === 0 ? 0 : count - increasing;
+		stationGap = options.turretIndexing === "increasing" ? increasing : options.turretIndexing === "decreasing" ? decreasing : Math.min(increasing, decreasing);
+	}
 	const extraStationSteps = Math.max(0, stationGap - 1);
 	const extraStationTime = Number.isFinite(options.extraStationSeconds) ? options.extraStationSeconds : 0;
 
@@ -2278,8 +2331,7 @@ function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, t
 		points: (estimate.pathPoints || []).map((point, index) => toVisionPoint(
 			point,
 			options,
-			index === 0 ? startCoordinateSystem : endCoordinateSystem,
-			estimate.machineCoordinate && index > 0
+			estimate.pathCoordinateSystem || (index === 0 ? startCoordinateSystem : endCoordinateSystem)
 		)),
 		markerClass: marker.className,
 		markerKind: marker.kind,
@@ -2292,7 +2344,7 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 	const site = makeCycleSitePosition(state.position, words, state.distanceMode);
 	const top = clonePosition(site);
 	const bottom = clonePosition(site);
-	const warnings = collectUnresolvedWordWarnings(words, ["X", "Y", "Z", "R", "Q", "P", "U", "V", "F"]);
+	const warnings = [...(cycle.warnings || ["Depth marker only; cycle passes and time are not implemented."]), ...collectUnresolvedWordWarnings(words, ["X", "Y", "Z", "R", "Q", "P", "U", "V", "F"])];
 	const topZ = getCannedCycleTopZ(cycle, state.position);
 
 	if (Number.isFinite(topZ)) {
@@ -2431,53 +2483,6 @@ function getProgramStopLabel(words) {
 	return "Stop";
 }
 
-function makeCycleSitePosition(position, words, distanceMode) {
-	const site = clonePosition(position);
-	const axes = [
-		{ position: "X", incremental: "U", key: "x" },
-		{ position: "Y", incremental: "V", key: "y" }
-	];
-
-	for (const axis of axes) {
-		const positionWord = lastWord(words, axis.position);
-		const incrementalWord = lastWord(words, axis.incremental);
-
-		if (positionWord && Number.isFinite(positionWord.value)) {
-			if (distanceMode === "incremental" && Number.isFinite(site[axis.key])) {
-				site[axis.key] += positionWord.value;
-			} else {
-				site[axis.key] = positionWord.value;
-			}
-		}
-
-		if (incrementalWord && Number.isFinite(incrementalWord.value) && Number.isFinite(site[axis.key])) {
-			site[axis.key] += incrementalWord.value;
-		}
-	}
-
-	return site;
-}
-
-function applyCannedCyclePositionUpdate(words, state) {
-	const site = makeCycleSitePosition(state.position, words, state.distanceMode);
-	const cycle = state.cannedCycle || {};
-	const retractZ = cycle.retractMode === "r" && Number.isFinite(cycle.r)
-		? cycle.r
-		: cycle.initialZ;
-
-	state.position = Object.assign(site, {
-		z: Number.isFinite(retractZ) ? retractZ : site.z
-	});
-}
-
-function getCannedCycleTopZ(cycle, position) {
-	if (Number.isFinite(cycle.r)) {
-		return cycle.r;
-	}
-
-	return position.z;
-}
-
 function toVisionPoint(point, options, coordinateSystem, machineCoordinate = false) {
 	const displayPoint = shiftVisionPosition(point, coordinateSystem, options, machineCoordinate);
 	const physicalPoint = toPhysicalPoint(displayPoint, options);
@@ -2497,7 +2502,7 @@ function shiftVisionPosition(point, coordinateSystem, options = {}, machineCoord
 		return shifted;
 	}
 
-	for (const axis of ["x", "y", "z"]) {
+	for (const axis of ["x", "y", "z", "c"]) {
 		if (Number.isFinite(shifted[axis]) && Number.isFinite(offset[axis])) {
 			shifted[axis] += offset[axis];
 		}
@@ -2510,12 +2515,13 @@ function rebaseVisionPositionForCoordinateSystem(state, coordinateSystem, option
 	const previousCoordinateSystem = state.positionCoordinateSystem;
 
 	if (!previousCoordinateSystem || previousCoordinateSystem === coordinateSystem) {
+		state.positionCoordinateSystem = coordinateSystem;
 		return;
 	}
 
 	const previousOffset = getVisionWorkOffset(previousCoordinateSystem, options);
 	const nextOffset = getVisionWorkOffset(coordinateSystem, options);
-	for (const axis of ["x", "y", "z"]) {
+	for (const axis of ["x", "y", "z", "c"]) {
 		if (Number.isFinite(state.position[axis])) {
 			state.position[axis] += (Number(previousOffset[axis]) || 0) - (Number(nextOffset[axis]) || 0);
 		}
@@ -2531,7 +2537,8 @@ function getVisionWorkOffset(coordinateSystem, options = {}) {
 	return {
 		x: (Number.isFinite(offset.x) ? offset.x : 0) - (Number.isFinite(referenceOffset.x) ? referenceOffset.x : 0),
 		y: (Number.isFinite(offset.y) ? offset.y : 0) - (Number.isFinite(referenceOffset.y) ? referenceOffset.y : 0),
-		z: (Number.isFinite(offset.z) ? offset.z : 0) - (Number.isFinite(referenceOffset.z) ? referenceOffset.z : 0)
+		z: (Number.isFinite(offset.z) ? offset.z : 0) - (Number.isFinite(referenceOffset.z) ? referenceOffset.z : 0),
+		c: (Number.isFinite(offset.c) ? offset.c : 0) - (Number.isFinite(referenceOffset.c) ? referenceOffset.c : 0)
 	};
 }
 function summarizeVisionRows(rows) {
@@ -2678,6 +2685,7 @@ function formatTime(seconds) {
 }
 
 module.exports = {
+	parseWords,
 	estimateMotionAtLine,
 	getMotionCodeForGCode,
 	analyzeArcAtLine,

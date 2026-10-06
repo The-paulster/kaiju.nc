@@ -12,6 +12,13 @@ a guarantee that the program is safe to run.
 
 ## Quick start
 
+**Unbound G-code Alerts** is off by default. When enabled, it warns when a literal G code is absent from the selected
+G-code profile's active Mill/Lathe bindings. For example, `G123 X10.` is marked
+when G123 has no binding. The warning describes profile coverage, not controller
+validity. Comments and macro/expression G values are skipped. Turn this check
+off or on through right-click **KAIJU Quick Toggles > Unbound G-code Alerts**,
+or `kaijuNC.alerts.unboundGCodes.enabled` in Settings.
+
 Open [Diagnostics and Orphan Killer](../examples/02-diagnostics-and-orphan-killer.nc)
 as a G-code document. Its deliberately flawed blocks show Alert diagnostics
 in the editor; hovering a marked range shows the finding. Each case below

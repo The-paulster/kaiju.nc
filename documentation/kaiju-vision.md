@@ -10,6 +10,10 @@ presentation, marker/label layout, including the contextual or persistent
 semantic-marker legend, the compact playback entry control, and Vision-specific
 options.
 
+## Canned cycles
+
+Basic G17/G90 mill drilling generates rapid/feed/retract motion through the shared cycle module and Motion Engine. Generated rows retain cycle identity and source/Trace occurrence links. Other mill entries retain depth markers with explicit expansion warnings; these are schematic. Lathe references are documented-only.
+
 ## Connections
 
 - Consumes shared rows, geometry, modal meaning, and tool metadata from
@@ -31,6 +35,18 @@ options.
   inspection-first rendering.
 
 ## Boundary
+
+Without applied machine settings, the feature retains its own rapid-rate
+setting and uses Generic Machine's rate as the fallback. The removed
+Chronoblade rapid-rate setting is no longer read.
+
+Applied machine profiles provide shared rapid-rate and C-axis wrapping/reset
+settings through `MetaMachineMode`. Vision uses the resulting shared geometry
+and position events; disabling the C reset also removes its reset connector.
+Its shared motion options also carry C absolute travel rules, rotary feed
+interpretation, axis rapid rates, spindle caps, CSS units, and startup modes.
+Physical path distance stays physical when the report's controller feed length
+uses a different rule. Axis rapid timing does not change the drawn trajectory.
 
 Vision is not a second G-code parser or a full simulator. It may choose bounded
 rendering samples and visual merging, but it must preserve useful inspection
@@ -93,13 +109,28 @@ plane to that machine profile's configured Vision default, while retaining its
 other Vision settings. With Vision plane set to Auto, the default settings are
 X-Y for Mill and Z-X for both lathe profiles; each profile's default can be
 changed independently in Settings.
+Refreshing machine settings preserves an open report's chosen plane when its
+mill/lathe type is unchanged. A type change still selects that type's default.
 
 The top-level Offsets and Macro controls open their panels directly; Vision has
-no intermediate Data menu. The Offsets panel presents G53-G59 as coordinate
-frames whose X/Y/Z offsets are always applied. Committing an axis value or
+no intermediate Data menu. Work frames are labelled `WCS1 (G54)` through
+`WCS6 (G59)` using the active profile bindings, including custom selector words.
+An unbound selector is labelled `WCSn (unbound)`. The same labels appear in the
+Offsets panel, assumed-start selector, WCS visibility filters, and motion table.
+G53 remains the machine frame; internal frame keys and saved offsets stay unchanged.
+View > WCS numbers is off by default and saved per program. It shows 1-6 above
+nodes independently of Labels, or M for the machine frame. Merged nodes combine
+distinct identifiers, such as 1/2. Node tooltips always show the full bound frame
+label; a move's start and end nodes use their respective frames. WCS numbers are
+hidden during playback with the other static node labels. Their contrast outline
+is 35% thicker than ordinary node text for readability, and their font is 5%
+larger than ordinary node text.
+The Offsets panel presents G53-G59 as coordinate frames whose X/Y/Z/C offsets are always applied (C is in degrees). Machine
+profile defaults supply unsaved values. Committing an axis value or
 changing Ref. immediately reanalyzes the toolpaths while retaining the panel
 for continued editing. Apply saves the per-program positions, the single Ref.
-selection, and the independent Show axes selections. G53 is the default
+selection, and the independent Show axes selections. Saved offsets are shared
+with Chronoblade; preview edits affect Vision until Apply. G53 is the default
 reference. The View panel's Zero lines control is the master visibility switch:
 when it is on, every frame selected under Show axes draws axes through its zero
 relative to the selected reference.
@@ -107,21 +138,26 @@ The expanded View panel also contains the optional Grid control and program-unit
 Size field, plus Tools and WCS visibility filters. The grid is off by default,
 is anchored to the displayed zero coordinates, and draws behind the toolpath.
 G53 is selected under Show axes by default. Reset to defaults removes the
-per-program values and restores those G53 defaults, matching the Macro values
-panel's reset behavior.
+per-program values and restores the selected machine profile's offsets and
+the G53 reference/visibility defaults.
 
-The selected Ref. row is always X0/Y0/Z0 and its axis fields are disabled.
+The selected Ref. row is always X0/Y0/Z0/C0 and its axis fields are disabled.
 Selecting another reference rebases every frame around it before recalculating,
 so the existing toolpath relationships do not move.
+These panel values are presentation coordinates only: preview analysis and
+saved offsets retain their G53-relative values. Reopening the panel converts
+those values back to the selected reference, including C in degrees.
 
 Offsets also contains an **Assumed start** selector and X/Y/Z fields. It
 defaults to G53 X0/Y0/Z0 and supplies Vision's physical tool position before
 the first programmed move. The selected frame applies only to those entered
 start coordinates; it does not select a modal work frame for the program.
 
-Coordinate-frame offsets affect only rendered placement. Vision's table,
-labels, hovers, and playback position continue to show the coordinates authored
-in each move's active G53-G59 frame.
+Coordinate-frame offsets affect rendered placement and shared travel/time
+calculations when frames change or G53 is used. Vision's table, labels, hovers,
+and playback position retain coordinates in each move's active G53-G59 frame.
+The shared engine rebases the calculation start into the destination frame,
+preserving omitted axes and the physical C angle across frame switches.
 
 At a coordinate-frame switch, Vision renders the move's start using the prior
 frame and its destination using the newly active frame. A G53 move therefore
@@ -229,3 +265,6 @@ in effect, including accounting for generated tooltip HTML. Label prewarming
 uses separate cancellable jobs for the projections and yields between batches
 of targets, merging and indexing. Initial scene preparation and foreground
 cache misses can still require synchronous work.
+
+
+`getVisionSettingsSnapshot(document)` returns saved panel settings, effective options, the saved reference frame, and normalized macro initial values/overrides for File Settings. It does not build an execution trace or open the report.

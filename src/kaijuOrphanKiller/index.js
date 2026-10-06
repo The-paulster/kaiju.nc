@@ -17,19 +17,31 @@ let orphanPanel;
 let orphanState;
 let orphanContext;
 let liveRefreshTimer;
+let orphanHighlight;
+let reportSerial = 0;
 
 function registerOrphanKiller(context) {
 	orphanContext = context;
+	orphanHighlight = vscode.window.createTextEditorDecorationType({
+		backgroundColor: new vscode.ThemeColor("editor.findMatchBackground"),
+		border: "1px solid",
+		borderColor: new vscode.ThemeColor("editor.findMatchBorder")
+	});
 	context.subscriptions.push(
+		orphanHighlight,
 		vscode.commands.registerCommand("kaijuNC.orphanKiller", async () => {
 			await runOrphanKiller();
 		}),
 		vscode.workspace.onDidChangeTextDocument(event => {
-			if (!orphanState || !orphanState.live || !event.document || event.document.uri.toString() !== orphanState.documentUriText) {
+			if (!orphanState || !event.document || event.document.uri.toString() !== orphanState.documentUriText || !event.contentChanges.length) {
 				return;
 			}
-			scheduleLiveOrphanRefresh();
+			orphanState.stale = true;
+			updateOrphanHighlights();
+			postOrphanNavigation();
+			if (orphanState.live) scheduleLiveOrphanRefresh();
 		}),
+		vscode.window.onDidChangeVisibleTextEditors(() => updateOrphanHighlights()),
 		{
 			dispose() {
 				clearTimeout(liveRefreshTimer);
@@ -47,6 +59,8 @@ async function runOrphanKiller() {
 	}
 
 	orphanState = makeOrphanState(editor.document);
+	orphanState.sourceColumn = editor.viewColumn;
+	updateOrphanHighlights();
 
 	if (!orphanPanel) {
 		orphanPanel = vscode.window.createWebviewPanel(
@@ -60,10 +74,13 @@ async function runOrphanKiller() {
 		);
 
 		orphanPanel.onDidDispose(() => {
+			clearTimeout(liveRefreshTimer);
 			orphanPanel = undefined;
 			orphanState = undefined;
+			updateOrphanHighlights();
 		});
 
+		let navigationQueue = Promise.resolve();
 		orphanPanel.webview.onDidReceiveMessage(async message => {
 			if (message && message.type === "refresh") {
 				await refreshOrphanPanel();
@@ -71,6 +88,11 @@ async function runOrphanKiller() {
 				if (!orphanState || !orphanState.documentUriText) return;
 				const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(orphanState.documentUriText));
 				await setOrphanLive(document, message.live === true);
+			} else if (message && message.type === "navigate") {
+				navigationQueue = navigationQueue.then(() => navigateOrphan(message)).catch(() => {
+					vscode.window.showWarningMessage("Could not reveal the orphan macro. Refresh the report and try again.");
+				});
+				await navigationQueue;
 			}
 		});
 	} else {
@@ -81,11 +103,13 @@ async function runOrphanKiller() {
 }
 
 async function refreshOrphanPanel() {
-	if (!orphanState || !orphanState.documentUriText) {
+	const state = orphanState;
+	if (!state || !state.documentUriText) {
 		return;
 	}
 
-	const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(orphanState.documentUriText));
+	const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(state.documentUriText));
+	if (state !== orphanState || !orphanPanel) return;
 	await renderOrphanPanel(document);
 }
 
@@ -99,7 +123,8 @@ function scheduleLiveOrphanRefresh() {
 function makeOrphanState(document) {
 	return {
 		documentUriText: document.uri.toString(),
-		live: getOrphanSettings(document).live === true
+		live: getOrphanSettings(document).live === true,
+		occurrences: [], activeIndex: -1, stale: false
 	};
 }
 
@@ -123,10 +148,84 @@ async function setOrphanLive(document, live) {
 async function renderOrphanPanel(document) {
 	const options = getOrphanKillerOptions(document);
 	const result = inspectOrphanMacros(document, options);
+	const previous = orphanState.occurrences[orphanState.activeIndex];
+	orphanState.occurrences = [...result.undefinedUses, ...result.unusedDefinitions]
+		.flatMap(item => item.occurrences.map(occurrence => ({ ...occurrence, macro: item.macro })))
+		.sort((a, b) => a.line - b.line || a.start - b.start);
+	orphanState.activeIndex = previous
+		? orphanState.occurrences.findIndex(item => item.macro === previous.macro && item.line === previous.line && item.start === previous.start)
+		: -1;
+	if (previous && orphanState.activeIndex < 0) {
+		orphanState.activeIndex = orphanState.occurrences.findIndex(item => item.macro === previous.macro);
+	}
+	orphanState.documentVersion = document.version;
+	orphanState.stale = false;
+	orphanState.reportId = ++reportSerial;
 
 	orphanPanel.title = "KAIJU Orphan Killer";
-	orphanPanel.webview.html = renderOrphanHtml(document, result, orphanState && orphanState.live === true);
+	orphanPanel.webview.html = renderOrphanHtml(document, result, orphanState.live, orphanState);
+	updateOrphanHighlights();
 	await compactOrphanPanelEditorGroup(document, options);
+}
+
+function getActiveOrphanRange() {
+	const occurrence = orphanState && !orphanState.stale && orphanState.occurrences[orphanState.activeIndex];
+	return occurrence ? new vscode.Range(occurrence.line, occurrence.start, occurrence.line, occurrence.end) : undefined;
+}
+
+function updateOrphanHighlights() {
+	const range = getActiveOrphanRange();
+	for (const editor of vscode.window.visibleTextEditors) {
+		editor.setDecorations(orphanHighlight, range && editor.document.uri.toString() === orphanState.documentUriText ? [range] : []);
+	}
+}
+
+function getOrphanNavigation(state) {
+	const occurrences = state.occurrences || [];
+	const index = state.activeIndex === undefined ? -1 : state.activeIndex;
+	const occurrence = occurrences[index];
+	return {
+		type: "navigation", reportId: state.reportId,
+		index, total: occurrences.length,
+		macro: occurrence ? occurrence.macro : "", line: occurrence ? occurrence.line + 1 : undefined,
+		stale: state.stale === true
+	};
+}
+
+function postOrphanNavigation() {
+	if (!orphanPanel || !orphanState) return;
+	void orphanPanel.webview.postMessage(getOrphanNavigation(orphanState));
+}
+
+async function navigateOrphan(message) {
+	const state = orphanState;
+	if (!state || state.stale || message.reportId !== state.reportId || !state.occurrences.length) return;
+	const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(state.documentUriText));
+	if (state !== orphanState || message.reportId !== state.reportId || state.stale) return;
+	if (document.version !== state.documentVersion) {
+		state.stale = true;
+		updateOrphanHighlights();
+		postOrphanNavigation();
+		return;
+	}
+	let index;
+	if (message.direction === 1 || message.direction === -1) {
+		index = state.activeIndex < 0
+			? (message.direction === 1 ? 0 : state.occurrences.length - 1)
+			: (state.activeIndex + message.direction + state.occurrences.length) % state.occurrences.length;
+	} else if (typeof message.macro === "string") {
+		index = state.occurrences.findIndex(item => item.macro === message.macro && (message.line === undefined || item.line + 1 === message.line));
+	} else return;
+	if (index < 0) return;
+	const visible = vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === state.documentUriText);
+	const editor = visible || await vscode.window.showTextDocument(document, { viewColumn: state.sourceColumn || vscode.ViewColumn.One, preserveFocus: true });
+	if (state !== orphanState || message.reportId !== state.reportId || state.stale || document.version !== state.documentVersion) return;
+	state.activeIndex = index;
+	const range = getActiveOrphanRange();
+	editor.selection = new vscode.Selection(range.start, range.end);
+	editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+	updateOrphanHighlights();
+	postOrphanNavigation();
 }
 
 async function compactOrphanPanelEditorGroup(document, options) {
@@ -180,7 +279,7 @@ function inspectOrphanMacros(document, options = {}) {
 			const macro = resolveMacroAlias(assignment.macro, macroAliases);
 
 			if (!isMacroIgnored(macro, ignoredMacroRanges)) {
-				addLine(definitions, macro, lineNumber);
+				addOccurrence(definitions, macro, lineNumber, assignment);
 			}
 		}
 
@@ -188,7 +287,7 @@ function inspectOrphanMacros(document, options = {}) {
 			const macro = resolveMacroAlias(reference.macro, macroAliases);
 
 			if (!isMacroIgnored(macro, ignoredMacroRanges)) {
-				addLine(references, macro, lineNumber);
+				addOccurrence(references, macro, lineNumber, reference);
 			}
 		}
 	}
@@ -235,13 +334,14 @@ function resolveMacroAlias(macro, macroAliases) {
 	return aliasInfo ? aliasInfo.macro : normalizedMacro;
 }
 
-function makeResultItem(macro, lines, macroAliases) {
+function makeResultItem(macro, occurrences, macroAliases) {
 	const aliasInfo = macroAliases.get(macro);
 
 	return {
 		macro,
 		name: aliasInfo ? aliasInfo.name : "",
-		lines
+		lines: [...new Set(occurrences.map(item => item.line + 1))],
+		occurrences
 	};
 }
 
@@ -315,9 +415,11 @@ function findAssignmentRanges(line, protectedRanges) {
 			continue;
 		}
 
+		const token = match[0].match(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/)[0];
 		assignments.push({
-			macro: normalizeMacro(match[0].match(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)/)[0]),
+			macro: normalizeMacro(token),
 			start: match.index,
+			tokenEnd: match.index + token.length,
 			end: match.index + match[0].length
 		});
 	}
@@ -341,7 +443,8 @@ function findMacroReferences(line, protectedRanges, assignmentRanges) {
 
 		references.push({
 			macro: normalizeMacro(match[0]),
-			start: match.index
+			start: match.index,
+			end: match.index + match[0].length
 		});
 	}
 
@@ -352,23 +455,19 @@ function isInsideAssignmentTarget(index, assignmentRanges) {
 	return assignmentRanges.some(range => index >= range.start && index < range.end);
 }
 
-function addLine(map, macro, lineNumber) {
+function addOccurrence(map, macro, lineNumber, token) {
 	if (!map.has(macro)) {
 		map.set(macro, []);
 	}
 
-	const lines = map.get(macro);
-
-	if (lines[lines.length - 1] !== lineNumber + 1) {
-		lines.push(lineNumber + 1);
-	}
+	map.get(macro).push({ line: lineNumber, start: token.start, end: token.tokenEnd === undefined ? token.end : token.tokenEnd });
 }
 
 function normalizeMacro(macro) {
 	return macro.toUpperCase();
 }
 
-function renderOrphanHtml(document, result, live) {
+function renderOrphanHtml(document, result, live, navigation = {}) {
 	const nonce = makeWebviewNonce();
 	const undefinedRows = renderRows(result.undefinedUses);
 	const unusedRows = renderRows(result.unusedDefinitions);
@@ -392,6 +491,15 @@ function renderOrphanHtml(document, result, live) {
 		.toolbar { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 		button { color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 1px solid var(--vscode-button-background); border-radius: 3px; padding: 4px 8px; font: inherit; cursor: pointer; }
 		button:hover { background: var(--vscode-button-hoverBackground); }
+		button:disabled { opacity: .5; cursor: default; }
+		button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+		.navigation { position: sticky; top: 0; z-index: 1; background: var(--bg); display: flex; align-items: center; gap: 6px; margin: 10px 0; padding: 6px 0; flex-wrap: wrap; }
+		#position { color: var(--muted); font-size: 12px; }
+		.row.active .cell { background: var(--vscode-editor-findMatchHighlightBackground, #ffffff18); }
+		.row.active code { outline: 1px solid var(--vscode-editor-findMatchBorder, var(--vscode-focusBorder)); }
+		button.finding, button.line-link { background: transparent; border: 0; padding: 0; color: var(--vscode-textLink-foreground); }
+		button.finding { color: inherit; }
+		button.line-link.active { text-decoration: underline; font-weight: 700; }
 		.checkbox { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; cursor: pointer; }
 		.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 8px; margin-bottom: 14px; }
 		.summary-card { border: 1px solid var(--border); border-radius: 5px; background: var(--surface); padding: 8px 10px; }
@@ -449,6 +557,11 @@ function renderOrphanHtml(document, result, live) {
 		<div class="summary-card"><div class="value">${totalCount}</div><div class="label">Total findings</div></div>
 	</div>
 	<div class="summary">${escapeHtml(summary)}</div>
+	<div class="navigation" aria-label="Orphan navigation">
+		<button id="previous" title="Previous occurrence (Shift+Enter)">Previous</button>
+		<button id="next" title="Next occurrence (Enter)">Next</button>
+		<span id="position" role="status" aria-live="polite"></span>
+	</div>
 	<section class="report-section">
 		<h2>Used but not defined</h2>
 		<div class="section-body">${undefinedRows}</div>
@@ -460,6 +573,49 @@ function renderOrphanHtml(document, result, live) {
 
 	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
+		const reportId = ${JSON.stringify(navigation.reportId || 0)};
+		let stale = false;
+		function updateNavigation(state) {
+			stale = state.stale === true;
+			document.getElementById("previous").disabled = stale || state.total === 0;
+			document.getElementById("next").disabled = stale || state.total === 0;
+			document.getElementById("position").textContent = stale ? "Source changed — Refresh to navigate" : (state.index + 1) + " of " + state.total;
+			let activeButton;
+			for (const row of document.querySelectorAll(".row[data-macro]")) {
+				const active = !stale && row.dataset.macro === state.macro;
+				row.classList.toggle("active", active);
+				const button = row.querySelector(".finding");
+				button.setAttribute("aria-pressed", String(active));
+				button.disabled = stale;
+				if (active) activeButton = button;
+				for (const link of row.querySelectorAll(".line-link")) {
+					link.disabled = stale;
+					link.classList.toggle("active", active && Number(link.dataset.line) === state.line);
+				}
+			}
+			if (activeButton) activeButton.scrollIntoView({ block: "nearest" });
+		}
+		function navigate(fields) {
+			if (!stale) vscode.postMessage({ type: "navigate", reportId, ...fields });
+		}
+		document.getElementById("previous").addEventListener("click", () => navigate({ direction: -1 }));
+		document.getElementById("next").addEventListener("click", () => navigate({ direction: 1 }));
+		for (const row of document.querySelectorAll(".row[data-macro]")) {
+			row.querySelector(".finding").addEventListener("click", () => navigate({ macro: row.dataset.macro }));
+			for (const link of row.querySelectorAll(".line-link")) {
+				link.addEventListener("click", () => navigate({ macro: row.dataset.macro, line: Number(link.dataset.line) }));
+			}
+		}
+		document.addEventListener("keydown", event => {
+			if (event.key !== "Enter" || event.ctrlKey || event.altKey || event.metaKey) return;
+			if (event.target.closest("input, a, #refresh, .line-link")) return;
+			event.preventDefault();
+			navigate({ direction: event.shiftKey || event.target.id === "previous" ? -1 : 1 });
+		});
+		window.addEventListener("message", event => {
+			if (event.data.type === "navigation" && event.data.reportId === reportId) updateNavigation(event.data);
+		});
+		updateNavigation(${JSON.stringify(getOrphanNavigation(navigation))});
 		document.getElementById("refresh").addEventListener("click", () => {
 			vscode.postMessage({ type: "refresh" });
 		});
@@ -490,10 +646,10 @@ function renderRows(items) {
 			<div class="cell">Lines</div>
 		</div>`;
 	const rows = items.map(item => {
-		return `<div class="row">
-			<div class="cell"><code>${escapeHtml(item.macro)}</code></div>
+		return `<div class="row" data-macro="${escapeHtml(item.macro)}">
+			<div class="cell"><button class="finding" aria-pressed="false" title="Reveal first occurrence"><code>${escapeHtml(item.macro)}</code></button></div>
 			<div class="cell">${escapeHtml(item.name || "-")}</div>
-			<div class="cell">${escapeHtml(item.lines.join(", "))}</div>
+			<div class="cell">${item.lines.map(line => `<button class="line-link" data-line="${line}" title="Reveal occurrence on line ${line}">${line}</button>`).join(", ")}</div>
 		</div>`;
 	}).join("");
 
@@ -522,5 +678,6 @@ function compareMacroNames(left, right) {
 
 module.exports = {
 	registerOrphanKiller,
+	getOrphanSettingsSnapshot: document => ({ saved: getOrphanSettings(document), effective: { ...getOrphanKillerOptions(document), live: getOrphanSettings(document).live === true } }),
 	inspectOrphanMacros
 };

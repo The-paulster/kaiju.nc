@@ -25,6 +25,22 @@ messages, refresh lifecycle, and false-positive avoidance.
 
 ## Boundary
 
+The default-off `unboundGCodes.enabled` warning, when enabled, marks literal G words absent
+from the selected G-code profile's active Mill/Lathe binding table, obtained
+through `MetaMachineMode`. Alert consumes `MetaMotionEngine.parseWords` after
+shared protected-text masking. It skips macro/expression G values, comments,
+angle brackets, and macro names. Numeric spellings such as G01 and G1 match
+the same binding. Companion-word requirements do not change table membership;
+M codes are outside this check. A missing binding is a profile configuration
+finding, not a statement that the controller rejects the code. Quick Toggles
+exposes **Unbound G-code Alerts: On/Off** in the editor context menu.
+
+Alert passes the active machine profile's C-axis wrapping/reset settings from
+`MetaMachineMode` into shared motion validation, keeping its modal context
+consistent with Sense, Vision, and Chronoblade.
+Shared derived startup and motion options also enter the validation context;
+Alert adds no machine-specific parsing or new travel-limit diagnostics.
+
 Alert flags issues; it does not format, edit, interpret motion, or resolve
 macros beyond the narrowly required diagnostic context. Keep diagnostics
 optional when they could be controller- or shop-style dependent, and test both

@@ -22,11 +22,16 @@ function getAlertOptions(document) {
 		warnUndefinedAliases: config.get("undefinedAliases.enabled", true),
 		warnUnresolvedGotos: syntaxConfig.get("unresolvedGotos.enabled", true),
 		warnIllegalArcs: config.get("illegalArcs.enabled", true),
+		warnUnboundGCodes: config.get("unboundGCodes.enabled", false),
 		arcTolerance: clampNumber(config.get("illegalArcs.tolerance", 0.001), 0, 10, 0.001),
 		machineMode: profile.id,
+		cAxisCoordinates: machineMode.machineSettings && machineMode.machineSettings.cAxisCoordinates,
+		cAxisResetOnDisable: machineMode.machineSettings && machineMode.machineSettings.cAxisResetOnDisable,
 		gCodeDialectId: machineMode.gCodeDialectId,
+		gCodeDialect: machineMode.gCodeDialect,
 		defaultFeedMode: profile.defaultFeedMode,
-		xAxisMode: machineMode.xAxisMode
+		xAxisMode: machineMode.xAxisMode,
+		...machineMode.motionOptions
 	};
 }
 

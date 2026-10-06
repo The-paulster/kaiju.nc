@@ -1222,6 +1222,7 @@ function makeWebviewNonce() {
 
 module.exports = {
 	registerKaijuWarpaint,
+	getWarpaintSettingsSnapshot: document => ({ effective: getWarpaintOptions(document), sections: warpaintContext ? getStoredSections(document) : [] }),
 	parseNLabelRangeText,
 	resolveSectionSpans
 };

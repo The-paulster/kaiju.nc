@@ -12,7 +12,7 @@ const {
 	getUndefinedAliasOccurrences
 } = require("../kaijuAlias");
 const { getAliasOptions } = require("../kaijuAlias/options");
-const { analyzeArcsInDocument } = require("../MetaMotionEngine");
+const { analyzeArcsInDocument, parseWords } = require("../MetaMotionEngine");
 const { buildConditionalStructures } = require("../MetaExecutionTrace");
 const { onDidChangeMachineMode } = require("../MetaMachineMode");
 const { getAlertOptions } = require("./options");
@@ -46,6 +46,8 @@ function registerDiagnostics(context) {
 				|| event.affectsConfiguration("kaijuNC.chronoblade.machineMode")
 				|| event.affectsConfiguration("kaijuNC.chronoblade.gCodeDialect")
 				|| event.affectsConfiguration("kaijuNC.chronoblade.xAxisMode")
+				|| event.affectsConfiguration("kaijuNC.gCodeDialect")
+				|| event.affectsConfiguration("kaijuNC.machineProfiles")
 				|| event.affectsConfiguration("kaijuNC.syntax.unresolvedGotos.enabled")
 			) {
 				for (const editor of vscode.window.visibleTextEditors) {
@@ -75,6 +77,10 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	const seenSequenceNumbers = new Map();
 	const sequenceNumberOrder = { previous: null };
 	const arcAnalyses = options.warnIllegalArcs ? analyzeArcsInDocument(document, options) : new Map();
+	const bindingMode = options.machineMode === "mill" ? "mill" : "lathe";
+	const boundGCodes = options.warnUnboundGCodes
+		? Object.values(options.gCodeDialect.bindings[bindingMode]).filter(binding => binding && (binding.letter || "G") === "G").map(binding => binding.code)
+		: [];
 
 	if (options.warnUnresolvedGotos) {
 		warnings.push(...makeUnresolvedGotoTargetWarnings(document));
@@ -115,6 +121,9 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 		}
 		if (options.warnIllegalArcs) {
 			warnings.push(...makeIllegalArcWarnings(lineNumber, arcAnalyses.get(lineNumber)));
+		}
+		if (options.warnUnboundGCodes) {
+			warnings.push(...makeUnboundGCodeWarnings(line, lineNumber, options, bindingMode, boundGCodes));
 		}
 
 		const directAddressRegex = /\b([XYZUVWABCIJKRFxyzuvwabcijkrf])([-+]?\d+)(?![.\d])/g;
@@ -173,6 +182,24 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 	}
 
 	diagnostics.set(document.uri, warnings);
+}
+
+function makeUnboundGCodeWarnings(line, lineNumber, options, mode, boundGCodes) {
+	const warnings = [];
+	for (const word of parseWords(maskProtectedRanges(line))) {
+		// Static membership checks only: macro and expression G values need execution context.
+		if (word.letter !== "G" || !/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(word.raw)) continue;
+		if (boundGCodes.some(code => Math.abs(code - word.value) < 0.000000001)) continue;
+		const diagnostic = new vscode.Diagnostic(
+			new vscode.Range(lineNumber, word.start, lineNumber, word.end),
+			`G${word.raw} is not listed in the ${mode === "mill" ? "Mill" : "Lathe"} bindings for G-code profile "${options.gCodeDialect.label}".`,
+			vscode.DiagnosticSeverity.Warning
+		);
+		diagnostic.source = DIAGNOSTIC_SOURCE;
+		diagnostic.code = "unboundGCode";
+		warnings.push(diagnostic);
+	}
+	return warnings;
 }
 
 function makeIllegalArcWarnings(lineNumber, arc) {

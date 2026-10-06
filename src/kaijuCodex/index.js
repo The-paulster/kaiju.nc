@@ -1,7 +1,11 @@
 // Role: open packaged, user-facing KAIJU Codex Markdown in VS Code's preview.
 const vscode = require("vscode");
 
+const { getCannedCycles } = require("../MetaCannedCycles");
+
 const TOPICS = Object.freeze({
+	cannedCycles: "canned-cycles/README.md",
+	...Object.fromEntries(getCannedCycles().map(cycle => [cycle.id, `canned-cycles/${cycle.mode}/${cycle.id.split(".").at(-1)}.md`])),
 	alerts: "alerts.md",
 	alias: "alias.md",
 	chronoblade: "chronoblade.md",

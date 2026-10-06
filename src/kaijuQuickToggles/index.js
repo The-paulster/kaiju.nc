@@ -2,6 +2,17 @@
 const vscode = require("vscode");
 
 const TOGGLES = {
+	unboundGCodes: {
+		commands: [
+			"kaijuNC.quickToggle.unboundGCodesOn",
+			"kaijuNC.quickToggle.unboundGCodesOff"
+		],
+		section: "kaijuNC.alerts",
+		key: "unboundGCodes.enabled",
+		defaultValue: false,
+		contextKey: "kaijuNC.quickToggle.unboundGCodesEnabled",
+		label: "Unbound G-code Alerts"
+	},
 	sequenceNumberOrder: {
 		commands: [
 			"kaijuNC.quickToggle.sequenceNumberOrderOn",
@@ -32,7 +43,7 @@ function registerKaijuQuickToggles(context) {
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(update),
 		vscode.workspace.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration("kaijuNC.alerts.sequenceNumberOrder.enabled")) {
+			if (Object.values(TOGGLES).some(toggle => event.affectsConfiguration(`${toggle.section}.${toggle.key}`))) {
 				update();
 			}
 		})

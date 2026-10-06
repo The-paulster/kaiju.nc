@@ -16,6 +16,7 @@ const { registerKaijuRangefinder } = require("./kaijuRangefinder");
 const { registerKaijuWarpaint } = require("./kaijuWarpaint");
 const { registerKaijuQuickToggles } = require("./kaijuQuickToggles");
 const { registerKaijuCodex } = require("./kaijuCodex");
+const { registerFileSettings } = require("./kaijuFileSettings");
 
 function activate(context) {
 	registerFormatter(context);
@@ -34,6 +35,7 @@ function activate(context) {
 	registerKaijuWarpaint(context);
 	registerKaijuQuickToggles(context);
 	registerKaijuCodex(context);
+	registerFileSettings(context);
 }
 
 function deactivate() {}

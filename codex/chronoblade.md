@@ -20,7 +20,7 @@ and timing values you provide for operations the code cannot measure.
    before opening Chronoblade to analyse that section.
 3. Run **KAIJU Chronoblade** from the editor context menu or Command Palette.
    The shortcut is **Ctrl+Alt+C** on Windows/Linux or **Cmd+Alt+C** on macOS.
-4. Check the **Motion** selector, timing inputs, summary cards, and report rows.
+4. Check the **Motion** selector, machine timings, summary cards, and report rows.
 
 The report remembers whether it was opened for the whole document or a
 selection. To change that scope, select the desired text in the source editor
@@ -93,8 +93,8 @@ shorten with an ellipsis, and hovering shows the full sequence.
 
 ## Timing assumptions
 
-The three timing fields at the top of the report fill in machine-dependent
-time that the program text does not specify:
+The active machine profile supplies timing assumptions that the program text
+does not specify. The report shows three base values read-only:
 
 - **G0 rate** is the rapid-traverse rate in program units per minute. It is
   used to estimate G0 motion time.
@@ -108,13 +108,17 @@ For example, with Tool swap set to 4 seconds and Extra station to 0.5 seconds,
 contributes 4.5 seconds. Those numbers are assumptions you can change to fit
 your machine; they are not read from the controller.
 
-The **Profile** selector stores reusable timing assumptions. **Edit** creates
-or changes profiles with G0 rate, Tool swap, Extra station, and literal
-M-code durations. For example, assigning 3 seconds to `M05` adds an **Other**
-event each time an executed `M05` appears. In Trace, a configured M-code
-inside a loop is counted for every occurrence. Choosing a profile resets that
-program's three timing-field overrides to the profile values; changing a
-field afterward creates a per-program override, marked by `Profile*`.
+The report shows the active **Machine** name. **Edit** opens that machine's
+**Timing** tab for the source program, where rapid rates, tool timings, turret
+settings, and custom M-code durations are configured. Duplicate Generic Machine
+to create an editable machine and choose **Use for this program** to apply it.
+To compare a different machine, apply its regular machine profile.
+
+For example, assigning 3 seconds to `M05` in the machine profile adds an **Other**
+event each time an executed `M05` appears. In Trace, an M-code inside a loop is
+counted for every occurrence. Machine profile edits refresh an open report.
+Separate Chronoblade timing presets and saved report timing overrides are no
+longer used.
 
 Feed mode and spindle state affect cutting estimates. For turning, Chronoblade
 uses the active machine mode and G-code profile to interpret feed per minute,

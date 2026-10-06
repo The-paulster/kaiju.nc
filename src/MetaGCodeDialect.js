@@ -1,5 +1,6 @@
 // Role: map controller-specific G/M words to stable KAIJU motion/modal
 // operations. Keep calculation and modal state updates in MetaMotionEngine.
+const { getCycleOperationDefinitions, getDefaultCycleBindings } = require("./MetaCannedCycles");
 const G_CODE_OPERATIONS = Object.freeze({
 	MOTION_RAPID: "motion.rapid",
 	MOTION_LINEAR: "motion.linear",
@@ -24,9 +25,16 @@ const G_CODE_OPERATIONS = Object.freeze({
 	C_AXIS_DISABLE: "spindle.cAxisDisable",
 	DWELL: "motion.dwell",
 	MACHINE_COORDINATE: "coordinate.machine",
-	COORDINATE_SETTING: "coordinate.setting"
+	COORDINATE_SETTING: "coordinate.setting",
+	WORK_COORDINATE_1: "coordinate.work1",
+	WORK_COORDINATE_2: "coordinate.work2",
+	WORK_COORDINATE_3: "coordinate.work3",
+	WORK_COORDINATE_4: "coordinate.work4",
+	WORK_COORDINATE_5: "coordinate.work5",
+	WORK_COORDINATE_6: "coordinate.work6"
 });
 const G_CODE_OPERATION_DEFINITIONS = Object.freeze({
+	...getCycleOperationDefinitions(),
 	[G_CODE_OPERATIONS.MOTION_RAPID]: operationDefinition({ motionCode: 0, statusGroup: "motion", label: "Rapid" }),
 	[G_CODE_OPERATIONS.MOTION_LINEAR]: operationDefinition({ motionCode: 1, statusGroup: "motion", label: "Linear" }),
 	[G_CODE_OPERATIONS.MOTION_ARC_CW]: operationDefinition({ motionCode: 2, statusGroup: "motion", label: "CW arc" }),
@@ -50,7 +58,13 @@ const G_CODE_OPERATION_DEFINITIONS = Object.freeze({
 	[G_CODE_OPERATIONS.C_AXIS_DISABLE]: operationDefinition({ wordLetter: "M", label: "C-axis mode off" }),
 	[G_CODE_OPERATIONS.DWELL]: operationDefinition(),
 	[G_CODE_OPERATIONS.MACHINE_COORDINATE]: operationDefinition(),
-	[G_CODE_OPERATIONS.COORDINATE_SETTING]: operationDefinition()
+	[G_CODE_OPERATIONS.COORDINATE_SETTING]: operationDefinition(),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_1]: operationDefinition({ statusGroup: "coordinateSystem", label: "Work coordinate system 1", coordinateSystem: "G54" }),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_2]: operationDefinition({ statusGroup: "coordinateSystem", label: "Work coordinate system 2", coordinateSystem: "G55" }),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_3]: operationDefinition({ statusGroup: "coordinateSystem", label: "Work coordinate system 3", coordinateSystem: "G56" }),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_4]: operationDefinition({ statusGroup: "coordinateSystem", label: "Work coordinate system 4", coordinateSystem: "G57" }),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_5]: operationDefinition({ statusGroup: "coordinateSystem", label: "Work coordinate system 5", coordinateSystem: "G58" }),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_6]: operationDefinition({ statusGroup: "coordinateSystem", label: "Work coordinate system 6", coordinateSystem: "G59" })
 });
 const resolutionCache = new WeakMap();
 
@@ -69,6 +83,12 @@ const COMMON_BINDINGS = Object.freeze({
 	[G_CODE_OPERATIONS.PLANE_XZ]: binding(18),
 	[G_CODE_OPERATIONS.PLANE_YZ]: binding(19),
 	[G_CODE_OPERATIONS.MACHINE_COORDINATE]: binding(53),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_1]: binding(54),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_2]: binding(55),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_3]: binding(56),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_4]: binding(57),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_5]: binding(58),
+	[G_CODE_OPERATIONS.WORK_COORDINATE_6]: binding(59),
 	[G_CODE_OPERATIONS.CYCLE_CANCEL]: binding(80),
 	[G_CODE_OPERATIONS.SPINDLE_CSS]: binding(96),
 	[G_CODE_OPERATIONS.SPINDLE_FIXED_RPM]: binding(97)
@@ -80,6 +100,7 @@ const LATHE_COMMON_BINDINGS = Object.freeze({
 const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 	fanucIso: makeProfile({
 		id: "fanucIso",
+		cycleDefaults: true,
 		label: "FANUC / ISO",
 		description: "Mill G94/G95 feed modes, lathe G98/G99 feed modes, mill G98/G99 canned-cycle return modes, lathe G12.1/G13.1 polar interpolation, and lathe M45/M46 C-axis mode.",
 		bindings: {
@@ -105,6 +126,7 @@ const BUILT_IN_G_CODE_DIALECT_PROFILES = Object.freeze({
 	}),
 	dmgMori: makeProfile({
 		id: "dmgMori",
+		cycleDefaults: true,
 		label: "DMG MORI",
 		description: "DMG MORI turning G98/G99 feed modes with ISO mill feed/canned-cycle return modes, lathe G12.1/G13.1 polar interpolation, and lathe M45/M46 C-axis mode.",
 		bindings: {
@@ -178,14 +200,24 @@ function makeBindingTable(...sources) {
 	return Object.freeze(table);
 }
 
+function makeCycleBindings(mode) {
+	return Object.fromEntries(Object.entries(getDefaultCycleBindings(mode)).map(([id, value]) => [id, binding(value.code)]));
+}
+
 function makeProfile(profile) {
+	for (const mode of ["mill", "lathe"]) {
+		for (const [operation, value] of Object.entries(profile.bindings[mode] || {})) {
+			const definition = G_CODE_OPERATION_DEFINITIONS[operation];
+			if (value && definition && definition.mode && definition.mode !== mode) throw new Error(`${operation} requires ${definition.mode} mode.`);
+		}
+	}
 	return Object.freeze({
 		id: profile.id,
 		label: profile.label,
 		description: profile.description,
 		schemaVersion: 3,
 		bindings: Object.freeze({
-			mill: makeBindingTable(COMMON_BINDINGS, profile.bindings.mill),
+			mill: makeBindingTable(COMMON_BINDINGS, profile.cycleDefaults ? makeCycleBindings("mill") : {}, profile.bindings.mill),
 			lathe: makeBindingTable(COMMON_BINDINGS, LATHE_COMMON_BINDINGS, profile.bindings.lathe)
 		})
 	});
@@ -224,6 +256,7 @@ function normalizeCustomGCodeDialectProfiles(rawProfiles) {
 		ids.add(id);
 		labels.add(label.toLowerCase());
 		return makeProfile({
+			cycleDefaults: true,
 			id,
 			label,
 			description: String(rawProfile && rawProfile.description || "").trim(),
@@ -274,7 +307,7 @@ function formatGCodeBinding(candidate, options = {}) {
 function resolveGCodeOperations(words, options = {}) {
 	const profile = getGCodeDialectProfile(options.gCodeDialectId);
 	const mode = options.machineMode === "mill" ? "mill" : "lathe";
-	const cacheKey = `${profile.id}|${mode}`;
+	const cacheKey = profile.bindings[mode];
 	const cached = words && resolutionCache.get(words);
 	if (cached && cached.has(cacheKey)) return cached.get(cacheKey);
 	const matches = [];

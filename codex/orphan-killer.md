@@ -52,6 +52,16 @@ source occurrences. **Lines** contains the one-based source line numbers
 where the variable was referenced or assigned. Multiple occurrences on the
 same line appear once in that line list.
 
+Click a **Macro** to highlight its report row and select its first occurrence
+in the source editor. Click a **Lines** number to jump to that line instead.
+The source token stays highlighted while you work in the report.
+**Previous** and **Next**, or **Shift+Enter** and **Enter** with the report
+focused, step through individual occurrences of both finding types in source
+order, wrapping at either end. The navigation counter counts occurrences,
+including repeated uses on one line; the summary counts still count macros.
+After a source edit, navigation pauses until **Refresh** or **Live** updates
+the report. Closing the report clears the source highlight.
+
 For example:
 
 ```gcode

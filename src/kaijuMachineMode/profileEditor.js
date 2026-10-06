@@ -11,6 +11,8 @@ const {
 } = require("../MetaGCodeDialect");
 const { setGCodeDialect } = require("../MetaMachineMode");
 
+const { getCannedCycles, getCannedCycle } = require("../MetaCannedCycles");
+
 const CUSTOM_PROFILES_SETTING = "customProfiles";
 let profilesPanel;
 let profilesPanelDocument;
@@ -45,6 +47,10 @@ async function showGCodeProfileEditor(document) {
 		profilesPanel = vscode.window.createWebviewPanel("kaijuGCodeProfiles", "KAIJU G-code Profiles", vscode.ViewColumn.Beside, { enableScripts: true });
 		profilesPanel.onDidDispose(() => { profilesPanel = undefined; profilesPanelDocument = undefined; });
 		profilesPanel.webview.onDidReceiveMessage(async message => {
+			if (message && message.type === "openCycleCodex") {
+				if (message.topic === "cannedCycles" || getCannedCycle(message.topic)) await vscode.commands.executeCommand("kaijuNC.codex", message.topic);
+				return;
+			}
 			if (!message || !["saveGCodeProfiles", "useGCodeProfile"].includes(message.type)) return;
 			const targetDocument = profilesPanelDocument;
 			try {
@@ -115,7 +121,7 @@ function serializeBindingTable(table) {
 
 function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) {
 	const nonce = makeWebviewNonce();
-	const initialData = JSON.stringify({ profiles, currentProfileId, operations: G_CODE_OPERATION_DEFINITIONS, loadError, notice }).replace(/</g, "\\u003c");
+	const initialData = JSON.stringify({ profiles, currentProfileId, operations: G_CODE_OPERATION_DEFINITIONS, cycles: getCannedCycles().map(({ id, label, mode, commonCode, support }) => ({ id, label, mode, commonCode, support })), loadError, notice }).replace(/</g, "\\u003c");
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -130,7 +136,11 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 	aside { border-right: 1px solid var(--vscode-panel-border); padding: 12px; overflow: auto; }
 	section { min-width: 0; padding: 14px 18px; overflow: auto; }
 	h1 { font-size: 1.15rem; margin: 0 0 10px; }
-	h2 { font-size: 1rem; margin: 0; }
+	h2 { font-size: 1rem; margin: 0 0 8px; }
+	.binding-section { margin-top: 18px; }
+	.codex-link { color: var(--vscode-textLink-foreground); text-decoration: none; }
+	.codex-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+	.codex-reference { margin: 6px 0 10px; }
 	button, input, textarea, select { font: inherit; color: inherit; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 2px; }
 	button { cursor: pointer; background: var(--vscode-button-secondaryBackground); padding: 5px 8px; }
 	button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
@@ -172,8 +182,17 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 		<div class="field"><label for="profileName">Profile name</label><input id="profileName" maxlength="80" placeholder="My controller"></div>
 		<div class="field"><label for="profileDescription">Description</label><textarea id="profileDescription" maxlength="240" placeholder="Optional notes about this controller."></textarea></div>
 		<p class="key-help">Each row is one KAIJU function. Enter a G word such as <code>G98</code>, or an M word such as <code>M45</code> for C-axis mode. Use <code>G50 S</code> when the function reads an <code>S</code> companion word. Leave a cell blank to leave that function unbound. Reusing a word in this table clears its previous binding.</p>
-		<div class="tabs"><button class="mode-tab primary" data-mode="mill" type="button">Mill bindings</button><button class="mode-tab" data-mode="lathe" type="button">Lathe bindings</button></div>
-		<div class="table-wrap"><table><thead><tr><th>Function</th><th>Binding</th></tr></thead><tbody id="bindingsBody"></tbody></table></div>
+		<div class="binding-section">
+			<h2>Bindings</h2>
+			<div class="tabs"><button class="mode-tab primary" data-mode="mill" type="button">Mill bindings</button><button class="mode-tab" data-mode="lathe" type="button">Lathe bindings</button></div>
+			<div class="table-wrap"><table><thead><tr><th>Function</th><th>Binding</th></tr></thead><tbody id="bindingsBody"></tbody></table></div>
+		</div>
+		<div class="binding-section" id="cannedCyclesSection">
+			<h2>Canned cycles</h2>
+			<div class="tabs"><button class="cycle-mode-tab primary" data-mode="mill" type="button">Milling cycles</button><button class="cycle-mode-tab" data-mode="lathe" type="button">Lathe cycles</button></div>
+			<p class="codex-reference"><a id="cycleCodex" class="codex-link" href="#">Canned cycles</a></p>
+			<div class="table-wrap"><table><thead><tr><th>Cycle</th><th>Binding</th></tr></thead><tbody id="cyclesBody"></tbody></table></div>
+		</div>
 	</section>
 </main>
 <script nonce="${nonce}">
@@ -183,9 +202,11 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 	let customProfiles = initial.profiles.filter(profile => !profile.builtIn).map(copy);
 	let selectedId = initial.profiles.some(profile => profile.id === initial.currentProfileId) ? initial.currentProfileId : (customProfiles[0] && customProfiles[0].id || builtInProfiles[0] && builtInProfiles[0].id);
 	let mode = 'mill';
+	let cycleMode = 'mill';
 	let sequence = 0;
 	const profileList = document.getElementById('profileList');
 	const bindingsBody = document.getElementById('bindingsBody');
+	const cyclesBody = document.getElementById('cyclesBody');
 	const notice = document.getElementById('notice');
 	const profileName = document.getElementById('profileName');
 	const profileDescription = document.getElementById('profileDescription');
@@ -214,15 +235,30 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 		saveProfile.disabled = !dirty;
 		useProfile.disabled = !selected;
 		for (const tab of document.querySelectorAll('.mode-tab')) tab.classList.toggle('primary', tab.dataset.mode === mode);
+		for (const tab of document.querySelectorAll('.cycle-mode-tab')) tab.classList.toggle('primary', tab.dataset.mode === cycleMode);
 		renderBindings(selected, editable);
+		renderCycles(selected, editable);
+	}
+	function renderFunctionRow(operation, definition, profile, editable, bindingMode) {
+		const binding = profile.bindings[bindingMode][operation];
+		const letter = definition.wordLetter || 'G';
+		const value = binding ? (binding.letter || 'G') + formatCode(binding.code) + (binding.requiredWords && binding.requiredWords.length ? ' ' + binding.requiredWords.join(' ') : '') : '';
+		return '<tr><td><strong>' + escapeHtml(definition.label || operation) + '</strong><div class="operation-code">' + escapeHtml(operation) + '</div></td><td><input class="binding-input" data-operation="' + escapeAttribute(operation) + '" value="' + escapeAttribute(value) + '" placeholder="Unbound" title="' + letter + ' word, optionally followed by one companion letter"' + (editable ? '' : ' disabled') + '></td></tr>';
 	}
 	function renderBindings(profile, editable) {
 		if (!profile) { bindingsBody.innerHTML = ''; return; }
-		bindingsBody.innerHTML = Object.entries(initial.operations).map(([operation, definition]) => {
-			const binding = profile.bindings[mode][operation];
-			const letter = definition.wordLetter || 'G';
-			const value = binding ? (binding.letter || 'G') + formatCode(binding.code) + (binding.requiredWords && binding.requiredWords.length ? ' ' + binding.requiredWords.join(' ') : '') : '';
-			return '<tr><td><strong>' + escapeHtml(definition.label || operation) + '</strong><div class="operation-code">' + escapeHtml(operation) + '</div></td><td><input class="binding-input" data-operation="' + escapeAttribute(operation) + '" value="' + escapeAttribute(value) + '" placeholder="Unbound" title="' + letter + ' word, optionally followed by one companion letter"' + (editable ? '' : ' disabled') + '></td></tr>';
+		bindingsBody.innerHTML = Object.entries(initial.operations).filter(([operation]) => !operation.startsWith('cycle.'))
+			.map(([operation, definition]) => renderFunctionRow(operation, definition, profile, editable, mode)).join('');
+	}
+	function renderCycles(profile, editable) {
+		if (!profile) { cyclesBody.innerHTML = ''; return; }
+		const cycles = initial.cycles.filter(cycle => cycle.mode === cycleMode);
+		cyclesBody.innerHTML = Object.entries(initial.operations).filter(([operation, definition]) => operation.startsWith('cycle.') && !definition.cycleId)
+			.map(([operation, definition]) => renderFunctionRow(operation, definition, profile, editable, cycleMode)).join('') + cycles.map(cycle => {
+			const definition = initial.operations[cycle.id];
+			const binding = profile.bindings[cycleMode][cycle.id];
+			const input = definition ? '<input class="binding-input" data-operation="' + escapeAttribute(cycle.id) + '" value="' + (binding ? 'G' + formatCode(binding.code) + (binding.requiredWords && binding.requiredWords.length ? ' ' + binding.requiredWords.join(' ') : '') : '') + '" placeholder="Unbound"' + (editable ? '' : ' disabled') + '>' : '<span>Unavailable</span>';
+			return '<tr><td><strong>' + escapeHtml(cycle.label) + '</strong><div class="operation-code">Common G' + cycle.commonCode + ' - ' + escapeHtml(cycle.support) + '</div><a class="codex-link" href="#" data-cycle-codex="' + escapeAttribute(cycle.id) + '">Codex</a></td><td>' + input + '</td></tr>';
 		}).join('');
 	}
 	function formatCode(code) { return Number.isInteger(Number(code)) ? String(Number(code)) : String(code); }
@@ -236,14 +272,14 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 		return { letter, code: Number(match[2]), requiredWords: companion ? [companion] : [], argumentWord: companion };
 	}
 	function bindingKey(binding) { return binding ? (binding.letter || 'G') + String(binding.code) : ''; }
-	function setBinding(operation, value) {
+	function setBinding(operation, value, bindingMode) {
 		const selected = getSelected();
 		if (!isCustom(selected)) return;
 		const binding = parseBinding(value, operation);
-		selected.bindings[mode][operation] = binding;
+		selected.bindings[bindingMode][operation] = binding;
 		if (binding) {
-			for (const [otherOperation, otherBinding] of Object.entries(selected.bindings[mode])) {
-				if (otherOperation !== operation && bindingKey(otherBinding) === bindingKey(binding)) selected.bindings[mode][otherOperation] = null;
+			for (const [otherOperation, otherBinding] of Object.entries(selected.bindings[bindingMode])) {
+				if (otherOperation !== operation && bindingKey(otherBinding) === bindingKey(binding)) selected.bindings[bindingMode][otherOperation] = null;
 			}
 		}
 	}
@@ -255,8 +291,11 @@ function renderGCodeProfilesHtml(profiles, currentProfileId, loadError, notice) 
 	deleteProfile.addEventListener('click', () => { const selected = getSelected(); if (!isCustom(selected)) return; customProfiles = customProfiles.filter(profile => profile.id !== selected.id); selectedId = customProfiles[0] && customProfiles[0].id || builtInProfiles[0] && builtInProfiles[0].id; markDirty(); showNotice(''); render(); });
 	profileName.addEventListener('input', () => { const selected = getSelected(); if (isCustom(selected)) { selected.label = profileName.value; heading.textContent = selected.label || 'Unnamed profile'; markDirty(); } });
 	profileDescription.addEventListener('input', () => { const selected = getSelected(); if (isCustom(selected)) { selected.description = profileDescription.value; markDirty(); } });
-	bindingsBody.addEventListener('change', event => { const input = event.target.closest('.binding-input'); if (!input) return; try { setBinding(input.dataset.operation, input.value); markDirty(); showNotice(''); renderBindings(getSelected(), true); } catch (error) { showNotice(error.message, true); input.focus(); } });
+	document.getElementById('cycleCodex').addEventListener('click', event => { event.preventDefault(); vscode.postMessage({ type: 'openCycleCodex', topic: 'cannedCycles' }); });
+	cyclesBody.addEventListener('click', event => { const link = event.target.closest('[data-cycle-codex]'); if (link) { event.preventDefault(); vscode.postMessage({ type: 'openCycleCodex', topic: link.dataset.cycleCodex }); } });
+	for (const body of [bindingsBody, cyclesBody]) body.addEventListener('change', event => { const input = event.target.closest('.binding-input'); if (!input) return; try { setBinding(input.dataset.operation, input.value, body === cyclesBody ? cycleMode : mode); markDirty(); showNotice(''); renderBindings(getSelected(), true); renderCycles(getSelected(), true); } catch (error) { showNotice(error.message, true); input.focus(); } });
 	for (const tab of document.querySelectorAll('.mode-tab')) tab.addEventListener('click', () => { mode = tab.dataset.mode; render(); });
+	for (const tab of document.querySelectorAll('.cycle-mode-tab')) tab.addEventListener('click', () => { cycleMode = tab.dataset.mode; render(); });
 	saveProfile.addEventListener('click', () => { if (dirty) vscode.postMessage({ type: 'saveGCodeProfiles', profiles: customProfiles }); });
 	useProfile.addEventListener('click', () => { const selected = getSelected(); if (selected) vscode.postMessage({ type: 'useGCodeProfile', profiles: customProfiles, profileId: selected.id }); });
 	window.addEventListener('message', event => { const message = event.data || {}; if (message.type === 'error') showNotice(message.message, true); });

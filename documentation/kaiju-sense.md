@@ -4,14 +4,25 @@
 
 ## Responsibility
 
+Shared machine work-offset defaults and program overrides also reach motion
+hover calculations through `motionOptions`; frame changes and G53 use the
+shared Motion Engine's rebased physical travel.
+
 Sense is the live editor-assistance module. It coordinates motion hovers, macro
 hovers, tool-range decorations, N-label/GOTO navigation and highlights,
 fork-resolution notices, and the left-side cursor-state status bar. Its
 `options.js` centralizes Sense configuration and derived machine defaults.
+The adjacent right-side configuration indicator shows the active machine
+profile and effective G-code profile by name. Machine Mode owns that indicator;
+Sense owns the cursor modal strip.
 `kaijuNC.sense.modalNames` lets users replace the verbose status-bar labels for
 individual modal codes without changing their modal meaning. The default labels
 come from Meta and are selected for the active program's saved mill or lathe
 machine mode, or the global fallback when it has not been assigned one.
+
+## Canned cycles
+
+Runtime mill-cycle names and authored words come from the selected dialect bindings. Documented-only lathe G70-G76 retain their label-only status definitions; an actual profile binding takes precedence. Motion hovers after a cycle use the shared cycle completion position. Basic drilling expansion and schematic marker support are defined in [Canned cycles](canned-cycles.md).
 
 ## Connections
 
@@ -30,6 +41,17 @@ machine mode, or the global fallback when it has not been assigned one.
   not use a literal `G0`-through-`G3` recognizer.
 
 ## Boundary
+
+Without applied machine settings, the feature retains its own rapid-rate
+setting and uses Generic Machine's rate as the fallback. The removed
+Chronoblade rapid-rate setting is no longer read.
+
+Applied machine profiles provide shared rapid-rate and C-axis wrapping/reset
+settings through `MetaMachineMode`, alongside machine type and G-code bindings.
+Sense passes these settings to `MetaMotionEngine` for its hovers and modal state.
+It also consumes shared derived axis rapid rates, C travel/feed rules, spindle
+caps, CSS units, and startup modes. Default modal labels use the selected
+G-code profile's spelling; explicit program modes override startup defaults.
 
 Sense presents context at the cursor. It does not own shared motion or macro
 interpretation, tool-range calculation, Alias editing, or static diagnostics.

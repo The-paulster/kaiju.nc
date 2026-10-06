@@ -18,11 +18,18 @@ function loadPrivateRenderer(relativePath, functionName) {
 }
 
 function compileEmbeddedScripts(html) {
-	const scripts = [...String(html).matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)]
-		.filter(match => !/type=["']application\/json["']/i.test(match[1]))
-		.map(match => match[2]);
-	assert.ok(scripts.length > 0);
-	for (const script of scripts) new Function(script);
+	let cursor = 0, count = 0;
+	while ((cursor = html.indexOf("<script", cursor)) !== -1) {
+		const start = html.indexOf(">", cursor) + 1;
+		const end = html.indexOf("</script>", start);
+		assert.ok(start > 0 && end >= start);
+		if (!html.slice(cursor, start).includes('type="application/json"')) {
+			new Function(html.slice(start, end));
+			count++;
+		}
+		cursor = end + "</script>".length;
+	}
+	assert.ok(count > 0);
 }
 
 test("G-code grammar accepts decimal G words", () => {
@@ -44,8 +51,13 @@ test("Chronoblade generated webview scripts compile", () => {
 		dwellTimeSeconds: 0, toolTimeSeconds: 0, otherTimeSeconds: 0,
 		totalDistance: 0, cuttingDistance: 0
 	};
-	const html = render({ timingProfiles: [], humanFormat: {} }, { rows: [], summary: zeroSummary });
+	const html = render({ machineProfileLabel: 'Shop <lathe>', rapidRate: 1234, toolChangeSeconds: 8, extraStationSeconds: 2, humanFormat: {} }, { rows: [], summary: zeroSummary });
 	compileEmbeddedScripts(html);
+	assert.match(html, /<span class="machine-name" title="Shop &lt;lathe&gt;">Shop &lt;lathe&gt;<\/span>/);
+	assert.match(html, /<button id="editMachineTiming"/);
+	assert.match(html, /type: "editMachineTiming"/);
+	assert.match(html, /<output[^>]*>1234<\/output>/);
+	assert.doesNotMatch(html, /timingProfile|setChronobladeTiming|collectTimingOptions|hasTimingOverrides|<input id="(?:rapidRate|toolChangeSeconds|extraStationSeconds)"/);
 	assert.match(html, /formatVirtualTime\(row\.labelTotalTimeSeconds\)/);
 	assert.match(html, /formatVirtualAccumulatedTime\(entry\.accumulatedLabelTimeSeconds\)/);
 	assert.match(html, /<td colspan="7"><button class="section-toggle"/);
@@ -66,6 +78,8 @@ test("Vision generated webview scripts compile", () => {
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-zero type="checkbox" checked/);
 	assert.match(html, /data-offset-code="G53"[\s\S]*?data-offset-axis="x"[^>]* disabled/);
 	assert.doesNotMatch(html, /data-offset-enabled/);
+	assert.match(html, /data-offset-axis="c"[^>]*value="0"/);
+	assert.match(html, /<th>C \(degrees\)<\/th>/);
 	assert.match(html, /Assumed start[\s\S]*?data-start-frame[\s\S]*?G53/);
 	assert.match(html, /data-start-axis="x"[^>]*value="0"/);
 	assert.match(html, /savedWebviewState = vscode\.getState\(\) \|\| \{\}/);
@@ -104,6 +118,44 @@ test("Vision generated webview scripts compile", () => {
 	const embeddedWebglColor = new Function(`${embeddedScript.slice(webglColorStart, webglColorEnd)}\nreturn webglColor("hsl(120 100% 50%)");`);
 	assert.deepEqual(Array.from(embeddedWebglColor()), [0, 1, 0, 1], "generated Vision script must preserve its HSL tool-colour parser");
 	assert.match(html, /motionIndexByExecutionIndex/);
+});
+
+test("Vision work-frame labels follow mode-specific bindings without changing frame keys", () => {
+	const dialect = require("../src/MetaGCodeDialect");
+	const render = loadPrivateRenderer("src/kaijuVision/webview.js", "renderVisionHtml");
+	const operations = dialect.G_CODE_OPERATIONS;
+	try {
+		dialect.setCustomGCodeDialectProfiles([{ id: "vision-wcs", label: "Vision WCS", bindings: {
+			mill: { [operations.WORK_COORDINATE_2]: { code: 155 }, [operations.WORK_COORDINATE_3]: null },
+			lathe: { [operations.WORK_COORDINATE_2]: { code: 255 }, [operations.WORK_COORDINATE_3]: null }
+		} }]);
+		for (const [machineMode, word] of [["mill", "G155"], ["latheDiameter", "G255"]]) {
+			const document = makeDocument(`${word} G0 X0 Y0 Z0`);
+			const html = render(document, "document", { machineMode, gCodeDialectId: "vision-wcs", referenceFrame: "G55", initialPosition: { coordinateSystem: "G55" } }, {
+				rows: [{ type: "motion", lineNumber: 1, coordinateSystem: "G55", instruction: "G0", distance: 0, warnings: [], points: [] }],
+				range: { startLine: 0, endLine: 0 }
+			});
+			compileEmbeddedScripts(html);
+			assert.ok(html.includes(`<tr data-offset-code="G55">\n\t\t\t<td><code>WCS2 (${word})</code></td>`));
+			assert.ok(html.includes(`<option value="G55" selected>WCS2 (${word})</option>`));
+			assert.ok(html.includes(`value="G55" checked> WCS2 (${word})</label>`));
+			assert.ok(html.includes("<code>WCS3 (unbound)</code>"));
+			assert.ok(html.includes("<code>WCS1 (G54)</code>"));
+			assert.ok(html.includes("<code>WCS6 (G59)</code>"));
+			const payloadStart = html.lastIndexOf("<script", html.indexOf('id="vision-data"'));
+			const payload = JSON.parse(html.slice(html.indexOf(">", payloadStart) + 1, html.indexOf("</script>", payloadStart)));
+			const scriptStart = html.lastIndexOf("<script nonce=");
+			const script = html.slice(html.indexOf(">", scriptStart) + 1, html.indexOf("</script>", scriptStart));
+			const keyHelper = script.slice(script.indexOf("function getRowWcsKey("), script.indexOf("function getOrderedOrientation("));
+			const labelHelper = script.slice(script.indexOf("function getRowWcsLabel("), script.indexOf("function formatTableDistance("));
+			const label = new Function("data", keyHelper + labelHelper + "return getRowWcsLabel;")(payload);
+			assert.equal(label({ coordinateSystem: "G55" }), `WCS2 (${word})`);
+			assert.equal(label({ coordinateSystem: "G56" }), "WCS3 (unbound)");
+			assert.equal(label({ coordinateSystem: "G53" }), "G53");
+			assert.equal(payload.rows[0].coordinateSystem, "G55");
+			assert.equal(payload.options.referenceFrame, "G55");
+		}
+	} finally { dialect.setCustomGCodeDialectProfiles([]); }
 });
 
 test("H syntax covers full incremental C values and retains its scope", () => {
@@ -146,4 +198,63 @@ test("G-code profile editor scripts compile", () => {
 	assert.match(html, /function markDirty\(\) \{ dirty = true; saveProfile\.disabled = false; \}/);
 	assert.match(html, /type: 'useGCodeProfile', profiles: customProfiles, profileId: selected\.id/);
 	assert.match(html, /initial\.notice \|\| ''/);
+});
+
+test("Vision reference changes preserve G53 offsets across edits and reopening", () => {
+	const render = loadPrivateRenderer("src/kaijuVision/webview.js", "renderVisionHtml");
+	const workOffsets = {
+		G53: { x: 0, y: 0, z: 0, c: 0 },
+		G54: { x: 100, y: -20, z: 30, c: 90 },
+		G55: { x: 140, y: 10, z: -5, c: 180 }
+	};
+	function open(offsets, referenceFrame) {
+		const sourceDocument = makeDocument("G0 X0");
+		const html = render(sourceDocument, "document", { workOffsets: offsets, referenceFrame }, {
+			rows: [], range: { startLine: 0, endLine: 0 }
+		});
+		const scriptStart = html.lastIndexOf("<script nonce=");
+		const script = html.slice(html.indexOf(">", scriptStart) + 1, html.indexOf("</script>", scriptStart));
+		new Function(script);
+		const rows = [...html.matchAll(/<tr data-offset-code="([^"]+)">([\s\S]*?)<\/tr>/g)].map(match => {
+			const inputs = {};
+			for (const axis of ["x", "y", "z", "c"]) {
+				const tag = match[2].match(new RegExp('data-offset-axis="' + axis + '"[^>]*'))[0];
+				inputs[axis] = { value: tag.match(/value="([^"]*)"/)[1], disabled: tag.includes(" disabled") };
+			}
+			return {
+				code: match[1], inputs,
+				getAttribute: () => match[1],
+				querySelector: selector => selector.includes("data-offset-axis")
+					? inputs[selector.match(/='([^']+)'/)[1]]
+					: selector.includes("data-offset-zero") ? { checked: false } : { value: "" }
+			};
+		});
+		const document = { querySelectorAll: () => rows };
+		const origin = script.slice(script.indexOf("const offsetReferenceOrigin ="), script.indexOf("function collectWorkOffsets()"));
+		const collect = script.slice(script.indexOf("function collectWorkOffsets()"), script.indexOf("function collectReferenceFrame()"));
+		const select = script.slice(script.indexOf("function selectOffsetReference("), script.indexOf("function getVisibilityState()"));
+		return { rows, ...new Function("data", "document", "previewOffsets", origin + collect + select + "return { collectWorkOffsets, selectOffsetReference };")(
+			{ options: { workOffsets: offsets, referenceFrame } }, document, () => {}
+		) };
+	}
+	const panel = open(workOffsets, "G54");
+	const row = code => panel.rows.find(entry => entry.code === code);
+	assert.equal(Number(row("G53").inputs.x.value), -100);
+	assert.equal(Number(row("G54").inputs.x.value), 0);
+	assert.equal(Number(row("G55").inputs.c.value), 90);
+	panel.selectOffsetReference({ closest: () => row("G55") });
+	assert.equal(Number(row("G53").inputs.x.value), -140);
+	assert.equal(Number(row("G54").inputs.x.value), -40);
+	assert.equal(Number(row("G55").inputs.c.value), 0);
+	for (const code of Object.keys(workOffsets)) {
+		for (const axis of ["x", "y", "z", "c"]) assert.equal(panel.collectWorkOffsets()[code][axis], workOffsets[code][axis]);
+	}
+	row("G54").inputs.x.value = "-35";
+	const saved = panel.collectWorkOffsets();
+	assert.equal(saved.G54.x, 105);
+	const reopened = open(saved, "G55");
+	assert.equal(Number(reopened.rows.find(entry => entry.code === "G54").inputs.x.value), -35);
+	reopened.selectOffsetReference({ closest: () => reopened.rows.find(entry => entry.code === "G53") });
+	assert.equal(Number(reopened.rows.find(entry => entry.code === "G54").inputs.x.value), 105);
+	assert.equal(reopened.collectWorkOffsets().G55.c, 180);
 });

@@ -1,6 +1,7 @@
 // Role: own KAIJU Reconstructor document formatting rules. Keep default options
 // in options.js and command-palette option UI in command.js.
 const vscode = require("vscode");
+const { getMachineModeForDocument } = require("../MetaMachineMode");
 const {
 	getCommentRanges,
 	getAngleBracketRanges,
@@ -43,12 +44,13 @@ function registerFormatter(context) {
 
 function getFormattingOptions(document, overrides = {}) {
 	const config = vscode.workspace.getConfiguration("kaijuNC.format", document.uri);
+	const machineSettings = getMachineModeForDocument(document).machineSettings;
 	const options = {
 		enabled: config.get("enabled", true),
 		decimalPlaces: clampNumber(config.get("decimalPlaces", 3), 0, 9),
 		addMissingDecimal: config.get("addMissingDecimal", true),
 		decimalAddressLetters: config.get("decimalAddressLetters", "XYZUVWABCHIJKRF"),
-		autoSemicolon: config.get("autoSemicolon", false),
+		autoSemicolon: machineSettings ? machineSettings.requiresSemicolons : config.get("autoSemicolon", false),
 		normalizeToolCodes: config.get("normalizeToolCodes", true),
 		leadingWhitespace: config.get("leadingWhitespace", "preserveTabs"),
 		softTabSize: config.get("softTabSize", 4),

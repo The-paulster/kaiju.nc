@@ -22,11 +22,24 @@ flowchart TD
 	extension --> warpaint[kaijuWarpaint/index.js]
 	extension --> quickToggles[kaijuQuickToggles/index.js]
 	extension --> codex[kaijuCodex/index.js]
+	extension --> fileSettings[kaijuFileSettings/index.js]
+	fileSettings --> machine
+	fileSettings --> chronoblade
+	fileSettings --> vision
+	fileSettings --> orphan
+	fileSettings --> warpaint
+	fileSettings --> alias
+	fileSettings --> aliasOptions
+	fileSettings --> senseOptions
+	fileSettings --> alertOptions
+	fileSettings --> reconOptions
+	fileSettings --> decompositionOptions
 
 	reconCommand --> reconFormatter
 	reconCommand --> reconOptions[kaijuReconstructor/options.js]
 	reconOptions --> reconFormatter
 	reconFormatter --> text[MetaTextRanges.js]
+	reconFormatter --> machine[MetaMachineMode.js]
 
 	sense --> senseMacro[kaijuSense/macro.js]
 	sense --> senseTool[kaijuSense/tool.js]
@@ -51,6 +64,7 @@ flowchart TD
 
 	alert --> text
 	alert --> machine
+	alert --> motion
 	alert --> alertOptions[kaijuAlert/options.js]
 
 	alias --> text
@@ -73,6 +87,7 @@ flowchart TD
 	chronoblade --> machine
 	chronobladeOptions --> machine
 
+	vision --> dialect
 	vision --> motion
 	vision --> trace
 	vision --> decomposition
@@ -94,6 +109,10 @@ flowchart TD
 	machineFeature --> machine
 	machineFeature --> dialect
 	machineFeature --> profileEditor[kaijuMachineMode/profileEditor.js]
+	machineFeature --> machineProfileEditor[kaijuMachineMode/machineProfileEditor.js]
+	machineProfileEditor --> machine
+	machineProfileEditor --> dialect
+	machineProfileEditor --> profileEditor
 	machineFeature --> alias
 	machineFeature --> aliasOptions[kaijuAlias/options.js]
 	profileEditor --> dialect
@@ -112,6 +131,37 @@ flowchart TD
 	macro --> text
 	tool --> macro
 	tool --> text
+	motion --> canned[MetaCannedCycles/index.js]
+	motion --> cycleCommon[MetaCannedCycles/mill/common.js]
+	dialect --> canned
+	profileEditor --> canned
+	codex --> canned
+	canned --> drilling[MetaCannedCycles/mill/drilling.js]
+	drilling --> cycleCommon
+	canned --> spotDrilling[MetaCannedCycles/mill/spotDrilling.js]
+	canned --> peckDrilling[MetaCannedCycles/mill/peckDrilling.js]
+	canned --> highSpeedPeck[MetaCannedCycles/mill/highSpeedPeck.js]
+	canned --> leftTapping[MetaCannedCycles/mill/leftTapping.js]
+	canned --> tapping[MetaCannedCycles/mill/tapping.js]
+	canned --> fineBoring[MetaCannedCycles/mill/fineBoring.js]
+	canned --> feedBoring[MetaCannedCycles/mill/feedBoring.js]
+	canned --> stopBoring[MetaCannedCycles/mill/stopBoring.js]
+	canned --> backBoring[MetaCannedCycles/mill/backBoring.js]
+	canned --> manualBoring[MetaCannedCycles/mill/manualBoring.js]
+	canned --> dwellBoring[MetaCannedCycles/mill/dwellBoring.js]
+	canned --> latheCatalog[MetaCannedCycles/lathe/catalog.js]
+	spotDrilling --> cycleCommon
+	peckDrilling --> cycleCommon
+	highSpeedPeck --> cycleCommon
+	leftTapping --> cycleCommon
+	tapping --> cycleCommon
+	fineBoring --> cycleCommon
+	feedBoring --> cycleCommon
+	stopBoring --> cycleCommon
+	backBoring --> cycleCommon
+	manualBoring --> cycleCommon
+	dwellBoring --> cycleCommon
+
 ```
 
 ## Layered View
@@ -124,7 +174,7 @@ flowchart LR
 
 	entryModules["extension.js"]
 	featureModules["kaijuSense/<br/>kaijuAlert/<br/>kaijuReconstructor/<br/>kaijuChronoblade/<br/>kaijuVision/<br/>kaijuDecomposition/<br/>kaijuMachineMode/<br/>kaijuTrace/<br/>kaijuRangefinder/<br/>kaijuAlias/<br/>kaijuOrphanKiller/<br/>kaijuWarpaint/<br/>kaijuQuickToggles/<br/>kaijuCodex/"]
-	metaModules["MetaMotionEngine.js<br/>MetaExecutionTrace.js<br/>MetaMachineMode.js<br/>MetaGCodeDialect.js<br/>MetaMacroEngine.js<br/>MetaToolModel.js<br/>MetaHumanFormat.js<br/>MetaModalDefs.json"]
+	metaModules["MetaMotionEngine.js<br/>MetaExecutionTrace.js<br/>MetaMachineMode.js<br/>MetaGCodeDialect.js<br/>MetaCannedCycles/<br/>MetaMacroEngine.js<br/>MetaToolModel.js<br/>MetaHumanFormat.js<br/>MetaModalDefs.json"]
 	utilityModules["MetaTextRanges.js"]
 
 	entry --> entryModules

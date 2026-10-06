@@ -17,12 +17,45 @@ rather than replicate its capabilities.
 | `MetaMacroEngine.js` | Macro aliases, assignment tokenization, header defaults, expression evaluation, normalization, and value resolution | Alias, Trace, Sense, Decomposition, Orphan Killer, Tool Model, Motion Engine |
 | `MetaToolModel.js` | Tool identity/ranges and stable tool colors | Sense, Rangefinder, Warpaint, Motion Engine |
 | `MetaTextRanges.js` | Comment and angle-bracket protected ranges plus offset-preserving masking | Features that scan code text; Macro Engine |
-| `MetaMachineMode.js` | Per-program mill/lathe profile persistence, Settings fallback, and change notifications | Machine Mode, Alert, Sense, Vision, Chronoblade |
+| `MetaMachineMode.js` | Named machine-profile validation, defaults, per-program machine and mill/lathe persistence, Settings fallback, and change notifications | Machine Mode, Alert, Sense, Vision, Chronoblade, Reconstructor |
 | `MetaGCodeDialect.js` | Versioned canonical G-code operations, validated controller bindings, companion-word requirements, built-in profiles, and the live custom-profile registry | Machine Mode, Motion Engine |
 | `MetaHumanFormat.js` | Formatting already-calculated values for UI | Motion Engine and reports |
 | `MetaModalDefs.json` | Status-group ordering and non-dialect modal definitions | Motion Engine |
 
+## Canned cycle ownership
+
+`MetaCannedCycles/` owns cycle variants, conventional commands, parameter state, and generated moves. `MetaGCodeDialect` owns their actual profile bindings; `MetaMotionEngine` calculates geometry/time from their generated moves. See [Canned cycles](canned-cycles.md).
+
 ## Boundary
+
+`MetaMotionEngine.parseWords` exposes the existing shared address-word scanner
+for static consumers such as Alert's profile-binding check. Callers mask
+protected text first and retain its source offsets; macro evaluation requires
+the relevant execution context. See the data-access contract for returned fields.
+
+`MetaMachineMode` owns reusable `workOffsets` and shared document overrides.
+`normalizeMachineWorkOffsets` validates finite signed X/Y/Z/C values for G53-G59.
+`getDocumentWorkOffsets` returns an override or undefined; it reads shared
+`kaijuMachineMode.workOffsetsByDocument` first, then legacy Vision storage.
+`saveDocumentWorkOffsets(document, offsets)` saves or clears an override,
+migrates the legacy entry, and emits `onDidChangeWorkOffsets` for report refresh.
+Machine-change events remain separate so offset edits do not reset view planes.
+`MetaMotionEngine` rebases position into the destination frame before computing
+travel/time, preserves physical axes across frame changes and non-modal G53,
+and projects C offsets into rotary rendering. Returned `pathCoordinateSystem`
+identifies the calculation path's frame; displayed start/end coordinates may
+retain their respective source/destination frames.
+
+`MetaMacroEngine` resolves indirect numeric variables such as `#[#100]`,
+computed addresses such as `#[#100+1]`, and nested indirect reads. The same
+resolution applies to assignment targets, motion/modal words, tool expressions,
+Trace conditions, and Decomposition output. Indirect addresses must evaluate to
+non-negative safe integers; invalid or missing addresses remain unresolved.
+No controller-specific variable range or fractional-address rounding is inferred.
+Trace retains the actual assigned variable in `assignments[].resolvedMacro`,
+and includes dereferenced variables in occurrence values, histories, and playback
+deltas. Its existing assumed-zero policy also reports missing dereferenced inputs
+when evaluating assignments and conditions.
 
 Meta must not own webviews, editor decorations, command-palette flows, or a
 feature's settings UI. It can expose data and pure-ish helpers that support
@@ -31,7 +64,10 @@ format after calculating. Motion timing must remain independent of rendering
 sampling. Mask comments and angle-bracket text through `MetaTextRanges` before
 performing feature-specific scans.
 
-For CSS timing, `MetaMotionEngine` takes an RPM clamp only from `G50 S...`.
+`MetaMotionEngine` keeps the profile-bound `G50 S...` limit as programmed state,
+and combines it with a configured physical machine maximum for effective RPM.
+The lower positive limit caps CSS and fixed-RPM timing. A machine maximum does
+not create an authored G50 status entry or provide a missing spindle speed.
 It does not infer a spindle limit from a `D` word, whose meaning is
 controller- and context-specific.
 
@@ -50,7 +86,8 @@ full circles such as `G3 I-6.`.
 
 Both built-in lathe profiles bind `M45`/`M46` to C-axis engagement and
 cancellation. These operations are independent of polar interpolation.
-`M46` resets the interpreted C value to zero for subsequent turning geometry
+`M46` resets the interpreted C value to zero by default (machine profiles can
+disable the reset) for subsequent turning geometry
 and position displays. Vision receives a position event for Trace playback at
 the cancellation block. Sense shows `M45` while
 active and clears that modal entry at `M46`.
@@ -63,10 +100,14 @@ the existing rotary inspection behavior. Physical
 placement rotates the linear XY position about Z; diameter X is halved first.
 C0 points along +X and positive C rotates toward +Y. Each commanded C or H
 sweep uses its full signed angle, including multiple turns. After the move, the
-tracked physical C angle is reduced to 0-360 degrees for the next block. Thus
+tracked physical C angle is reduced to 0-360 degrees for the next block by
+default; a machine profile can retain signed multi-turn coordinates instead.
+With wrapped coordinates,
 an H720 move draws two turns and ends at C0; a following absolute C0 does not
 draw an invented two-turn return. This is an inspection convention, not a
-controller-specific shortest-path or rotary unwind rule.
+rotary unwind rule. Machine profiles can separately select direct, shortest,
+positive, or negative equivalent absolute C routes; H and G91 sweeps preserve
+their signed travel. Polar interpolation bypasses these angular choices.
 For G1 moves outside polar interpolation, the default controller-feed model
 treats each degree of C travel as one linear program unit. Mixed X/Y/Z/C feed
 length is the vector of linear-axis travel and signed C travel; X keeps the
@@ -75,7 +116,19 @@ feed-per-minute and G95/G99 feed-per-revolution time estimates, including
 fixed-RPM and CSS cases. Chronoblade reports this controller-feed length for
 those moves, while Vision retains physical swept distance and geometry. It is
 not a surface-distance estimate. Rotary G0 and G2/G3 timing remains unknown
-without controller-specific rates and interpolation rules. Human position
+without controller-specific rates and interpolation rules by default. A
+configured C rapid rate enables G0 timing using the longest physical linear or
+angular axis travel/rate time. Optional linear axis rates use that same timing
+model; without them, nonrotary G0 preserves distance/base-rate time. Rapid
+geometry remains unchanged and no acceleration/dogleg path is inferred.
+Rotary feed alternatives are scaled angular contribution, physical swept
+distance, and linear-only travel. Physical G1 length and time integrate an
+analytic rotated-linear path derivative with fixed numerical quadrature,
+independent of rendering samples. Linear-only pure rotary time is unknown.
+Turret timing uses profile station count and indexing direction for circular
+routes, with the existing numeric gap fallback when station count is unknown
+or station identities are outside the configured range. Startup modes initialize
+motion and status state; authored operations override them. Human position
 formatting includes C when available.
 
 Machine Mode is saved in workspace state by source-document URI when selected
@@ -98,6 +151,12 @@ built-in `FANUC / ISO` profile binds feed/min and feed/rev to `G94` and `G95`.
 The built-in `DMG MORI` profile binds those functions to `G98` and `G99` in
 turning mode while retaining ISO mill feed modes and mill canned-cycle return
 meanings.
+
+Work-frame selection is dialect-owned through `coordinate.work1` to
+`coordinate.work6`, with G54-G59 defaults in both mode tables. Each operation
+selects a stable G54-G59 offset slot in MetaMotionEngine. The profile spelling
+appears in Sense; rebinding or unbinding never falls back to a literal selector.
+The shared offset storage and frame-rebasing calculations remain unchanged.
 
 `MetaGCodeDialect` is a deliberately bounded rebinding layer. Authored G/M words
 resolve to stable operations such as `feed.perMinute`, `motion.linear`, or
@@ -126,3 +185,6 @@ models rather than importing private helpers or reconstructing authored words.
 
 If only one feature needs a behavior, keep it in that feature. Promote it to
 Meta only when it is genuinely reusable and has no product-specific UI policy.
+
+
+`getDocumentMachineSettings(document)` returns a copy of the saved program selection plus the shared work-offset override (undefined means inherit). File Settings combines this with the existing resolved machine context.

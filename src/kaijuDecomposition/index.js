@@ -8,7 +8,9 @@ const {
 	maskProtectedRanges
 } = require("../MetaTextRanges");
 const {
-	MACRO_REGEX,
+	getExpressionMacroReferences,
+	readMacroToken,
+	readNumericValueToken,
 	buildAliasEntries,
 	buildMacroAliasMap,
 	buildInitialMacroDefaults,
@@ -282,7 +284,7 @@ async function decomposeCodeSegment(segment, lineNumber, context) {
 		}
 
 		const valueStart = skipWhitespace(text, index + 1);
-		const token = readValueToken(text, valueStart);
+		const token = readNumericValueToken(text, valueStart);
 
 		if (!token) {
 			index++;
@@ -369,22 +371,6 @@ function skipWhitespace(text, index) {
 	return index;
 }
 
-function readValueToken(text, start) {
-	if (start >= text.length) {
-		return undefined;
-	}
-
-	if (text[start] === "[") {
-		return readBracketToken(text, start);
-	}
-
-	const match = text.slice(start).match(/^[-+]?(?:#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)|\d+(?:\.\d*)?|\.\d+)/);
-
-	return match
-		? { text: match[0], start, end: start + match[0].length }
-		: undefined;
-}
-
 function readBracketToken(text, start) {
 	let depth = 0;
 
@@ -411,7 +397,18 @@ function readBracketToken(text, start) {
 }
 
 function removeAssignments(text) {
-	return text.replace(/#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)\s*=\s*[^;]+;?/g, "");
+	let result = "";
+	for (let index = 0; index < text.length;) {
+		const token = readMacroToken(text, index);
+		if (token && /^\s*=/.test(text.slice(token.end))) {
+			const semicolon = text.indexOf(";", token.end);
+			index = semicolon === -1 ? text.length : semicolon + 1;
+		} else if (token) {
+			result += token.text;
+			index = token.end;
+		} else result += text[index++];
+	}
+	return result;
 }
 
 function removeStandaloneLabel(text) {
@@ -547,11 +544,7 @@ function describeCondition(conditionText, context) {
 }
 
 function getConditionMacroValues(expression, context) {
-	const macros = new Set();
-
-	for (const match of String(expression || "").matchAll(MACRO_REGEX)) {
-		macros.add(normalizeMacro(match[0]));
-	}
+	const macros = getExpressionMacroReferences(expression, context.macroValues, context.macroAliases);
 
 	return [...macros].map(macro => {
 		const value = evaluateNumericExpression(macro, context.macroValues, context.macroAliases);

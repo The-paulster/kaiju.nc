@@ -24,13 +24,14 @@ function getVisionOptions(document, rawOptions = {}) {
 			? rawOptions.plane
 			: normalizeVisionPlane(getConfiguredValue(config, "plane", AUTO_VISION_PLANE), defaultPlane),
 		useToolColors: rawOptions.useToolColors === true,
-		workOffsets: normalizeVisionWorkOffsets(rawOptions.workOffsets),
 		referenceFrame: normalizeVisionReferenceFrame(rawOptions.referenceFrame),
 		initialPosition: normalizeVisionInitialPosition(rawOptions.initialPosition),
 		machineMode: profile.id,
 		gCodeDialectId: machineMode.gCodeDialectId,
 		defaultFeedMode: profile.defaultFeedMode,
 		xAxisMode: machineMode.xAxisMode,
+		cAxisCoordinates: machineMode.machineSettings && machineMode.machineSettings.cAxisCoordinates,
+		cAxisResetOnDisable: machineMode.machineSettings && machineMode.machineSettings.cAxisResetOnDisable,
 		xzOrientation: config.get("xzOrientation", "zRightXUp"),
 		xyOrientation: config.get("xyOrientation", "xRightYUp"),
 		zyOrientation: config.get("zyOrientation", "zRightYUp"),
@@ -39,7 +40,9 @@ function getVisionOptions(document, rawOptions = {}) {
 		compactPanelWidth: clampNumber(config.get("compactPanelWidth", 0.55), 0.25, 0.8),
 		zoomStep: clampNumber(config.get("zoomStep", 1.75), 1.01, 5),
 		wheelZoomStep: clampNumber(config.get("wheelZoomStep", 1.36), 1.01, 5),
-		rapidRate: clampNumber(config.get("rapidRate", chronobladeConfig.get("rapidRate", 10000)), 0, Number.POSITIVE_INFINITY),
+		rapidRate: machineMode.machineSettings ? machineMode.machineSettings.rapidRate : clampNumber(config.get("rapidRate", machineMode.machineProfile.rapidRate), 0, Number.POSITIVE_INFINITY),
+		...machineMode.motionOptions,
+		workOffsets: normalizeVisionWorkOffsets(rawOptions.workOffsets ?? machineMode.motionOptions.workOffsets),
 		lineThickness: clampNumber(config.get("lineThickness", 1), 0.1, 5),
 		arrowSize: clampNumber(config.get("arrowSize", 1), 0.1, 5),
 		endpointSize: clampNumber(config.get("endpointSize", 4), 1, 24),
@@ -91,6 +94,7 @@ function normalizeVisionWorkOffsets(rawOffsets = {}) {
 			x: normalizeOffsetAxis(raw.x),
 			y: normalizeOffsetAxis(raw.y),
 			z: normalizeOffsetAxis(raw.z),
+			c: normalizeOffsetAxis(raw.c),
 			note: typeof raw.note === "string" ? raw.note : ""
 		};
 	}

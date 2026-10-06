@@ -93,6 +93,25 @@ This extension provides editor assistance only. It does not simulate toolpaths, 
 
 Always verify CNC programs using proper simulation, machine checks, dry runs, and your shop's approved procedures before running code on a machine.
 
+## Development checks
+
+Run `npm ci` and `npm test` with Node.js 24 to run the regression suite locally.
+GitHub Actions runs the tests and checks JavaScript syntax on Windows and Linux
+for every push and pull request. The workflow can also be run manually from the
+repository's Actions tab. Results appear in Actions and on pull requests.
+
+`npm run test:examples` checks all shipped example programs against reviewed
+alert and motion expectations. `npm run test:integration` opens them in an
+isolated VS Code Extension Development Host and checks real diagnostics, report
+commands, and Vision rendering/playback. See [Testing](documentation/testing.md)
+for setup, expected results, and verification limits.
+
+The suite checks shared G-code interpretation, feature behavior, and generated
+webview script compilation using a mocked VS Code API. The separate integration
+suite adds real extension and browser checks; visual review still matters for
+layout and interactions outside that suite. These checks do not validate
+execution on a CNC controller.
+
 ## License
 
 MIT

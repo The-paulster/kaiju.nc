@@ -4,6 +4,7 @@ const { maskProtectedRanges } = require("./MetaTextRanges");
 const {
 	buildMacroAliasMap,
 	evaluateNumericExpression,
+	readNumericValueToken,
 	findMacroAssignments,
 	setMacroValue
 } = require("./MetaMacroEngine");
@@ -65,13 +66,13 @@ function getToolRanges(document) {
 }
 
 function findToolCall(codeLine, macroValues, macroAliases) {
-	const match = codeLine.match(/\bT\s*(\d{1,4}|[-+]?#(?:\d+|[A-Za-z_][A-Za-z0-9_]*)|\[[^\]]+\])/i);
-
-	if (!match) {
-		return "";
-	}
-
-	const toolCode = resolveToolCode(match[1], macroValues, macroAliases);
+	const match = /\bT\s*/i.exec(codeLine);
+	if (!match) return "";
+	const token = readNumericValueToken(codeLine, match.index + match[0].length);
+	if (!token) return "";
+	// Preserve the existing four-digit literal tool convention.
+	const toolText = /^\d/.test(token.text) ? token.text.match(/^\d{1,4}/)[0] : token.text;
+	const toolCode = resolveToolCode(toolText, macroValues, macroAliases);
 
 	return toolCode ? `T${toolCode}` : "";
 }
