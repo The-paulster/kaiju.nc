@@ -28,6 +28,11 @@ rather than replicate its capabilities.
 
 ## Boundary
 
+`MetaMachineMode` validates and persists the optional Boolean
+`requiresPercentDelimiters`, defaulting it to false for Generic Machine and
+legacy profiles. Reconstructor consumes it as a formatting default; delimiter
+insertion itself stays in Reconstructor.
+
 `MetaMotionEngine.parseWords` exposes the existing shared address-word scanner
 for static consumers such as Alert's profile-binding check. Callers mask
 protected text first and retain its source offsets; macro evaluation requires
@@ -87,9 +92,10 @@ full circles such as `G3 I-6.`.
 Both built-in lathe profiles bind `M45`/`M46` to C-axis engagement and
 cancellation. These operations are independent of polar interpolation.
 `M46` resets the interpreted C value to zero by default (machine profiles can
-disable the reset) for subsequent turning geometry
-and position displays. Vision receives a position event for Trace playback at
-the cancellation block. Sense shows `M45` while
+disable the reset) for subsequent position displays. Vision geometry uses
+the C0 lathe plane after explicit cancellation independently of the stored C
+value, and restores angular placement on re-engagement. Vision receives position
+events for Trace playback at cancellation and re-engagement blocks. Sense shows `M45` while
 active and clears that modal entry at `M46`.
 
 Outside polar interpolation, lathe C words are angular degrees and H is an

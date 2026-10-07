@@ -95,6 +95,28 @@ test('Vision playback lookup matches execution order during forward and backward
   assert.equal(api.getPlaybackProjectionIndex(projected), api.getPlaybackProjectionIndex(projected));
 });
 
+test('Vision readout follows retained C mode across cancellation, engagement and reverse seeks', () => {
+  const playback = { active: true, cursor: 0, usedAxes: ['x', 'c'] };
+  const readout = { innerHTML: '', classList: { add() {}, remove() {} } };
+  const api = helpers(['getPlaybackProjectionIndex', 'getPlaybackLocation', 'getCurrentPlaybackPosition', 'updatePlaybackPositionReadout'], {
+    playback, playbackProjectionIndexes: new WeakMap(), playbackPositionReadout: readout,
+    data: { options: {} }, formatAxisNumber: n => n.toFixed(3), svgEscape: s => s
+  });
+  const projected = { rows: [], cycles: [], events: [], toolChanges: [], positionEvents: [
+    { executionIndex: 1, cAxisMode: true, cAxisRetained: true, position: { x: 40, c: 90 } },
+    { executionIndex: 2, cAxisMode: false, cAxisRetained: true, position: { x: 40, c: 90 } },
+    { executionIndex: 4, cAxisMode: true, cAxisRetained: true, position: { x: 40, c: 90 } },
+    { executionIndex: 5, cAxisMode: false, cAxisRetained: false, position: { x: 40, c: 0 } }
+  ] };
+  for (const cursor of [1, 2, 3, 4, 5, 2, 1]) {
+    playback.cursor = cursor;
+    api.updatePlaybackPositionReadout(api.getCurrentPlaybackPosition(projected));
+    if (cursor === 2 || cursor === 3) assert.match(readout.innerHTML, /90\.000 \(Lathe mode; retained\)/);
+    else if (cursor === 5) assert.match(readout.innerHTML, /0\.000 \(Lathe mode\)/);
+    else assert.doesNotMatch(readout.innerHTML, /Lathe mode/);
+  }
+});
+
 test('Vision render requests coalesce without losing the latest state', () => {
   const frames = [];
   let rendered = 0;

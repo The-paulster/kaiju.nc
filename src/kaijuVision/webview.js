@@ -1737,6 +1737,8 @@ function renderVisionHtml(document, mode, options, result) {
 				events: [],
 				positionEvents: (data.positionEvents || []).map(event => ({
 					executionIndex: event.executionIndex,
+					cAxisMode: event.cAxisMode,
+					cAxisRetained: event.cAxisRetained,
 					tool: event.tool,
 					coordinateSystem: event.coordinateSystem,
 					projectedStart: project(event.startPoint || {}, plane),
@@ -3746,11 +3748,13 @@ function renderVisionHtml(document, mode, options, result) {
 			if (index) return index;
 			const candidates = [...(projected.positionEvents || []), ...projected.rows, ...projected.cycles, ...projected.toolChanges, ...projected.events]
 				.filter(row => Number.isFinite(row.executionIndex)).sort((a, b) => a.executionIndex - b.executionIndex);
-			let point, position;
+			let point, position, cAxisMode, cAxisRetained;
 			const positions = candidates.map(row => {
 				point = row.projectedEnd || row.projectedPoint || (row.projectedPoints && row.projectedPoints[row.projectedPoints.length - 1]) || point;
 				position = row.end || row.position || row.point || position;
-				return { executionIndex: row.executionIndex, point, position };
+				if (row.cAxisMode !== undefined) cAxisMode = row.cAxisMode;
+				if (row.cAxisRetained !== undefined) cAxisRetained = row.cAxisRetained;
+				return { executionIndex: row.executionIndex, point, position, cAxisMode, cAxisRetained };
 			});
 			index = { positions, motions: new Map([...projected.rows, ...projected.cycles].map(row => [row.executionIndex, row])) };
 			playbackProjectionIndexes.set(projected, index);
@@ -3779,7 +3783,7 @@ function renderVisionHtml(document, mode, options, result) {
 		function getCurrentPlaybackPosition(projected) {
 			if (!playback || !playback.active) return undefined;
 			const location = getPlaybackLocation(projected);
-			return location && location.position;
+			return location && location.position && { ...location.position, cAxisMode: location.cAxisMode, cAxisRetained: location.cAxisRetained };
 		}
 
 		function updatePlaybackPositionReadout(position) {
@@ -3793,7 +3797,9 @@ function renderVisionHtml(document, mode, options, result) {
 			playbackPositionReadout.innerHTML = axes.map(axis => {
 				const value = position[axis];
 				const text = Number.isFinite(value) ? formatAxisNumber(value, data.options.humanFormat) : "—";
-				return '<span class="playback-position-axis axis-' + axis + '"><span class="axis-letter">' + axis.toUpperCase() + '</span> ' + svgEscape(text) + '</span>';
+				const mode = axis === "c" && position.cAxisMode === false
+					? position.cAxisRetained ? " (Lathe mode; retained)" : " (Lathe mode)" : "";
+				return '<span class="playback-position-axis axis-' + axis + '"><span class="axis-letter">' + axis.toUpperCase() + '</span> ' + svgEscape(text + mode) + '</span>';
 			}).join("");
 			playbackPositionReadout.classList.add("open");
 		}
@@ -4174,7 +4180,7 @@ function renderVisionHtml(document, mode, options, result) {
 					|| !rowBoundsIntersect(makePointSetBounds([start, end]), bounds)) return "";
 				return '<line class="position-reset" x1="' + round(start.x) + '" y1="' + round(start.y)
 					+ '" x2="' + round(end.x) + '" y2="' + round(end.y)
-					+ '"><title>C-axis cancellation: projected position reset, no tool motion</title></line>';
+					+ '"><title>' + (event.cAxisMode === true ? 'C-axis engagement' : 'C-axis cancellation') + ': projected position reset, no tool motion</title></line>';
 			}).join("");
 		}
 

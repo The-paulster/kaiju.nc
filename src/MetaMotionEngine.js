@@ -1850,6 +1850,8 @@ function attachChronobladeLineData(row, lineNumber, executionEntry) {
 }
 
 function analyzeVisionRange(document, range, options) {
+	// Projection state is local to this inspection pass; never alter caller options.
+	options = { ...options };
 	const state = makeInitialState(options);
 	const macroValues = new Map();
 	const macroAliases = buildMacroAliasMap(document);
@@ -1880,18 +1882,24 @@ function analyzeVisionRange(document, range, options) {
 
 		const words = parseWords(codeLine, macroValues, macroAliases);
 		const motionCode = getMotionCode(words, options);
-		const cAxisReset = options.cAxisResetOnDisable !== false && hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options);
-		const resetStart = cAxisReset ? clonePosition(state.position) : undefined;
+		const cAxisTransition = hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_DISABLE, options)
+			|| (state.cAxisMode === false && hasGCodeOperation(words, G_CODE_OPERATIONS.C_AXIS_ENABLE, options));
+		const resetStart = cAxisTransition ? clonePosition(state.position) : undefined;
+		const previousProjectionOptions = cAxisTransition ? { ...options } : undefined;
 		const resetCoordinateSystem = state.positionCoordinateSystem || state.coordinateSystem;
 
 		applyModalState(words, motionCode, state, options);
 		rebaseVisionPositionForCoordinateSystem(state, state.coordinateSystem, options);
-		if (cAxisReset) {
+		options.visionLathePlane = state.cAxisMode === false && !state.polarInterpolation;
+		options.visionCAxisMode = state.cAxisMode;
+		if (cAxisTransition) {
 			positionEvents.push({
+				cAxisMode: state.cAxisMode,
+				cAxisRetained: options.cAxisResetOnDisable === false,
 				executionIndex: executionEntry && executionEntry.executionIndex,
 				tool: getToolRangeAtLine(toolRanges, lineNumber)?.tool || "",
 				coordinateSystem: resetCoordinateSystem,
-				startPoint: toVisionPoint(resetStart, options, resetCoordinateSystem),
+				startPoint: toVisionPoint(resetStart, previousProjectionOptions, resetCoordinateSystem),
 				position: clonePosition(state.position),
 				point: toVisionPoint(state.position, options, state.positionCoordinateSystem || state.coordinateSystem)
 			});
@@ -2319,6 +2327,8 @@ function makeVisionMotionRow(lineNumber, words, motionCode, estimate, options, t
 			? `${machineCoordinateWord} ${estimate.motionWord || `G${motionCode}`}`
 			: estimate.motionWord || `G${motionCode}`,
 		motionCode,
+		cAxisMode: options.visionCAxisMode,
+		cAxisRetained: options.cAxisResetOnDisable === false,
 		tool: toolRange ? toolRange.tool : "",
 		toolColor,
 		coordinateSystem,
@@ -2367,6 +2377,8 @@ function makeVisionCycleRow(lineNumber, state, words, options, toolRange) {
 
 	return {
 		type: "cycle",
+		cAxisMode: options.visionCAxisMode,
+		cAxisRetained: options.cAxisResetOnDisable === false,
 		lineNumber: lineNumber + 1,
 		instruction: `G${cycle.code}`,
 		cycleCode: cycle.code,
@@ -2390,6 +2402,8 @@ function makeVisionEventMarkerRow(lineNumber, words, position, coordinateSystem,
 
 	return {
 		type: "event",
+		cAxisMode: options.visionCAxisMode,
+		cAxisRetained: options.cAxisResetOnDisable === false,
 		lineNumber: lineNumber + 1,
 		instruction: marker.label || "Event",
 		coordinateSystem: coordinateSystem || "",
@@ -2410,6 +2424,8 @@ function makeVisionToolChangeRow(lineNumber, toolRange, previousToolRange, posit
 
 	return {
 		type: "tool",
+		cAxisMode: options.visionCAxisMode,
+		cAxisRetained: options.cAxisResetOnDisable === false,
 		lineNumber: lineNumber + 1,
 		instruction: previousTool ? `${previousTool} -> ${toolRange.tool}` : toolRange.tool,
 		previousTool,
@@ -2485,6 +2501,9 @@ function getProgramStopLabel(words) {
 
 function toVisionPoint(point, options, coordinateSystem, machineCoordinate = false) {
 	const displayPoint = shiftVisionPosition(point, coordinateSystem, options, machineCoordinate);
+	// Turning is inspected on the C0 plane even when the controller retains C.
+	// Apply this after frame offsets so a C work offset cannot rotate that plane.
+	if (options.visionLathePlane) displayPoint.c = 0;
 	const physicalPoint = toPhysicalPoint(displayPoint, options);
 
 	return {

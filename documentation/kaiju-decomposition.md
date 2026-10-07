@@ -35,6 +35,8 @@ consumers can map all completed occurrences to the generated trace.
   inline actions. It never walks program control flow independently.
 - Reuses Reconstructor formatting for output formatting rather than duplicating
   it.
+  Disables profile-driven `%` insertion because trace occurrence line numbers
+  must not be shifted by added program boundaries.
 
 ## Boundary
 

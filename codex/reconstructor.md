@@ -49,6 +49,12 @@ The [Reconstructor example](../examples/01-reconstructor.nc) contains untidy sou
 
 ## Options and settings
 
+In the machine profile's **Machine** tab, enable **Requires % delimiters** to
+add standalone `%` lines at the start and end when formatting. Existing outer
+delimiters are reused and internal ones are preserved. The option defaults off
+and applies to both **KAIJU Reconstructor** and **Format Document**.
+Standalone `%` lines never receive semicolons.
+
 The command picker changes **decimal places** and **Auto semicolon inserter** for that invocation. The other formatting rules come from the `kaijuNC.format` settings. **Format Document** reads those settings without showing the picker.
 
 | Setting | Effect |

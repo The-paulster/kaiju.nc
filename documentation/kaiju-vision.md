@@ -42,7 +42,9 @@ Chronoblade rapid-rate setting is no longer read.
 
 Applied machine profiles provide shared rapid-rate and C-axis wrapping/reset
 settings through `MetaMachineMode`. Vision uses the resulting shared geometry
-and position events; disabling the C reset also removes its reset connector.
+and position events. After explicit cancellation, turning geometry uses the C0
+lathe plane even when the profile retains C. The dotted connector marks that
+projection change; re-engagement restores placement at the retained angle.
 Its shared motion options also carry C absolute travel rules, rotary feed
 interpretation, axis rapid rates, spindle caps, CSS units, and startup modes.
 Physical path distance stays physical when the report's controller feed length
@@ -71,10 +73,13 @@ and hover details, retaining its last value on subsequent linear moves.
 C coordinates in hovers and the playback readout use the editor's default
 C-axis purple (#C678DD).
 Both built-in lathe profiles interpret `M45` as C-axis engagement and `M46` as
-cancellation. After `M46`, Vision uses C0 for subsequent turning moves, labels,
-and details; playback updates its C readout at the `M46` block itself without
-drawing a move. `G13.1` cancels polar interpolation separately.
-When C cancellation changes the projected position, Vision joins the positions
+cancellation. After `M46`, Vision projects subsequent turning moves on the C0
+lathe plane.
+Labels and details retain the profile-controlled C coordinate; playback updates
+at the cancellation block without drawing a move. The C readout shows
+`(Lathe mode; retained)` when reset is disabled, or `(Lathe mode)` when enabled.
+`G13.1` cancels polar interpolation separately.
+When C cancellation or re-engagement changes the projected position, Vision joins the positions
 before and after the reset with a muted, closely dotted connector in both
 Source and Trace views. Its tooltip identifies the projection reset. The
 connector is not a motion row and contributes no travel or time; rapid moves

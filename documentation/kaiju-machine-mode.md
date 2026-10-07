@@ -32,6 +32,11 @@ and **Requires semicolons**. That checkbox supplies Reconstructor's default
 for adding semicolons after code and before comments; the format command can
 still explicitly override it. The **Timing** tab contains rapid/tool timings
 and an add/remove list of custom M-code durations in seconds.
+Beside Requires semicolons, **Requires % delimiters** adds standalone `%` lines
+at the start and end when Reconstructor or Format Document runs. It defaults
+off for Generic Machine and existing custom profiles. New and Duplicate copy
+the setting from their source profile; saving and program selection use the
+shared `requiresPercentDelimiters` Boolean field.
 The tool timing fields include brief explanations: tool change is the base
 time, and extra-station seconds are added for each indexing step beyond an
 adjacent move (a three-step move adds two extra-station charges).

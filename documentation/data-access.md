@@ -36,7 +36,7 @@ the complete per-program interpretation context:
 | --- | --- |
 | `profile` | Mill/lathe profile and default feed behavior. |
 | `machineProfile` | Selected named machine definition, including its G-code profile and behavior settings. |
-| `machineSettings` | Active named machine settings, or undefined while preserving legacy settings/mode records. Pass C-axis coordinate/reset behavior; use rapid/tool and `customTimes` timing defaults in reports and `requiresSemicolons` as the formatter default. |
+| `machineSettings` | Active named machine settings, or undefined while preserving legacy settings/mode records. Pass C-axis coordinate/reset behavior; use rapid/tool and `customTimes` timing defaults in reports, `requiresSemicolons` as the semicolon formatter default, and `requiresPercentDelimiters` as the default for outer program delimiters. |
 | `motionOptions` | Shared derived machine options: axis rapid rates, turret indexing, C travel/feed rules, physical spindle maximum, CSS units, startup defaults, and effective work offsets. Spread after legacy fallbacks; legacy mode records still receive shared program offsets. |
 | `xAxisMode` | Radius or diameter interpretation used by motion geometry. |
 | `gCodeDialect` / `gCodeDialectId` | Selected controller keybinding table. |
@@ -87,6 +87,11 @@ Calculated rows carry presentation-safe controller spelling. Use
 `row.instruction`, `row.feedModeWord`, formatted spindle data, and
 `result.motionDisplayWords`; do not reconstruct `G94/G95`, `G0`, or another
 word from canonical state such as `feedMode` or `motionCode`.
+
+Vision rows and `positionEvents` expose `cAxisMode` (undefined before an explicit
+mode command) and `cAxisRetained` (profile reset disabled). Their points already
+use the C0 lathe plane after cancellation, while start/end/position retain the
+programmed C state. Mode transitions are projection events with no travel/time.
 
 ## Canned cycles
 

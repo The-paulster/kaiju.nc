@@ -159,7 +159,7 @@ async function decomposeDocument(document, runtimeOptions = {}) {
 
 	const outputDocumentLines = makeOutputLines(sourceName, context, outputLines);
 	const outputText = outputDocumentLines.join("\n");
-	const formattedText = formatDocumentText(outputText, getFormattingOptions(document, { enabled: true }));
+	const formattedText = formatDocumentText(outputText, getFormattingOptions(document, { enabled: true, addPercentDelimiters: false }));
 	const formattedLines = formattedText.split(/\r?\n/);
 	const outputBodyStart = outputDocumentLines.length - outputLines.length;
 	const decompositionLines = decomposedLineEntries.map(entry => {

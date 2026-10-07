@@ -4,6 +4,10 @@ All notable changes to the "KAIJU.NC" extension will be documented in this file.
 
 ## [0.7.0]
 
+- Machine Profiles adds Requires % delimiters (default off). Reconstructor adds missing standalone % boundaries without duplicating existing delimiters; semicolon insertion preserves % lines.
+
+- Vision projects turning moves on the C0 lathe plane after C-axis cancellation even when the machine profile retains C. Playback identifies retained C in Lathe mode; dotted connectors mark projection changes on cancellation and re-engagement without adding travel or time.
+
 - Added read-only KAIJU File Settings with a brief explanation, searchable resolved settings, saved program choices, configuration layers, Refresh, and Copy JSON. Available from the Command Palette; enable Show In Context Menu (default off) to place it beside Machine Profile and G-code Profile.
 
 - Vision adds an optional per-program WCS numbers control above node dots, including combined numbers on merged nodes, larger text and a thicker contrast outline. Node tooltips show the full frame label with its active profile binding.

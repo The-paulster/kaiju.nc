@@ -11,7 +11,7 @@ can use a saved machine and override its G-code selection separately.
 
 | Choice | What it controls | Where to change it |
 | --- | --- | --- |
-| Machine profile | Machine type, G-code profile, startup modes, C-axis behavior, spindle limits, rapid/tool timings, work offsets, and semicolon formatting default. | Right-click **KAIJU Machine Profile**, or click the machine/profile status indicator. |
+| Machine profile | Machine type, G-code profile, startup modes, C-axis behavior, spindle limits, rapid/tool timings, work offsets, and semicolon / % delimiter formatting defaults. | Right-click **KAIJU Machine Profile**, or click the machine/profile status indicator. |
 | Machine mode | Mill, Lathe - Radius, or Lathe - Diameter; supplies the X programming convention. | Machine profile's **Machine** tab. Existing **KAIJU Machine Mode** commands remain available. |
 | G-code profile | Which G/M words activate supported functions, with separate Mill and Lathe bindings. | Right-click **KAIJU G-code Profile**. |
 

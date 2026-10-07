@@ -30,6 +30,7 @@ async function visionFrame(browser) {
 async function checkVision(browser, request, artifactDirectory) {
   let frame = await visionFrame(browser);
   await frame.locator('#plane').selectOption('xy');
+  if (request.retainedCAxis) return checkRetainedCAxis(browser, frame, request, artifactDirectory);
   await retry(async () => {
     const rows = await frame.evaluate(() => JSON.parse(document.getElementById('vision-data').textContent).rows.filter(row => row.type === 'motion').map(row => ({
       lineNumber: row.lineNumber, executionIndex: row.executionIndex,
@@ -76,6 +77,64 @@ async function checkVision(browser, request, artifactDirectory) {
     }, 'Real playback seeks to the expected position');
   }
   console.log(`PASS ${request.file}: real WebGL pixels, Dual View and forward/reverse playback`);
+}
+
+async function checkRetainedCAxis(browser, frame, request, artifactDirectory) {
+  const close = (actual, expected) => assert.ok(Number.isFinite(actual) && Math.abs(actual - expected) < 1e-5, `${actual} != ${expected}`);
+  // Independent expectations: X40 diameter is radius 20. C90 lies on +Y;
+  // turning lies on +X while its stored C remains 90. SVG Y points downward.
+  await retry(async () => {
+    const rows = await frame.evaluate(() => {
+      const projected = getProjectedPlaneData(getPrimaryPlaneKey(), planes[getPrimaryPlaneKey()]);
+      return projected.rows.filter(row => [6, 9].includes(row.lineNumber))
+        .map(row => ({ lineNumber: row.lineNumber, end: row.end, projectedPoints: row.projectedPoints }));
+    });
+    assert.equal(rows.length, 2);
+    const turning = rows.find(row => row.lineNumber === 6);
+    assert.equal(turning.end.c, 90);
+    for (const point of turning.projectedPoints) { close(point.x, 20); close(point.y, 0); }
+    const engaged = rows.find(row => row.lineNumber === 9);
+    for (const point of engaged.projectedPoints) { close(point.x, 0); close(point.y, -20); }
+    assert.equal(await frame.locator('#vision-svg .position-reset').count(), 2);
+    const connector = await frame.locator('#vision-svg .position-reset').first().evaluate(line => ({
+      x1: Number(line.getAttribute('x1')), y1: Number(line.getAttribute('y1')),
+      x2: Number(line.getAttribute('x2')), y2: Number(line.getAttribute('y2')),
+      dash: getComputedStyle(line).strokeDasharray, opacity: getComputedStyle(line).strokeOpacity,
+      title: line.textContent
+    }));
+    close(connector.x1, 0); close(connector.y1, -20); close(connector.x2, 20); close(connector.y2, 0);
+    assert.match(connector.dash, /^2(?:px)?,\s*4(?:px)?$/);
+    close(Number(connector.opacity), 0.75);
+    assert.match(connector.title, /C-axis cancellation:.*no tool motion/);
+  }, 'Retained C uses the C0 turning plane and faint dotted connector');
+  await frame.locator('#playbackToggle').click();
+  await retry(async () => {
+    frame = await visionFrame(browser);
+    assert.equal(await frame.evaluate(() => JSON.parse(document.getElementById('vision-data').textContent).playback?.autoStart), true);
+  }, 'Retained-C playback loads');
+  const entries = await frame.evaluate(() => JSON.parse(document.getElementById('vision-data').textContent).playback.entries);
+  // Include mode-only blocks, the turning move, an intervening stop, and reverse seeks.
+  for (const line of [3, 4, 5, 6, 7, 8, 4, 3]) {
+    const entry = entries.find(entry => entry.lineNumber === line);
+    assert.ok(entry, `Trace includes fixture line ${line + 1}`);
+    await frame.locator('#playbackScrubber').evaluate((input, value) => {
+      input.value = String(value); input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, entry.executionIndex + 1);
+    await retry(async () => {
+      const location = await frame.evaluate(() => getPlaybackLocation(getProjectedPlaneData(getPrimaryPlaneKey(), planes[getPrimaryPlaneKey()])));
+      const turning = line >= 4 && line <= 6;
+      assert.equal(location.position.c, 90, 'Controller C remains retained');
+      close(location.point.x, turning ? 20 : 0); close(location.point.y, turning ? 0 : -20);
+      const readout = await frame.locator('#playbackPositionReadout .axis-c').textContent();
+      assert.match(readout, /C\s+90\.000/);
+      if (turning) assert.match(readout, /\(Lathe mode; retained\)/);
+      else assert.doesNotMatch(readout, /Lathe mode/);
+      assert.equal(await frame.locator('#vision-svg .position-reset').count(), line >= 7 ? 2 : line >= 4 ? 1 : 0,
+        'Connectors follow playback cursor, including reverse seeks');
+    }, `Retained-C playback at fixture line ${line + 1}`);
+    if (line === 5) await frame.locator('#viewer').screenshot({ path: path.join(artifactDirectory, request.file + '.png') });
+  }
+  console.log(`PASS ${request.file}: C0 turning plane, retained-C readout, dotted connectors and reverse playback`);
 }
 
 function monitorWebviews(endpoint, workspace) {

@@ -85,7 +85,7 @@ Hover over a macro or motion line to see its value and context where you’re wo
 ## Supported File Types
 
 Supports common NC and G-code file extensions
-.nc, .cnc, .tap, .gcode, .gco, .gc, .ngc, .ncc, .eia, .iso, .min, .mpf, .spf, .dnc, .sub
+.nc, .nd, .cnc, .tap, .gcode, .gco, .gc, .ngc, .ncc, .eia, .iso, .min, .mpf, .spf, .dnc, .sub
 
 ## Important Safety Note
 

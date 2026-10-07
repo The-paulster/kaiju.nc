@@ -110,6 +110,7 @@ input[type=checkbox] { width:auto; } textarea { resize:vertical; }
 <div class="field"><label for="machineMode">Machine type</label><select id="machineMode"><option value="auto">Automatic</option><option value="mill">Mill</option><option value="latheDiameter">Lathe (Diameter)</option><option value="latheRadius">Lathe (Radius)</option></select></div>
 <div class="field"><label for="gCodeDialectId">G-code profile</label><select id="gCodeDialectId"></select></div>
 <div class="field"><label for="requiresSemicolons">Requires semicolons</label><div><input id="requiresSemicolons" type="checkbox"> <label for="requiresSemicolons">Add ; when formatting</label></div></div>
+<div class="field"><label for="requiresPercentDelimiters">Requires % delimiters</label><div><input id="requiresPercentDelimiters" type="checkbox"> <label for="requiresPercentDelimiters">Add % at the start and end when formatting</label></div></div>
 <div class="field"><label for="cssSurfaceSpeedUnit">CSS surface-speed units</label><select id="cssSurfaceSpeedUnit"><option value="mPerMin">m/min</option><option value="sfm">ft/min</option></select></div>
 <div class="field"><label for="maxSpindleRpm">Maximum spindle RPM</label><input id="maxSpindleRpm" type="number" min="0" step="any" required></div>
 <p class="help">Zero leaves the machine limit unspecified. Estimates use the lower of this limit and the program's spindle limit.</p>
@@ -164,11 +165,11 @@ const byId = id => document.getElementById(id);
 const copy = value => JSON.parse(JSON.stringify(value));
 let profiles = copy(initial.profiles), selectedId = initial.currentId, defaultId = initial.defaultId, currentId = initial.currentId;
 let dirty = false, busy = false;
-const keys = ['label','description','machineMode','gCodeDialectId','rapidRate','toolChangeSeconds','extraStationSeconds','cAxisCoordinates','cAxisResetOnDisable','requiresSemicolons','cssSurfaceSpeedUnit','maxSpindleRpm','cAxisTravel','rotaryFeedRule','rotaryFeedScale','startupFeedMode','startupPlane','startupDistanceMode','startupSpindleMode','turretStationCount','turretIndexing','rapidX','rapidY','rapidZ','rapidC'];
+const keys = ['label','description','machineMode','gCodeDialectId','rapidRate','toolChangeSeconds','extraStationSeconds','cAxisCoordinates','cAxisResetOnDisable','requiresSemicolons','requiresPercentDelimiters','cssSurfaceSpeedUnit','maxSpindleRpm','cAxisTravel','rotaryFeedRule','rotaryFeedScale','startupFeedMode','startupPlane','startupDistanceMode','startupSpindleMode','turretStationCount','turretIndexing','rapidX','rapidY','rapidZ','rapidC'];
 const axisKeys = { rapidX: 'x', rapidY: 'y', rapidZ: 'z', rapidC: 'c' };
 const offsetKeys = {};
 for (const code of ['G54','G55','G56','G57','G58','G59']) for (const axis of ['x','y','z','c']) { const id = 'offset-' + code + '-' + axis; offsetKeys[id] = { code, axis }; keys.push(id); }
-const checkboxes = new Set(['cAxisResetOnDisable','requiresSemicolons']);
+const checkboxes = new Set(['cAxisResetOnDisable','requiresSemicolons','requiresPercentDelimiters']);
 const numeric = new Set(['rapidRate','toolChangeSeconds','extraStationSeconds','maxSpindleRpm','rotaryFeedScale','turretStationCount']);
 const timingDrafts = new Map();
 const selected = () => profiles.find(profile => profile.id === selectedId) || profiles[0];
@@ -278,7 +279,7 @@ function send(type) {
    if (Object.prototype.hasOwnProperty.call(customTimes, code)) { setTab('timing'); notice('Duplicate custom timing for ' + code + ' (' + profile.label + ').', true); return; }
    customTimes[code] = entry.seconds;
   }
-  output.push({ ...profile, requiresSemicolons: profile.requiresSemicolons === true, customTimes });
+  output.push({ ...profile, requiresSemicolons: profile.requiresSemicolons === true, requiresPercentDelimiters: profile.requiresPercentDelimiters === true, customTimes });
  }
  if (!byId('fields').reportValidity()) return;
  busy = true; notice('Saving…'); controls(); list();

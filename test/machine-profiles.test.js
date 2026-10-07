@@ -165,7 +165,8 @@ test("machine behavior reaches all motion consumers and ignores obsolete report 
 	assert.equal(rows[0].end.c, 720);
 	assert.equal(rows[1].start.c, 720);
 	assert.equal(rows[1].end.c, 0);
-	assert.equal(vision.positionEvents.length, 0);
+	assert.equal(vision.positionEvents.length, 1);
+	assert.equal(vision.positionEvents[0].position.c, 720);
 	const wrapped = motion.analyzeVisionRange(document, undefined, { ...getVisionOptions(document), cAxisCoordinates: "wrapped", cAxisResetOnDisable: true });
 	assert.equal(wrapped.rows.filter(row => row.type === "motion" && row.motionCode === 1)[0].end.c, 0);
 	assert.equal(wrapped.positionEvents.length, 1);
@@ -203,6 +204,45 @@ function runPage(data) {
 	vm.runInNewContext(script, { document, window: { addEventListener: (type, listener) => { listeners[type] = listener; } }, acquireVsCodeApi: () => ({ postMessage: message => messages.push(message) }) });
 	return { html, elements, messages, listeners };
 }
+
+test("percent profile settings survive persistence, honor false, and default off for legacy profiles", async () => {
+	const context = setup();
+	const document = makeDocument("O1000\nM30", { uri: "percent-profile.nc" });
+	const legacy = profile("legacy"); delete legacy.requiresPercentDelimiters;
+	assert.equal(machine.normalizeMachineProfiles([legacy])[0].requiresPercentDelimiters, false);
+	assert.throws(() => machine.normalizeMachineProfiles([profile("bad", { requiresPercentDelimiters: "true" })]));
+	assert.equal(getFormattingOptions(document).addPercentDelimiters, false);
+	await machine.saveMachineProfiles(document, [profile("wrapped", { requiresPercentDelimiters: true }), legacy]);
+	await machine.setMachineProfile(document, "wrapped");
+	machine.initializeMachineMode(context);
+	assert.equal(getFormattingOptions(document).addPercentDelimiters, true);
+	assert.equal(getFormattingOptions(document, { addPercentDelimiters: false }).addPercentDelimiters, false);
+	const { decomposeDocument } = require("../src/kaijuDecomposition");
+	const trace = await decomposeDocument(document, { promptForUnknownMacros: false });
+	assert.ok(!trace.text.split(/\r?\n/).includes("%"));
+	for (const entry of trace.decompositionLines) {
+		assert.equal(trace.text.split(/\r?\n/)[entry.lineNumber - 1], entry.line);
+	}
+	await machine.setMachineProfile(document, "legacy");
+	assert.equal(getFormattingOptions(document).addPercentDelimiters, false);
+});
+
+test("percent checkbox loads, copies, and saves independent machine settings", () => {
+	setup();
+	const page = runPage({ profiles: [machine.GENERIC_MACHINE_PROFILE, profile("source")], dialects: [{ id: "dmgMori", label: "DMG MORI" }], currentId: "source", defaultId: "generic" });
+	assert.ok(page.html.includes('Requires % delimiters'));
+	const node = id => page.elements.get(id);
+	assert.equal(node('requiresPercentDelimiters').checked, false);
+	node('requiresPercentDelimiters').checked = true;
+	node('requiresPercentDelimiters').handlers.input();
+	node('copyProfile').onclick(); node('newName').value = 'Copy'; node('createProfile').onclick();
+	assert.equal(node('requiresPercentDelimiters').checked, true);
+	node('requiresPercentDelimiters').checked = false;
+	node('requiresPercentDelimiters').handlers.input();
+	node('save').onclick();
+	assert.equal(page.messages[0].profiles.find(profile => profile.id === 'source').requiresPercentDelimiters, true);
+	assert.equal(page.messages[0].profiles.find(profile => profile.id === page.messages[0].selectedId).requiresPercentDelimiters, false);
+});
 
 test("machine timing lists normalize M codes and charge every executed occurrence", async () => {
 	setup();

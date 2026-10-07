@@ -6,6 +6,35 @@ const motion = require("../src/MetaMotionEngine");
 const { buildExecutionTrace } = require("../src/MetaExecutionTrace");
 const modalDefinitions = require("../src/MetaModalDefs.json");
 
+test("Vision separates retained C from the turning plane and restores it on engagement", () => {
+	const document = makeDocument("G18\nG0 X40 Z20\nM45\nG0 C90\nM46\nG1 Z10 F100\nM0\nM45\nG1 Z0");
+	for (const trace of [false, true]) {
+		const options = { machineMode: "lathe", xAxisMode: "diameter", cAxisResetOnDisable: false,
+			workOffsets: { G54: { c: 30 } },
+			executionTrace: trace ? buildExecutionTrace(document, { includeExecutionEntries: true }) : undefined };
+		const result = motion.analyzeVisionRange(document, undefined, options);
+		const turning = result.rows.find(row => row.lineNumber === 6 && row.type === "motion");
+		assert.equal(turning.end.c, 90);
+		assert.equal(turning.cAxisMode, false);
+		assert.equal(turning.cAxisRetained, true);
+		for (const point of turning.points) {
+			assert.equal(point.x, 20);
+			assert.equal(point.y, 0);
+		}
+		const stop = result.rows.find(row => row.lineNumber === 7 && row.type === "event");
+		assert.equal(stop.point.x, 20);
+		assert.equal(stop.position.c, 90);
+		assert.equal(result.positionEvents.length, 2);
+		assert.equal(result.positionEvents[0].point.x, 20);
+		assert.equal(result.positionEvents[0].position.c, 90);
+		assert.equal(result.positionEvents[1].cAxisMode, true);
+		const resumed = result.rows.find(row => row.lineNumber === 9 && row.type === "motion");
+		assert.ok(Math.abs(resumed.points[0].x + 10) < 1e-6);
+		assert.ok(Math.abs(resumed.points[0].y - 20 * Math.sin(2 * Math.PI / 3)) < 1e-6);
+		assert.equal(options.visionLathePlane, undefined);
+	}
+});
+
 test("both mode tables pre-bind work coordinate systems 1-6 to G54-G59", () => {
 	for (const profile of dialect.getBuiltInGCodeDialectProfiles()) {
 		for (const mode of ["mill", "lathe"]) {

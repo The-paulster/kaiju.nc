@@ -51,6 +51,7 @@ function getFormattingOptions(document, overrides = {}) {
 		addMissingDecimal: config.get("addMissingDecimal", true),
 		decimalAddressLetters: config.get("decimalAddressLetters", "XYZUVWABCHIJKRF"),
 		autoSemicolon: machineSettings ? machineSettings.requiresSemicolons : config.get("autoSemicolon", false),
+		addPercentDelimiters: !!(machineSettings && machineSettings.requiresPercentDelimiters),
 		normalizeToolCodes: config.get("normalizeToolCodes", true),
 		leadingWhitespace: config.get("leadingWhitespace", "preserveTabs"),
 		softTabSize: config.get("softTabSize", 4),
@@ -93,11 +94,18 @@ function formatDocumentText(text, options) {
 		options.addMissingDecimal
 	);
 
+	if (options.addPercentDelimiters) {
+		formattedText = addPercentDelimiters(formattedText);
+	}
+
 	if (options.autoSemicolon) {
 		formattedText = addSemicolonsBeforeComments(formattedText);
 	}
 
 	formattedText = indentLoopBlocks(formattedText, options.leadingWhitespace, options.softTabSize);
+	if (options.addPercentDelimiters && formattedText && /\r?\n$/.test(text)) {
+		formattedText += text.includes("\r\n") ? "\r\n" : "\n";
+	}
 
 	return formattedText;
 }
@@ -561,6 +569,24 @@ function getNumberSign(numberText, value) {
 	return "";
 }
 
+function addPercentDelimiters(text) {
+	const newline = text.includes("\r\n") ? "\r\n" : "\n";
+	const lines = text.split(/\r?\n/);
+	let first = 0;
+	let last = lines.length - 1;
+	while (first <= last && !lines[first].trim()) first++;
+	while (last >= first && !lines[last].trim()) last--;
+	if (first > last) return "";
+	const program = lines.slice(first, last + 1);
+	// Accept an old formatter's %; at the boundaries and restore standalone %.
+	const isDelimiter = line => /^\s*%\s*;?\s*$/.test(line);
+	if (isDelimiter(program[0])) program[0] = "%";
+	else program.unshift("%");
+	if (program.length > 1 && isDelimiter(program[program.length - 1])) program[program.length - 1] = "%";
+	else program.push("%");
+	return program.join(newline);
+}
+
 function addSemicolonsBeforeComments(text) {
 	const newline = text.includes("\r\n") ? "\r\n" : "\n";
 
@@ -571,6 +597,8 @@ function addSemicolonsBeforeComments(text) {
 }
 
 function addSemicolonToLine(line) {
+	if (line.trim() === "%") return line;
+
 	if (!line.trim()) {
 		return ";";
 	}

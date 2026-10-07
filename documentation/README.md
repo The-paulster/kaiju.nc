@@ -31,7 +31,7 @@ flowchart TB
 | [Orphan Killer](kaiju-orphan-killer.md) | Macro definition/reference report | Macro engine, text ranges |
 | [Quick Toggles](kaiju-quick-toggles.md) | Context-menu switches for existing settings | Warpaint and Alert settings |
 | [Rangefinder](kaiju-rangefinder.md) | Tool/N-label selection | Tool model, text ranges |
-| [Reconstructor](kaiju-reconstructor.md) | Document formatting | Its command and options files, machine semicolon defaults |
+| [Reconstructor](kaiju-reconstructor.md) | Document formatting | Its command and options files, machine semicolon and % delimiter defaults |
 | [Sense](kaiju-sense.md) | Live editor hovers, decorations, cursor status | Motion, macro, tool, and text helpers |
 | [Vision](kaiju-vision.md) | Motion inspection report and renderer | Motion engine, execution trace, Decomposition line mapping, machine mode |
 | [Warpaint](kaiju-warpaint.md) | Per-document N-section decoration and editor | Tool model, Rangefinder N-label helper |

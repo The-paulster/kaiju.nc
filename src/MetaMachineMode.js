@@ -39,7 +39,7 @@ const GENERIC_MACHINE_PROFILE = Object.freeze({
 	machineMode: "auto", gCodeDialectId: "fanucIso", rapidRate: 10000,
 	toolChangeSeconds: 4, extraStationSeconds: 0.5,
 	cAxisCoordinates: "wrapped", cAxisResetOnDisable: true,
-	requiresSemicolons: false, customTimes: Object.freeze({}),
+	requiresSemicolons: false, requiresPercentDelimiters: false, customTimes: Object.freeze({}),
 	turretStationCount: 0, turretIndexing: "shortest",
 	rapidRates: Object.freeze({ x: null, y: null, z: null, c: null }),
 	workOffsets: Object.freeze({}),
@@ -72,6 +72,7 @@ function normalizeMachineProfiles(value, { validateGCodeProfiles = true } = {}) 
 		if (!["wrapped", "continuous"].includes(raw.cAxisCoordinates)) throw new Error("Select a valid C-axis coordinate behavior.");
 		if (typeof raw.cAxisResetOnDisable !== "boolean") throw new Error("C-axis reset must be enabled or disabled.");
 		if (raw.requiresSemicolons !== undefined && typeof raw.requiresSemicolons !== "boolean") throw new Error("Requires semicolons must be enabled or disabled.");
+		if (raw.requiresPercentDelimiters !== undefined && typeof raw.requiresPercentDelimiters !== "boolean") throw new Error("Requires % delimiters must be enabled or disabled.");
 		const customTimes = {};
 		if (raw.customTimes !== undefined && (!raw.customTimes || typeof raw.customTimes !== "object" || Array.isArray(raw.customTimes))) throw new Error("Custom timings must map M codes to seconds.");
 		for (const [code, seconds] of Object.entries(raw.customTimes || {})) {
@@ -84,7 +85,7 @@ function normalizeMachineProfiles(value, { validateGCodeProfiles = true } = {}) 
 		const profile = { id, label, description: String(raw.description || "").slice(0, 240),
 			machineMode: raw.machineMode, gCodeDialectId: raw.gCodeDialectId,
 			cAxisCoordinates: raw.cAxisCoordinates, cAxisResetOnDisable: raw.cAxisResetOnDisable,
-			requiresSemicolons: raw.requiresSemicolons === true, customTimes };
+			requiresSemicolons: raw.requiresSemicolons === true, requiresPercentDelimiters: raw.requiresPercentDelimiters === true, customTimes };
 		for (const key of ["rapidRate", "toolChangeSeconds", "extraStationSeconds"]) {
 			if (typeof raw[key] !== "number" || !Number.isFinite(raw[key]) || raw[key] < 0) throw new Error(`${key} must be a non-negative number.`);
 			profile[key] = raw[key];

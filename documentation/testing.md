@@ -49,6 +49,14 @@ playback using the actual controls. Software WebGL keeps these checks usable on
 CI machines. Screenshots are saved in the printed test workspace's `screenshots/`
 directory for visual review; they are not automatically accepted golden images.
 
+The integration suite also creates a retained-C fixture and machine profile in
+the disposable workspace. With cancellation reset disabled, it asserts C90 is
+retained while turning projects onto the C0 plane, and re-engagement restores
+the C90 placement. The actual SVG connector endpoints, short dash pattern,
+opacity, tooltip, and playback visibility are checked. Real scrubber seeks
+verify the retained-C readout at mode-only blocks, turning moves, and a stop,
+including backward seeks. A screenshot captures the turning state for review.
+
 `KAIJU_VSCODE_VERSION` selects a particular VS Code version instead of stable.
 `KAIJU_VSCODE_EXECUTABLE` selects an existing VS Code executable and avoids the
 download. The default stable download must satisfy `engines.vscode` in the

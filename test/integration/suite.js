@@ -40,7 +40,7 @@ async function openReport(document, command, title, item) {
   }, command);
   if (command === 'kaijuNC.vision') {
     await vscode.commands.executeCommand('notifications.clearAll');
-    await browserCheck({ file: item.file, motions: item.motions, motionRows: item.motionRows });
+    await browserCheck({ file: item.file, motions: item.motions, motionRows: item.motionRows, retainedCAxis: item.retainedCAxis });
   }
   assert.equal(await vscode.window.tabGroups.close(tab, true), true, `Close ${title}`);
   await eventually(() => assert.ok(!tabs().includes(tab)), `Dispose ${title}`);
@@ -85,7 +85,23 @@ async function run() {
     console.log(`PASS ${item.file}: real diagnostics, reviewed analysis and three report commands`);
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   }
-  console.log(`PASS all ${contracts.cases.length} example programs in VS Code ${vscode.version}`);
+  // This fixture and its machine settings live only in the disposable workspace.
+  const machine = require('../../src/MetaMachineMode');
+  const fixture = 'retained-c-axis.nc';
+  const filename = path.join(process.env.KAIJU_TEST_WORKSPACE, fixture);
+  const source = 'G18\nG0 X40.000 Z20.000\nM45\nG0 C90.000\nM46\nG98 G1 Z10.000 F100.000\nM0\nM45\nG1 Z0.000\nM30\n';
+  fs.writeFileSync(filename, source);
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filename));
+  await vscode.workspace.getConfiguration('kaijuNC.machineProfiles', document.uri).update('customProfiles', [{
+    ...machine.GENERIC_MACHINE_PROFILE, id: 'ci-retained-c', label: 'CI retained C',
+    machineMode: 'latheDiameter', cAxisResetOnDisable: false
+  }], vscode.ConfigurationTarget.Workspace);
+  await machine.setMachineProfile(document, 'ci-retained-c');
+  await openReport(document, 'kaijuNC.vision', 'KAIJU Vision', { file: fixture, retainedCAxis: true });
+  assert.equal(document.isDirty, false);
+  assert.equal(document.getText(), source, 'Retained-C inspection preserves fixture source');
+  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  console.log(`PASS all ${contracts.cases.length} example programs and retained-C regression in VS Code ${vscode.version}`);
 }
 
 module.exports = { run };

@@ -23,6 +23,16 @@ track modal context across lines.
 
 ## Boundary
 
+The active machine's `requiresPercentDelimiters` (default false) supplies
+`addPercentDelimiters` for both the Reconstructor command and Format Document.
+When enabled, nonempty output has standalone `%` lines at its outer boundaries.
+Existing boundary delimiters are reused, internal `%` lines are preserved, and
+boundary `% ;` spellings are restored to `%`. Outer blank lines are removed;
+the source newline style and presence of a final newline are retained.
+Semicolon insertion always leaves standalone `%` lines unchanged.
+Decomposition explicitly disables delimiter insertion to preserve occurrence
+line mapping in its generated inspection trace.
+
 Do not hide formatting rules in the command or options files. Reconstructor
 rewrites presentation of source text; it does not own semantic diagnostics,
 motion interpretation, macro evaluation, or language grammar highlighting.
