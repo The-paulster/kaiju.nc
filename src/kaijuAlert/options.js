@@ -14,6 +14,7 @@ function getAlertOptions(document) {
 
 	return {
 		warnNonAscii: config.get("nonAscii.enabled", true),
+		warnMultipleCommentParenthesisWarnings: config.get("multipleCommentParenthesisWarnings.enabled", true),
 		warnDuplicateSequenceNumbers: config.get("duplicateSequenceNumbers.enabled", true),
 		warnSequenceNumberOrder: config.get("sequenceNumberOrder.enabled", true),
 		warnUnmatchedLoops: config.get("unmatchedLoops.enabled", true),

@@ -105,8 +105,10 @@ function updateDiagnostics(document, diagnostics, updateOptions = {}) {
 		];
 
 		warnings.push(...makeUnclosedDelimiterWarnings(line, lineNumber));
-		warnings.push(...makeMultipleCommentParenthesisWarnings(line, lineNumber));
 		warnings.push(...makeAddressInsideBracketWarnings(line, lineNumber, ignoreRanges));
+		if (options.warnMultipleCommentParenthesisWarnings) {
+			warnings.push(...makeMultipleCommentParenthesisWarnings(line, lineNumber));
+		}
 		if (options.warnDuplicateSequenceNumbers) {
 			warnings.push(...makeDuplicateSequenceNumberWarnings(line, lineNumber, ignoreRanges, seenSequenceNumbers));
 		}

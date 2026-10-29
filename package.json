@@ -433,6 +433,12 @@
             "description": "Warn when a G-code file contains non-ASCII characters that some lathe controls may not read reliably."
           ,
             "scope": "resource"},
+          "kaijuNC.alerts.multipleCommentParenthesisWarnings.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Warn when there is more than one parenthesis-comment pair per line."
+          ,
+            "scope": "resource"},
           "kaijuNC.alerts.duplicateSequenceNumbers.enabled": {
             "type": "boolean",
             "default": true,
